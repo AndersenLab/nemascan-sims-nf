@@ -143,7 +143,7 @@ workflow {
     ch_versions = ch_versions.mix(R_FIND_GENOTYPE_MATRIX_EIGEN.out.versions)
 
     // Concatenate eigen files with plink and genotype matrix sets
-    ch_eigens = R_FIND_GENOTYPE_MATRIX_EIGEN.out.matrix
+    ch_eigens = R_FIND_GENOTYPE_MATRIX_EIGEN.out.eigen
         .groupTuple(by: [0, 1])
         .map{ it: [it[0], it[1], it[3]]}
 
