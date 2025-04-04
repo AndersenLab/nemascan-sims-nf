@@ -25,7 +25,11 @@ if (params.effect == null){
 } else {
     effect_file = params.effect
 }
-
+if (params.strainfile == null){
+    strainfile = "${workflow.projectDir}/data/test_strain_sets.txt"
+} else {
+    strainfile = params.strainfile
+}
 if (params.help) {
     log.info '''
 
