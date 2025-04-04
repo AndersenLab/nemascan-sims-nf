@@ -39,16 +39,16 @@ if (params.help) {
     log.info "----------------------------------------------------------------"
     log.info "                      USAGE                                     "
     log.info "----------------------------------------------------------------"
-    log.info ""
+    log.info " "
     log.info "nextflow andersenlab/nemascan-sim-nf --strainfile /path/to/strainfile --vcf /path/to/vcf -output-dir my-results"
-    log.info ""
+    log.info " "
     log.info "Profiles available:"
     log.info "rockfish              Profile        Perform selected analysis on Rockfish (default GWA mapping)"
-    log.info ""
+    log.info " "
     log.info "Mandatory argument (General):"
     log.info "--strainfile      File               A TSV file with two columns: the first is a name for the strain set and the second is a comma-separated strain list without spaces"
     log.info "--vcf             File               Generally a CaeNDR release date (i.e. 20231213). Can also provide a user-specified VCF with index in same folder"
-    log.info ""
+    log.info " "
     log.info "Optional arguments (General):"
     log.info "--nqtl            File               A CSV file with the number of QTL to simulate per phenotype, one value per line (Default is located: data/simulate_nqtl.csv)"
     log.info "--h2              File               A CSV file with phenotype heritability, one value per line (Default is located: data/simulate_h2.csv)"
@@ -61,7 +61,7 @@ if (params.help) {
     log.info "--ci_size         Integer            Number of SNVs to the left and right of the peak marker used to define the QTL confidence interval, (DEFAULT = 150)"
     log.info "--sparse_cut      Decimal            Any off-diagonal value in the genetic relatedness matrix greater than this is set to 0 (Default: 0.05)"
     log.info "-output-dir       String             Name of folder that will contain the results (Default: Simulations_{date})"
-    log.info ""
+    log.info " "
 
 
     exit 1
@@ -110,8 +110,8 @@ workflow {
     ch_versions = Channel.empty()
 
     // Created needed channels
-    ch_vcf = Channel.fromPath(params.vcf).map{ it: [[id: "vcf"], it, "${it}.tbi"]}
-    ch_strain_sets = Channel.fromPath(params.strainfile).splitCsv(sep: " ").map{ NAME, STRAINS: [[id: NAME], strains] }
+    ch_vcf = Channel.fromPath(params.vcf).map{ it: [[id: "vcf"], it, "${it}.tbi"] }
+    ch_strain_sets = Channel.fromPath(params.strainfile).splitCsv(sep: " ").map{ it: [[id: it[0]], it[1]] }
     ch_mafs = Channel.fromPath(maf_file).splitCsv().first()
 
     // Get contig data from VCF file
@@ -149,7 +149,7 @@ workflow {
     // Concatenate eigen files with plink and genotype matrix sets
     ch_eigens = R_FIND_GENOTYPE_MATRIX_EIGEN.out.eigen
         .groupTuple(by: [0, 1])
-        .map{ it: [it[0], it[1], it[3]]}
+        .map{ it: [it[0], it[1], it[3]] }
 
     LOCAL_COMPILE_EIGENS( ch_eigens )
 
