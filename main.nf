@@ -90,7 +90,7 @@ if (params.help) {
 
 
 // import the subworkflows
-include { LOCAL_GET_CONTIG_INFO           } from './modules/local/get_contif_info/main'
+include { LOCAL_GET_CONTIG_INFO           } from './modules/local/get_contig_info/main'
 include { LOCAL_COMPILE_EIGENS            } from './modules/local/compile_eigens/main'
 include { BCFTOOLS_EXTRACT_STRAINS        } from './modules/bcftools/extract_strains/main'
 include { BCFTOOLS_CREATE_GENOTYPE_MATRIX } from './modules/bcftools/create_genotype_matrix/main'
