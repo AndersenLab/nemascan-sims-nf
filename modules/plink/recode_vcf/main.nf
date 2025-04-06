@@ -6,7 +6,7 @@ process PLINK_RECODE_VCF {
     input:
     tuple val(meta), path(vcf), path(vcf_index)
     val mito_name
-    each val(maf)
+    each maf
 
     output:
     tuple val(meta.id), val(maf), path("TO_SIMS.bed"), path("TO_SIMS.bim"), path("TO_SIMS.fam"), path("TO_SIMS.map"), path("TO_SIMS.nosex"), path("TO_SIMS.ped"), path("TO_SIMS.log"), emit: plink
