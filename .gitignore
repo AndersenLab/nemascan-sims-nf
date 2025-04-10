@@ -1,2 +1,6 @@
 .DS_Store
 nemascan-sims-nf.code-workspace
+.nextflow.log*
+.nextflow/
+pipeline_info/
+cache/
