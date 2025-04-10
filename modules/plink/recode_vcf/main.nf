@@ -6,12 +6,12 @@ process PLINK_RECODE_VCF {
     input:
     tuple val(meta), path(vcf), path(vcf_index)
     val mito_name
-    each val(maf)
+    each maf
 
     output:
     tuple val(meta.id), val(maf), path("TO_SIMS.bed"), path("TO_SIMS.bim"), path("TO_SIMS.fam"), path("TO_SIMS.map"), path("TO_SIMS.nosex"), path("TO_SIMS.ped"), path("TO_SIMS.log"), emit: plink
-    tuple val(meta.id), val(maf), path("recoded.vcf.gz"), path("recoded.vcf.gz.tbi")                                                                                                   emit: vcf
-    tuple val(meta.id), val(maf), path("markers.txt")                                                                                                                                  emit: markers
+    tuple val(meta.id), val(maf), path("recoded.vcf.gz"), path("recoded.vcf.gz.tbi"),                                                                                                  emit: vcf
+    tuple val(meta.id), val(maf), path("markers.txt"),                                                                                                                                 emit: markers
     path "versions.yml",                                                                                                                                                               emit: versions
 
     when:
@@ -50,7 +50,7 @@ process PLINK_RECODE_VCF {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        plink: \$( plink --version |& head -n 1 | cut -f 2' )
+        plink: \$( plink --version |& head -n 1 | cut -f 2 )
     END_VERSIONS
     """
 
@@ -69,7 +69,7 @@ process PLINK_RECODE_VCF {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        plink: \$( plink --version |& head -n 1 | cut -f 2' )
+        plink: \$( plink --version |& head -n 1 | cut -f 2 )
     END_VERSIONS
     """
 }
