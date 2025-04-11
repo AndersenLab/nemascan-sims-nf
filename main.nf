@@ -99,7 +99,7 @@ include { PLINK_UPDATE_BY_H2              } from './modules/plink/update_by_h2/m
 include { R_FIND_GENOTYPE_MATRIX_EIGEN    } from './modules/r/find_genotype_matrix_eigen/main'
 include { R_SIMULATE_EFFECTS_LOCAL        } from './modules/r/simulate_effects_local/main'
 include { R_SIMULATE_EFFECTS_GLOBAL       } from './modules/r/simulate_effects_global/main'
-include { R_FIND_GCTA_INTERVALS           } from './modules/r/get_gcta_intervals/main'
+include { R_GET_GCTA_INTERVALS           } from './modules/r/get_gcta_intervals/main'
 include { R_ASSESS_SIMS                   } from './modules/r/assess_sims/main'
 include { GCTA_SIMULATE_PHENOTYPES        } from './modules/gcta/simulate_phenotypes/main'
 include { GCTA_MAKE_GRM                   } from './modules/gcta/make_grm/main'
@@ -219,7 +219,7 @@ workflow {
     ch_versions = ch_versions.mix(GCTA_PERFORM_GWA.out.versions)
 
     // Find GCTA intervals
-    R_FIND_GCTA_INTERVALS( GCTA_PERFORM_GWA.out.params,
+    R_GET_GCTA_INTERVALS( GCTA_PERFORM_GWA.out.params,
                            GCTA_PERFORM_GWA.out.grm,
                            GCTA_PERFORM_GWA.out.plink,
                            GCTA_PERFORM_GWA.out.pheno,
@@ -228,14 +228,14 @@ workflow {
                            params.qtl_group_size,
                            params.qtl_ci_size,
                            Channel.fromPath("${workflow.projectDir}/bin/Find_GCTA_Intervals.R").first() )
-    ch_versions = ch_versions.mix(R_FIND_GCTA_INTERVALS.out.versions)
+    ch_versions = ch_versions.mix(R_GET_GCTA_INTERVALS.out.versions)
 
     // Compile results
-    R_ASSESS_SIMS( R_FIND_GCTA_INTERVALS.out.params,
-                   R_FIND_GCTA_INTERVALS.out.grm,
-                   R_FIND_GCTA_INTERVALS.out.plink,
-                   R_FIND_GCTA_INTERVALS.out.pheno,
-                   R_FIND_GCTA_INTERVALS.out.interval,
+    R_ASSESS_SIMS( R_GET_GCTA_INTERVALS.out.params,
+                   R_GET_GCTA_INTERVALS.out.grm,
+                   R_GET_GCTA_INTERVALS.out.plink,
+                   R_GET_GCTA_INTERVALS.out.pheno,
+                   R_GET_GCTA_INTERVALS.out.interval,
                    Channel.fromPath("${workflow.projectDir}/bin/Assess_Sims.R").first() )
     ch_versions = ch_versions.mix(R_ASSESS_SIMS.out.versions)
 
