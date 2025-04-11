@@ -27,7 +27,7 @@ process R_FIND_GENOTYPE_MATRIX_EIGEN {
     
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        R: \$( Rscript --version |& cut -f 4' )
+        R: \$( Rscript --version |& cut -f 4 )
     END_VERSIONS
     """
 
@@ -38,7 +38,7 @@ process R_FIND_GENOTYPE_MATRIX_EIGEN {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        R: \$( Rscript --version |& cut -f 4' )
+        R: \$( Rscript --version |& cut -f 4 )
     END_VERSIONS
     """
 }

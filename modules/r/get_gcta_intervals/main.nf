@@ -35,7 +35,7 @@ process R_GET_GCTA_INTERVALS {
     
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        R: \$( Rscript --version |& cut -f 4' )
+        R: \$( Rscript --version |& cut -f 4 )
     END_VERSIONS
     """
 
@@ -46,7 +46,7 @@ process R_GET_GCTA_INTERVALS {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        R: \$( Rscript --version |& cut -f 4' )
+        R: \$( Rscript --version |& cut -f 4 )
     END_VERSIONS
     """
 }
