@@ -33,7 +33,7 @@ process GCTA_SIMULATE_PHENOTYPES {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        GCTA: \$( gcta64 --version |& grep version |& cut -f 3' )
+        GCTA: \$( gcta64 --version |& grep version |& cut -f 3 )
     END_VERSIONS
     """
 
@@ -44,7 +44,7 @@ process GCTA_SIMULATE_PHENOTYPES {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        GCTA: \$( gcta64 --version |& grep version |& cut -f 3' )
+        GCTA: \$( gcta64 --version |& grep version |& cut -f 3 )
     END_VERSIONS
     """
 }

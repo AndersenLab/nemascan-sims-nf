@@ -33,7 +33,7 @@ process R_ASSESS_SIMS {
     
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        R: \$( Rscript --version |& cut -f 4' )
+        R: \$( Rscript --version |& cut -f 4 )
     END_VERSIONS
     """
 
@@ -43,7 +43,7 @@ process R_ASSESS_SIMS {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        R: \$( Rscript --version |& cut -f 4' )
+        R: \$( Rscript --version |& cut -f 4 )
     END_VERSIONS
     """
 }

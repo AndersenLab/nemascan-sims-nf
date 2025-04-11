@@ -39,7 +39,7 @@ process PLINK_UPDATE_BY_H2 {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        plink: \$( plink --version |& head -n 1 | cut -f 2' )
+        plink: \$( plink --version |& head -n 1 | cut -f 2 )
     END_VERSIONS
     """
 
@@ -55,7 +55,7 @@ process PLINK_UPDATE_BY_H2 {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        plink: \$( plink --version |& head -n 1 | cut -f 2' )
+        plink: \$( plink --version |& head -n 1 | cut -f 2 )
     END_VERSIONS
     """
 }
