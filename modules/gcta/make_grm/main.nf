@@ -13,7 +13,7 @@ process GCTA_MAKE_GRM {
     tuple path("tmp_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"), path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par")
     
     output:
-    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix)                                                 emit: params
+    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix),                                                 emit: params
     tuple(path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm"),
           path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm.N"),
           path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm.id")),                                                emit: grm
@@ -48,7 +48,7 @@ process GCTA_MAKE_GRM {
 
     vp=\$(grep -w Vp check_vp.hsq | cut -f 1)
     if [[ \${vp} -le 0.00001 ]]; then
-        awk '{$3=$3*10000; print $0}' tmp_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen > ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen
+        awk '{\$3=\$3*10000; print \$0}' tmp_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen > ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen
     else
         cp tmp_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen
     fi
@@ -57,7 +57,7 @@ process GCTA_MAKE_GRM {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        GCTA: \$( gcta64 --version |& grep version |& cut -f 3' )
+        GCTA: \$( gcta64 --version |& grep version |& cut -f 3 )
     END_VERSIONS
     """
 
@@ -70,7 +70,7 @@ process GCTA_MAKE_GRM {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        GCTA: \$( gcta64 --version |& grep version |& cut -f 3' )
+        GCTA: \$( gcta64 --version |& grep version |& cut -f 3 )
     END_VERSIONS
     """
 }
