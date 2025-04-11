@@ -227,7 +227,7 @@ workflow {
                            params.threshold,
                            params.qtl_group_size,
                            params.qtl_ci_size,
-                           Channel.fromPath("${workflow.projectDir}/bin/Find_GCTA_Intervals.R").first() )
+                           Channel.fromPath("${workflow.projectDir}/bin/Get_GCTA_Intervals").first() )
     ch_versions = ch_versions.mix(R_GET_GCTA_INTERVALS.out.versions)
 
     // Compile results
