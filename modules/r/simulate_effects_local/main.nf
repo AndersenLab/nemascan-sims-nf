@@ -29,7 +29,7 @@ process R_SIMULATE_EFFECTS_LOCAL {
     
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        R: \$( Rscript --version |& cut -f 4' )
+        R: \$( Rscript --version |& cut -f 4 )
     END_VERSIONS
     """
 
@@ -39,7 +39,7 @@ process R_SIMULATE_EFFECTS_LOCAL {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        R: \$( Rscript --version |& cut -f 4' )
+        R: \$( Rscript --version |& cut -f 4 )
     END_VERSIONS
     """
 }
