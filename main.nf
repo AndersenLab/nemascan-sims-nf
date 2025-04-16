@@ -26,9 +26,14 @@ if (params.effect == null){
     effect_file = params.effect
 }
 if (params.strainfile == null){
-    strainfile = "${workflow.projectDir}/data/test_strain_sets.txt"
+    strainfile = "${workflow.projectDir}/data/test_strains.txt"
 } else {
     strainfile = params.strainfile
+}
+if (params.mito_name == null){
+    mito_name = "MtDNA"
+} else {
+    mito_name = params.mito_name
 }
 if (params.help) {
     log.info '''
@@ -60,6 +65,7 @@ if (params.help) {
     log.info "--group_qtl       Integer            If two QTL are less than this distance from each other, combine the QTL into one, (DEFAULT = 1000)"
     log.info "--ci_size         Integer            Number of SNVs to the left and right of the peak marker used to define the QTL confidence interval, (DEFAULT = 150)"
     log.info "--sparse_cut      Decimal            Any off-diagonal value in the genetic relatedness matrix greater than this is set to 0 (Default: 0.05)"
+    log.info "--mito_name       Strain             Name of mitochondrial chromosome"
     log.info "-output-dir       String             Name of folder that will contain the results (Default: Simulations_{date})"
     log.info " "
 
@@ -83,6 +89,7 @@ if (params.help) {
     log.info "Window for combining QTLs               = ${params.group_qtl}"
     log.info "Number of SNVs to define QTL CI         = ${params.ci_size}"
     log.info "Relatedness cutoff                      = ${params.sparse_cut}"
+    log.info "Mitochondrial chromosome name           = ${mito_name}"
     log.info "Output directory                        = ${workflow.outputDir}"
     log.info ""
 }
@@ -124,7 +131,7 @@ workflow {
 
     // Recode the VCF file and create plink formatted files
     PLINK_RECODE_VCF( BCFTOOLS_EXTRACT_STRAINS.out.vcf,
-                      params.mito_name,
+                      mito_name,
                       ch_mafs )
     ch_versions = ch_versions.mix(PLINK_RECODE_VCF.out.versions)
 
@@ -299,6 +306,7 @@ workflow.onComplete {
     Threshold for grouping QTL              = ${params.group_qtl}
     Number of SNVs to define CI             = ${params.ci_size}
     Relatedness Matrix Cutoff               = ${params.sparse_cut}
+    Mitochondrial chromosome name           = ${mito_name}
     Result Directory                        = ${workflow.outputDir}
     """
 
