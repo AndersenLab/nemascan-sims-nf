@@ -19,4 +19,5 @@ Optional arguments (General):
     --group_qtl       Integer            If two QTL are less than this distance from each other, combine the QTL into one, (DEFAULT = 1000)
     --ci_size         Integer            Number of SNVs to the left and right of the peak marker used to define the QTL confidence interval, (DEFAULT = 150)
     --sparse_cut      Decimal            Any off-diagonal value in the genetic relatedness matrix greater than this is set to 0 (Default: 0.05)
+    --simulate_qtlloc Boolean            Whether to simulate QTLs in specific genomic regions (Default: false)
     -output-dir       String             Name of folder that will contain the results (Default: Simulations_{date})

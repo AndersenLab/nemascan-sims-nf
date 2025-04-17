@@ -35,6 +35,11 @@ if (params.mito_name == null){
 } else {
     mito_name = params.mito_name
 }
+if (params.simulate_qtlloc == null){
+    simulate_qtlloc = false
+} else {
+    simulate_qtlloc = params.simulate_qtlloc
+}
 if (params.help) {
     log.info '''
 
@@ -66,6 +71,7 @@ if (params.help) {
     log.info "--ci_size         Integer            Number of SNVs to the left and right of the peak marker used to define the QTL confidence interval, (DEFAULT = 150)"
     log.info "--sparse_cut      Decimal            Any off-diagonal value in the genetic relatedness matrix greater than this is set to 0 (Default: 0.05)"
     log.info "--mito_name       Strain             Name of mitochondrial chromosome"
+    log.info "--simulate_qtlloc Boolean            Whether to simulate QTLs in specific genomic regions (Default: false)"
     log.info "-output-dir       String             Name of folder that will contain the results (Default: Simulations_{date})"
     log.info " "
 
@@ -90,6 +96,7 @@ if (params.help) {
     log.info "Number of SNVs to define QTL CI         = ${params.ci_size}"
     log.info "Relatedness cutoff                      = ${params.sparse_cut}"
     log.info "Mitochondrial chromosome name           = ${mito_name}"
+    log.info "Simulate QTLs in specific regions       = ${simulate_qtlloc}"
     log.info "Output directory                        = ${workflow.outputDir}"
     log.info ""
 }
@@ -167,7 +174,7 @@ workflow {
         .join(LOCAL_COMPILE_EIGENS.out.tests, by: [0, 1])
     
     // Simulate QTL or genome
-    if (params.simulate_qtlloc){
+    if (simulate_qtlloc){
         R_SIMULATE_EFFECTS_LOCAL( ch_plink_genomat_eigen,
                                   Channel.fromPath(params.qtlloc).first(),
                                   Channel.fromPath("${workflow.projectDir}/bin/Create_Causal_QTLs.R").first(),
@@ -307,6 +314,7 @@ workflow.onComplete {
     Number of SNVs to define CI             = ${params.ci_size}
     Relatedness Matrix Cutoff               = ${params.sparse_cut}
     Mitochondrial chromosome name           = ${mito_name}
+    Simulate QTLs in specific regions       = ${simulate_qtlloc}
     Result Directory                        = ${workflow.outputDir}
     """
 
