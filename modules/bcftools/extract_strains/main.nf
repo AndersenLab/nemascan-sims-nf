@@ -18,7 +18,7 @@ process BCFTOOLS_EXTRACT_STRAINS {
     def args = task.ext.args ?: ''
     """
     bcftools view --threads ${task.cpus} -s ${strains} -O u ${vcf} | \\
-      bcftools filter -i N_MISSING=0 -O z -o ${1meta.id}.vcf.gz
+    bcftools filter -i N_MISSING=0 -O z -o ${meta1.id}.vcf.gz
     bcftools index --tbi ${meta1.id}.vcf.gz
 
     cat <<-END_VERSIONS > versions.yml
