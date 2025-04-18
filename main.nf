@@ -176,7 +176,7 @@ workflow {
     // Simulate QTL or genome
     if (simulate_qtlloc){
         R_SIMULATE_EFFECTS_LOCAL( ch_plink_genomat_eigen,
-                                  Channel.fromPath(params.qtlloc).first(),
+                                  Channel.fromPath(params.qtlloc),
                                   Channel.fromPath("${workflow.projectDir}/bin/Create_Causal_QTLs.R").first(),
                                   Channel.of(1..params.reps).toSortedList().first(),
                                   Channel.fromPath(nqtl_file).splitCsv().toSortedList().first(),
@@ -238,10 +238,10 @@ workflow {
                            GCTA_PERFORM_GWA.out.plink,
                            GCTA_PERFORM_GWA.out.pheno,
                            GCTA_PERFORM_GWA.out.gwa,
-                           params.threshold,
-                           params.qtl_group_size,
-                           params.qtl_ci_size,
-                           Channel.fromPath("${workflow.projectDir}/bin/Get_GCTA_Intervals").first() )
+                           Channel.fromPath("${workflow.projectDir}/bin/Get_GCTA_Intervals.R").first(),
+                           params.sthresh,
+                           params.group_qtl,
+                           params.ci_size )
     ch_versions = ch_versions.mix(R_GET_GCTA_INTERVALS.out.versions)
 
     // Compile results
@@ -262,10 +262,10 @@ workflow {
         }.set{ result }
 
     publish:
-    ch_inbred     >> "."
-    ch_inbred_pca >> "."
-    ch_loco       >> "."
-    ch_loco_pca   >> "."
+    result.inbred     >> "."
+    result.inbred_pca >> "."
+    result.loco       >> "."
+    result.loco_pca   >> "."
 }
 
 // Current bug that publish doesn't work without an output closure
