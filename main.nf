@@ -125,7 +125,7 @@ workflow {
 
     // Created needed channels
     ch_vcf = Channel.fromPath(params.vcf).map{ it: [[id: "vcf"], it, "${it}.tbi"] }
-    ch_strain_sets = Channel.fromPath(params.strainfile).splitCsv(sep: " ").map{ it: [[id: it[0]], it[1]] }
+    ch_strain_sets = Channel.fromPath(strainfile).splitCsv(sep: " ").map{ it: [[id: it[0]], it[1]] }
     ch_mafs = Channel.fromPath(maf_file).splitCsv().first()
 
     // Get contig data from VCF file
