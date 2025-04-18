@@ -5,14 +5,12 @@ process GCTA_SIMULATE_PHENOTYPES {
 
     input:
     tuple val(group), val(maf), val(nqtl), val(effect), val(rep), path(causal_variants)
-    tuple(val(group), val(maf), path("TO_SIMS.bed"), path("TO_SIMS.bim"), path("TO_SIMS.fam"), path("TO_SIMS.map"), path("TO_SIMS.nosex"),
-          path("TO_SIMS.ped"), path("TO_SIMS.log"), path(gm), path(n_indep_tests))
+    tuple val(group), val(maf), path("TO_SIMS.bed"), path("TO_SIMS.bim"), path("TO_SIMS.fam"), path("TO_SIMS.map"), path("TO_SIMS.nosex"), path("TO_SIMS.ped"), path("TO_SIMS.log"), path(gm), path(n_indep_tests)
     each h2
 
     output:
     tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2),                                                                    emit: params
-    tuple(val(group), val(maf), path("TO_SIMS.bed"), path("TO_SIMS.bim"), path("TO_SIMS.fam"), path("TO_SIMS.map"), path("TO_SIMS.nosex"),
-          path("TO_SIMS.ped"), path("TO_SIMS.log"), path(gm), path(n_indep_tests)),                                                           emit: plink 
+    tuple val(group), val(maf), path("TO_SIMS.bed"), path("TO_SIMS.bim"), path("TO_SIMS.fam"), path("TO_SIMS.map"), path("TO_SIMS.nosex"), path("TO_SIMS.ped"), path("TO_SIMS.log"), path(gm), path(n_indep_tests), emit: plink 
     tuple path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"), path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par"), emit: pheno
     path "versions.yml",                                                                                                                      emit: versions
 
