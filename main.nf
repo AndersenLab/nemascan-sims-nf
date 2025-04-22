@@ -83,7 +83,7 @@ if (params.help) {
 
 '''
     log.info ""
-    log.info "Strain name and list file               = ${params.strainfile}"
+    log.info "Strain name and list file               = ${strainfile}"
     log.info "VCF                                     = ${params.vcf}"
     log.info "Number of QTLs/phenotype simulated      = ${nqtl_file}"
     log.info "Phenotype heritability file             = ${h2_file}"
