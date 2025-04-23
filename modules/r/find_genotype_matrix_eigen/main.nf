@@ -23,7 +23,7 @@ process R_FIND_GENOTYPE_MATRIX_EIGEN {
 
     Rscript --vanilla ${get_genomatrix_eigen} ${chrom}_gm.tsv ${chrom}
 
-    mv ${CHROM}_independent_snvs.csv ${chrom}_${group}_${maf}_independent_snvs.csv
+    mv ${chrom}_independent_snvs.csv ${chrom}_${group}_${maf}_independent_snvs.csv
     
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
