@@ -149,14 +149,10 @@ workflow {
 
     // Find eigen values for genotype matrix
     ch_chrom_nums = LOCAL_GET_CONTIG_INFO.out.mapping
-        .splitCsv()
-        .filter{ it: it[1] != params.mito_name }
-        .map{ it: it[0] }
+        .splitCsv(sep: "\t")
+        .filter{ it: it[0] != params.mito_name }
+        .map{ it: it[1] }
         .toSortedList()
-        .first()
-
-    BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix.view()
-    ch_chrom_nums.view()
 
     R_FIND_GENOTYPE_MATRIX_EIGEN( BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix,
                                   Channel.fromPath("${workflow.projectDir}/bin/Get_GenoMatrix_Eigen.R").first(),
@@ -181,18 +177,18 @@ workflow {
         R_SIMULATE_EFFECTS_LOCAL( ch_plink_genomat_eigen,
                                   Channel.fromPath(params.qtlloc),
                                   Channel.fromPath("${workflow.projectDir}/bin/Create_Causal_QTLs.R").first(),
-                                  Channel.of(1..params.reps).toSortedList().first(),
-                                  Channel.fromPath(nqtl_file).splitCsv().toSortedList().first(),
-                                  Channel.fromPath(effect_file).splitCsv().toSortedList().first() )
+                                  Channel.of(1..params.reps).toSortedList(),
+                                  Channel.fromPath(nqtl_file).splitCsv().toSortedList(),
+                                  Channel.fromPath(effect_file).splitCsv().toSortedList() )
         ch_versions = ch_versions.mix(R_SIMULATE_EFFECTS_LOCAL.out.versions)
         ch_sim_phenos = R_SIMULATE_EFFECTS_LOCAL.out.causal
         ch_sim_plink = R_SIMULATE_EFFECTS_LOCAL.out.plink
     } else {
         R_SIMULATE_EFFECTS_GLOBAL( ch_plink_genomat_eigen,
                                    Channel.fromPath("${workflow.projectDir}/bin/Create_Causal_QTLs.R").first(),
-                                   Channel.of(1..params.reps).toSortedList().first(),
-                                   Channel.fromPath(nqtl_file).splitCsv().toSortedList().first(),
-                                   Channel.fromPath(effect_file).splitCsv().toSortedList().first() )
+                                   Channel.of(1..params.reps).toSortedList(),
+                                   Channel.fromPath(nqtl_file).splitCsv().toSortedList(),
+                                   Channel.fromPath(effect_file).splitCsv().toSortedList() )
         ch_versions = ch_versions.mix(R_SIMULATE_EFFECTS_GLOBAL.out.versions)
         ch_sim_phenos = R_SIMULATE_EFFECTS_GLOBAL.out.causal
         ch_sim_plink = R_SIMULATE_EFFECTS_GLOBAL.out.plink
