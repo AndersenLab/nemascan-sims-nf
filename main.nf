@@ -148,11 +148,14 @@ workflow {
     ch_versions = ch_versions.mix(BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.versions)
 
     // Find eigen values for genotype matrix
-    ch_chrom_nums = LOCAL_GET_CONTIG_INFO.out.mapping
-        .splitCsv(sep: "\t")
-        .filter{ it: it[0] != params.mito_name }
-        .map{ it: it[1] }
-        .toSortedList()
+    // ch_chrom_nums = LOCAL_GET_CONTIG_INFO.out.mapping
+    //     .splitCsv(sep: "\t")
+    //     .filter{ it: it[0] != params.mito_name }
+    //     .map{ it: it[1] }
+    //     .toSortedList()
+    ch_chrom_nums = LOCAL_GET_CONTIG_INFO.out.contigs
+        .splitCsv()
+        .filter{ it: it != params.mito_name }
 
     R_FIND_GENOTYPE_MATRIX_EIGEN( BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix,
                                   Channel.fromPath("${workflow.projectDir}/bin/Get_GenoMatrix_Eigen.R").first(),
