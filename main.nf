@@ -157,6 +157,9 @@ workflow {
         .splitCsv()
         .filter{ it: it != params.mito_name }
 
+    // add view statement for debugging
+    ch_chrom_nums.view()
+
     R_FIND_GENOTYPE_MATRIX_EIGEN( BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix,
                                   Channel.fromPath("${workflow.projectDir}/bin/Get_GenoMatrix_Eigen.R").first(),
                                   ch_chrom_nums )
