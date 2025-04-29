@@ -155,6 +155,7 @@ workflow {
     //     .toSortedList()
     ch_chrom_nums = LOCAL_GET_CONTIG_INFO.out.contigs
         .splitCsv()
+        .map{ it: it[0] }
         .filter{ it: it != params.mito_name }
 
     // add view statement for debugging
