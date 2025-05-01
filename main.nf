@@ -156,7 +156,7 @@ workflow {
     ch_chrom_nums = LOCAL_GET_CONTIG_INFO.out.contigs
         .splitCsv()
         .map{ it: it[0] }
-        .filter{ it: it != params.mito_name }
+        .filter{ it: it != mito_name }
 
     // add view statement for debugging
     ch_chrom_nums.view()
