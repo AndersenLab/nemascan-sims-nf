@@ -185,8 +185,15 @@ workflow {
                                   Channel.fromPath(params.qtlloc),
                                   Channel.fromPath("${workflow.projectDir}/bin/Create_Causal_QTLs.R").first(),
                                   Channel.of(1..params.reps).toSortedList(),
-                                  Channel.fromPath(nqtl_file).splitCsv().toSortedList(),
-                                  Channel.fromPath(effect_file).splitCsv().toSortedList() )
+                                  Channel.fromPath(nqtl_file)
+                                    .splitCsv()
+                                    .map{ it: it[0] }
+                                    .toSortedList(),
+                                  Channel.fromPath(effect_file)
+                                    .splitCsv()
+                                    .map{ it: it[0] }
+                                    .toSortedList() 
+                                )
         ch_versions = ch_versions.mix(R_SIMULATE_EFFECTS_LOCAL.out.versions)
         ch_sim_phenos = R_SIMULATE_EFFECTS_LOCAL.out.causal
         ch_sim_plink = R_SIMULATE_EFFECTS_LOCAL.out.plink
@@ -194,8 +201,15 @@ workflow {
         R_SIMULATE_EFFECTS_GLOBAL( ch_plink_genomat_eigen,
                                    Channel.fromPath("${workflow.projectDir}/bin/Create_Causal_QTLs.R").first(),
                                    Channel.of(1..params.reps).toSortedList(),
-                                   Channel.fromPath(nqtl_file).splitCsv().toSortedList(),
-                                   Channel.fromPath(effect_file).splitCsv().toSortedList() )
+                                   Channel.fromPath(nqtl_file)
+                                    .splitCsv()
+                                    .map{ it: it[0] }
+                                    .toSortedList(),
+                                   Channel.fromPath(effect_file)
+                                    .splitCsv()
+                                    .map{ it: it[0] }
+                                    .toSortedList() 
+                                    )
         ch_versions = ch_versions.mix(R_SIMULATE_EFFECTS_GLOBAL.out.versions)
         ch_sim_phenos = R_SIMULATE_EFFECTS_GLOBAL.out.causal
         ch_sim_plink = R_SIMULATE_EFFECTS_GLOBAL.out.plink
