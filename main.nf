@@ -3,70 +3,6 @@ nextflow.enable.dsl=2
 // Needed to publish results
 nextflow.preview.output = true
 
-
-if (params.help) {
-    log.info '''
-
-
-
-    '''
-    log.info "----------------------------------------------------------------"
-    log.info "                      USAGE                                     "
-    log.info "----------------------------------------------------------------"
-    log.info " "
-    log.info "nextflow andersenlab/nemascan-sim-nf --strainfile /path/to/strainfile --vcf /path/to/vcf -output-dir my-results"
-    log.info " "
-    log.info "Profiles available:"
-    log.info "rockfish              Profile        Perform selected analysis on Rockfish (default GWA mapping)"
-    log.info " "
-    log.info "Mandatory argument (General):"
-    log.info "--strainfile      File               A TSV file with two columns: the first is a name for the strain set and the second is a comma-separated strain list without spaces"
-    log.info "--vcf             File               Generally a CaeNDR release date (i.e. 20231213). Can also provide a user-specified VCF with index in same folder"
-    log.info " "
-    log.info "Optional arguments (General):"
-    log.info "--nqtl            File               A CSV file with the number of QTL to simulate per phenotype, one value per line (Default is located: data/simulate_nqtl.csv)"
-    log.info "--h2              File               A CSV file with phenotype heritability, one value per line (Default is located: data/simulate_h2.csv)"
-    log.info "--rep             Integer            The number of replicates to simulate per number of QTL and heritability (Default: 2)"
-    log.info "--maf             File               A CSV file where each line is a minor allele frequency threshold to test for simulations (Default: data/simulate_maf.csv)"
-    log.info "--effect          File               A CSV file where each line is an effect size range (e.g. 0.2-0.3) to test for simulations (Default: data/simulate_effect_sizes.csv)"
-    log.info "--qtlloc          File               A BED file with three columns: chromosome name (numeric 1-6), start postion, end postion. The genomic range specified is where markers will be pulled from to simulate QTL (Default: null [which defaults to using the whole genome to randomly simulate a QTL])"
-    log.info "--sthresh         String             Significance threshold for QTL - Options: BF - for bonferroni correction, EIGEN - for SNV eigen value correction, or another number e.g. 4"
-    log.info "--group_qtl       Integer            If two QTL are less than this distance from each other, combine the QTL into one, (DEFAULT = 1000)"
-    log.info "--ci_size         Integer            Number of SNVs to the left and right of the peak marker used to define the QTL confidence interval, (DEFAULT = 150)"
-    log.info "--sparse_cut      Decimal            Any off-diagonal value in the genetic relatedness matrix greater than this is set to 0 (Default: 0.05)"
-    log.info "--mito_name       Strain             Name of mitochondrial chromosome"
-    log.info "--simulate_qtlloc Boolean            Whether to simulate QTLs in specific genomic regions (Default: false)"
-    log.info "-output-dir       String             Name of folder that will contain the results (Default: Simulations_{date})"
-    log.info " "
-
-
-    exit 1
-} else {
-    log.info '''
-
-
-'''
-    log.info ""
-    log.info "Strain name and list file               = ${strainfile}"
-    log.info "VCF                                     = ${params.vcf}"
-    log.info "Number of QTLs/phenotype simulated      = ${nqtl_file}"
-    log.info "Phenotype heritability file             = ${h2_file}"
-    log.info "Number of replicates to simulate        = ${params.reps}"
-    log.info "Minor allele freq. threshold file       = ${maf_file}"
-    log.info "Effect size range file                  = ${effect_file}"
-    log.info "Genome range file                       = ${params.qtlloc}"
-    log.info "Significance Threshold                  = ${params.sthresh}"
-    log.info "Window for combining QTLs               = ${params.group_qtl}"
-    log.info "Number of SNVs to define QTL CI         = ${params.ci_size}"
-    log.info "Relatedness cutoff                      = ${params.sparse_cut}"
-    log.info "Mitochondrial chromosome name           = ${mito_name}"
-    log.info "Simulate QTLs in specific regions       = ${simulate_qtlloc}"
-    log.info "Output directory                        = ${workflow.outputDir}"
-    log.info ""
-}
-
-
-
 // import the subworkflows
 include { LOCAL_GET_CONTIG_INFO           } from './modules/local/get_contig_info/main'
 include { LOCAL_COMPILE_EIGENS            } from './modules/local/compile_eigens/main'
@@ -126,6 +62,67 @@ workflow {
     } else {
         simulate_qtlloc = params.simulate_qtlloc
     }
+
+    // set help message
+    if (params.help) {
+    log.info '''
+    '''
+    log.info "----------------------------------------------------------------"
+    log.info "                      USAGE                                     "
+    log.info "----------------------------------------------------------------"
+    log.info " "
+    log.info "nextflow andersenlab/nemascan-sim-nf --strainfile /path/to/strainfile --vcf /path/to/vcf -output-dir my-results"
+    log.info " "
+    log.info "Profiles available:"
+    log.info "rockfish              Profile        Perform selected analysis on Rockfish (default GWA mapping)"
+    log.info " "
+    log.info "Mandatory argument (General):"
+    log.info "--strainfile      File               A TSV file with two columns: the first is a name for the strain set and the second is a comma-separated strain list without spaces"
+    log.info "--vcf             File               Generally a CaeNDR release date (i.e. 20231213). Can also provide a user-specified VCF with index in same folder"
+    log.info " "
+    log.info "Optional arguments (General):"
+    log.info "--nqtl            File               A CSV file with the number of QTL to simulate per phenotype, one value per line (Default is located: data/simulate_nqtl.csv)"
+    log.info "--h2              File               A CSV file with phenotype heritability, one value per line (Default is located: data/simulate_h2.csv)"
+    log.info "--rep             Integer            The number of replicates to simulate per number of QTL and heritability (Default: 2)"
+    log.info "--maf             File               A CSV file where each line is a minor allele frequency threshold to test for simulations (Default: data/simulate_maf.csv)"
+    log.info "--effect          File               A CSV file where each line is an effect size range (e.g. 0.2-0.3) to test for simulations (Default: data/simulate_effect_sizes.csv)"
+    log.info "--qtlloc          File               A BED file with three columns: chromosome name (numeric 1-6), start postion, end postion. The genomic range specified is where markers will be pulled from to simulate QTL (Default: null [which defaults to using the whole genome to randomly simulate a QTL])"
+    log.info "--sthresh         String             Significance threshold for QTL - Options: BF - for bonferroni correction, EIGEN - for SNV eigen value correction, or another number e.g. 4"
+    log.info "--group_qtl       Integer            If two QTL are less than this distance from each other, combine the QTL into one, (DEFAULT = 1000)"
+    log.info "--ci_size         Integer            Number of SNVs to the left and right of the peak marker used to define the QTL confidence interval, (DEFAULT = 150)"
+    log.info "--sparse_cut      Decimal            Any off-diagonal value in the genetic relatedness matrix greater than this is set to 0 (Default: 0.05)"
+    log.info "--mito_name       Strain             Name of mitochondrial chromosome"
+    log.info "--simulate_qtlloc Boolean            Whether to simulate QTLs in specific genomic regions (Default: false)"
+    log.info "-output-dir       String             Name of folder that will contain the results (Default: Simulations_{date})"
+    log.info " "
+
+
+    exit 1
+} else { // set log info
+    log.info '''
+
+
+'''
+    log.info ""
+    log.info "Strain name and list file               = ${strainfile}"
+    log.info "VCF                                     = ${params.vcf}"
+    log.info "Number of QTLs/phenotype simulated      = ${nqtl_file}"
+    log.info "Phenotype heritability file             = ${h2_file}"
+    log.info "Number of replicates to simulate        = ${params.reps}"
+    log.info "Minor allele freq. threshold file       = ${maf_file}"
+    log.info "Effect size range file                  = ${effect_file}"
+    log.info "Genome range file                       = ${params.qtlloc}"
+    log.info "Significance Threshold                  = ${params.sthresh}"
+    log.info "Window for combining QTLs               = ${params.group_qtl}"
+    log.info "Number of SNVs to define QTL CI         = ${params.ci_size}"
+    log.info "Relatedness cutoff                      = ${params.sparse_cut}"
+    log.info "Mitochondrial chromosome name           = ${mito_name}"
+    log.info "Simulate QTLs in specific regions       = ${simulate_qtlloc}"
+    log.info "Output directory                        = ${workflow.outputDir}"
+    log.info ""
+}
+
+
 
     // Created needed channels
     ch_vcf = Channel.fromPath(params.vcf).map{ it: [[id: "vcf"], it, "${it}.tbi"] }
