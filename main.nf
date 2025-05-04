@@ -4,6 +4,8 @@ nextflow.enable.dsl=2
 nextflow.preview.output = true
 
 
+if (params.help) {
+    log.info '''
 
 
 
@@ -82,9 +84,13 @@ include { GCTA_MAKE_GRM                   } from './modules/gcta/make_grm/main'
 include { GCTA_PERFORM_GWA                } from './modules/gcta/perform_gwa/main'
 
 workflow {
-    // Check parameters
+    main:
+    ch_versions = Channel.empty()
+
     date = new Date().format( 'yyyyMMdd' )
 
+
+    // Set default values for parameters
     if (params.nqtl == null){
         nqtl_file = "${workflow.projectDir}/data/simulate_nqtl.csv"
     } else {
@@ -120,12 +126,6 @@ workflow {
     } else {
         simulate_qtlloc = params.simulate_qtlloc
     }
-    if (params.help) {
-        log.info '''
-
-
-    main:
-    ch_versions = Channel.empty()
 
     // Created needed channels
     ch_vcf = Channel.fromPath(params.vcf).map{ it: [[id: "vcf"], it, "${it}.tbi"] }
