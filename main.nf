@@ -3,45 +3,7 @@ nextflow.enable.dsl=2
 // Needed to publish results
 nextflow.preview.output = true
 
-date = new Date().format( 'yyyyMMdd' )
 
-if (params.nqtl == null){
-    nqtl_file = "${workflow.projectDir}/data/simulate_nqtl.csv"
-} else {
-    nqtl_file = params.nqtl
-}
-if (params.h2 == null){
-    h2_file = "${workflow.projectDir}/data/simulate_h2.csv"
-} else {
-    h2_file = params.h2
-}
-if (params.maf == null){
-    maf_file = "${workflow.projectDir}/data/simulate_maf.csv"
-} else {
-    maf_file = params.maf
-}
-if (params.effect == null){
-    effect_file = "${workflow.projectDir}/data/simulate_effect_sizes.csv"
-} else {
-    effect_file = params.effect
-}
-if (params.strainfile == null){
-    strainfile = "${workflow.projectDir}/data/test_strains.txt"
-} else {
-    strainfile = params.strainfile
-}
-if (params.mito_name == null){
-    mito_name = "MtDNA"
-} else {
-    mito_name = params.mito_name
-}
-if (params.simulate_qtlloc == null){
-    simulate_qtlloc = false
-} else {
-    simulate_qtlloc = params.simulate_qtlloc
-}
-if (params.help) {
-    log.info '''
 
 
 
@@ -120,6 +82,48 @@ include { GCTA_MAKE_GRM                   } from './modules/gcta/make_grm/main'
 include { GCTA_PERFORM_GWA                } from './modules/gcta/perform_gwa/main'
 
 workflow {
+    // Check parameters
+    date = new Date().format( 'yyyyMMdd' )
+
+    if (params.nqtl == null){
+        nqtl_file = "${workflow.projectDir}/data/simulate_nqtl.csv"
+    } else {
+        nqtl_file = params.nqtl
+    }
+    if (params.h2 == null){
+        h2_file = "${workflow.projectDir}/data/simulate_h2.csv"
+    } else {
+        h2_file = params.h2
+    }
+    if (params.maf == null){
+        maf_file = "${workflow.projectDir}/data/simulate_maf.csv"
+    } else {
+        maf_file = params.maf
+    }
+    if (params.effect == null){
+        effect_file = "${workflow.projectDir}/data/simulate_effect_sizes.csv"
+    } else {
+        effect_file = params.effect
+    }
+    if (params.strainfile == null){
+        strainfile = "${workflow.projectDir}/data/test_strains.txt"
+    } else {
+        strainfile = params.strainfile
+    }
+    if (params.mito_name == null){
+        mito_name = "MtDNA"
+    } else {
+        mito_name = params.mito_name
+    }
+    if (params.simulate_qtlloc == null){
+        simulate_qtlloc = false
+    } else {
+        simulate_qtlloc = params.simulate_qtlloc
+    }
+    if (params.help) {
+        log.info '''
+
+
     main:
     ch_versions = Channel.empty()
 
