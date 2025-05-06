@@ -67,17 +67,18 @@ if __name__ == "__main__":
     strain_set_variant_file = sys.argv[1]
     n_var = int(sys.argv[2])
 
-    effect_type = "gamma"
-    if len(sys.argv) > 3:
-        effect_type = sys.argv[3]
-
-    # Optional arguments for uniform effect range
-    effect_range = None
-    if len(sys.argv) > 4 and "-" in sys.argv[4]:
-        effect_range = sys.argv[4].split("-")
+    if sys.argv[3] == "gamma":
+        effect_type = "gamma"
+    elif "-" in sys.argv[3]:
+        effect_type = "uniform"
+        effect_range = sys.argv[3].split("-")
         low_end = float(effect_range[0])
         high_end = float(effect_range[1])
-
+    else:
+        print(
+            f"Error: Invalid effect specification '{sys.argv[3]}'. Use 'gamma' or 'low_end-high_end'"
+        )
+        sys.exit(1)
     # Read in annotated strain_set variants
     strain_var = load_strain_set_variants(strain_set_variant_file)
 

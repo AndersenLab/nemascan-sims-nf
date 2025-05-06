@@ -21,7 +21,7 @@ process PYTHON_SIMULATE_EFFECTS_GLOBAL {
   script:
   def args = task.ext.args ?: ''
   """
-      python ${create_causal_qtls} TO_SIMS.bim ${nqtl}
+      python ${create_causal_qtls} TO_SIMS.bim ${nqtl} ${effect}
       cat causal_og_vars.txt > ${sp}_${strain_set}_${MAF}_${SIMID}_${SIMREP}_causal_og_vars.txt
     
     cat <<-END_VERSIONS > versions.yml
