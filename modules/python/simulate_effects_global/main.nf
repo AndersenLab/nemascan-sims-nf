@@ -1,6 +1,6 @@
 process PYTHON_SIMULATE_EFFECTS_GLOBAL {
 
-  label 'PYTHON_simulate_effects_global'
+  label 'python_simulate_effects_global'
   tag "${nqtl} ${rep} ${effect}${group}_${maf}"
 
   input:
