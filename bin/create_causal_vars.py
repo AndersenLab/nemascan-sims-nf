@@ -98,7 +98,7 @@ if __name__ == "__main__":
 
     # Write output for trait simulations - just id and effect
     causal_vars_effects.to_csv(
-        "/Users/ryanmckeown/Desktop/nemascan-sims-nf/data/causal_og_vars.txt",
+        "causal_vars.txt",
         sep=" ",
         index=False,
         header=False,

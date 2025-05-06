@@ -22,21 +22,22 @@ process PYTHON_SIMULATE_EFFECTS_GLOBAL {
   def args = task.ext.args ?: ''
   """
       python ${create_causal_qtls} TO_SIMS.bim ${nqtl} ${effect}
-      cat causal_og_vars.txt > ${sp}_${strain_set}_${MAF}_${SIMID}_${SIMREP}_causal_og_vars.txt
+      mv causal.variants.sim.${nqtl}.txt causal.variants.sim.${nqtl}.${rep}.txt
     
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        R: \$( Rscript --version |& cut -f 4 )
-    END_VERSIONS
-    """
+  cat <<-END_VERSIONS > versions.yml
+      "${task.process}":
+          python: \$( python --version 2>&1 | cut -d' ' -f2 )
+  END_VERSIONS
+  """
 
   stub:
   """
     touch causal.variants.sim.${nqtl}.${rep}.txt
 
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        R: \$( Rscript --version |& cut -f 4 )
-    END_VERSIONS
-    """
+  cat <<-END_VERSIONS > versions.yml
+      "${task.process}":
+          python: \$( python --version 2>&1 | cut -d' ' -f2 )
+  END_VERSIONS
+
+  """
 }
