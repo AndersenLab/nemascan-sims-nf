@@ -26,6 +26,10 @@ def select_variants(markers, n_var):
     Select n_var variants from the list of markers
     """
     # Select n_var variants from the list of markers
+    # Ensure markers is a 1D array by extracting the "Marker" column if it's a DataFrame
+    if isinstance(markers, pd.DataFrame):
+        markers = markers["Marker"].values
+
     selected_variants = np.random.choice(markers, n_var, replace=False)
     return selected_variants
 
@@ -39,8 +43,11 @@ def simulate_og_effect_gamma(
 
     directions = np.random.choice([-1, 1], n_var)
     effects = effects * directions
-    selected_variants["EFFECT"] = effects
-    return select_variants
+
+    # Create a DataFrame from the selected variants array and effects
+    result_df = pd.DataFrame({"Marker": selected_variants, "EFFECT": effects})
+
+    return result_df
 
 
 if __name__ == "__main__":
@@ -68,6 +75,9 @@ if __name__ == "__main__":
     print("Simulated Effects for Causal Variants")
 
     # Write output for trait simulations - just id and effect
-    causal_vars_effects[["Marker", "EFFECT"]].to_csv(
-        "causal_og_vars.txt", sep=" ", index=False, header=False
+    causal_vars_effects.to_csv(
+        "/Users/ryanmckeown/Desktop/nemascan-sims-nf/data/causal_og_vars.txt",
+        sep=" ",
+        index=False,
+        header=False,
     )
