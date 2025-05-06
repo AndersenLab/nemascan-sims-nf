@@ -34,8 +34,7 @@ def select_variants(markers, n_var):
     return selected_variants
 
 
-# - [ ] allow dynamic effect shape & scale input
-def simulate_og_effect_gamma(
+def simulate_effect_gamma(
     selected_variants, n_var, effect_shape=0.4, effect_scale=1.66
 ):
     # pull the effect size from a gamma distribution
@@ -50,18 +49,34 @@ def simulate_og_effect_gamma(
     return result_df
 
 
+def simulate_effect_uniform(selected_variants, n_var, low_end=0.1, high_end=0.5):
+    # pull the effect size from a uniform distribution
+    effects = np.random.uniform(low_end, high_end, n_var)
+
+    directions = np.random.choice([-1, 1], n_var)
+    effects = effects * directions
+
+    # Create a DataFrame from the selected variants array and effects
+    result_df = pd.DataFrame({"Marker": selected_variants, "EFFECT": effects})
+
+    return result_df
+
+
 if __name__ == "__main__":
-    # Define orthogroups from command line argument where the orthogroups are separated by commas
+    # Get command line arguments
+    strain_set_variant_file = sys.argv[1]
+    n_var = int(sys.argv[2])
 
-    # Get the list of variants in the strain sets - from the .bim file
-    # strain_set_variant_file = sys.argv[1]
-    strain_set_variant_file = (
-        "/Users/ryanmckeown/Desktop/nemascan-sims-nf/data/plink/TO_SIMS.bim"
-    )
+    effect_type = "gamma"
+    if len(sys.argv) > 3:
+        effect_type = sys.argv[3]
 
-    # get the number of varints to select from the command line argument
-    # n_var = int(sys.argv[2])
-    n_var = 100
+    # Optional arguments for uniform effect range
+    effect_range = None
+    if len(sys.argv) > 4 and "-" in sys.argv[4]:
+        effect_range = sys.argv[4].split("-")
+        low_end = float(effect_range[0])
+        high_end = float(effect_range[1])
 
     # Read in annotated strain_set variants
     strain_var = load_strain_set_variants(strain_set_variant_file)
@@ -70,9 +85,15 @@ if __name__ == "__main__":
     causal_vars = select_variants(strain_var, n_var)
     print("Selected Causal Variants")
 
-    # Simulate effects for causal variants
-    causal_vars_effects = simulate_og_effect_gamma(causal_vars, n_var)
-    print("Simulated Effects for Causal Variants")
+    if effect_type == "gamma":
+        print("Simulating effects using gamma distribution")
+        causal_vars_effects = simulate_effect_gamma(causal_vars, n_var)
+    else:
+        print(f"Simulating effects using uniform distribution: {low_end}-{high_end}")
+        causal_vars_effects = simulate_effect_uniform(
+            causal_vars, n_var, low_end=low_end, high_end=high_end
+        )
+    print("Simulated effects")
 
     # Write output for trait simulations - just id and effect
     causal_vars_effects.to_csv(

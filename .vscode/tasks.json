@@ -15,7 +15,12 @@
         "workingDirectory": "${workspaceFolder}",
       },
       "python": {
-        "file": "${file}"
+        "file": "${file}",
+        "args": [
+          "${workspaceFolder}/data/plink/TO_SIMS.bim",
+          "100",
+          "gamma"
+        ]
       }
     }
   ]
