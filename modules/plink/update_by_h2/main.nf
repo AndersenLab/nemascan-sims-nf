@@ -31,7 +31,7 @@ process PLINK_UPDATE_BY_H2 {
         --out TO_SIMS_${nqtl}_${rep}_${maf}_${effect}_${group} \\
         --allow-extra-chr \\
         --allow-no-sex \\
-        --pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen
+        --pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
