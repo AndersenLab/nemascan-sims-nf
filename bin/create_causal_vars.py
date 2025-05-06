@@ -47,10 +47,12 @@ if __name__ == "__main__":
     # Define orthogroups from command line argument where the orthogroups are separated by commas
 
     # Get the list of variants in the strain sets - from the .bim file
-    strain_set_variant_file = sys.argv[1]
+    # strain_set_variant_file = sys.argv[1]
+    strain_set_variant_file = "data/plink/TO_SIMS.bim"
 
     # get the number of varints to select from the command line argument
-    n_var = int(sys.argv[2])
+    # n_var = int(sys.argv[2])
+    n_var = 100
 
     # Read in annotated strain_set variants
     strain_var = load_strain_set_variants(strain_set_variant_file)
