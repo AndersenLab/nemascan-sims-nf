@@ -48,7 +48,9 @@ if __name__ == "__main__":
 
     # Get the list of variants in the strain sets - from the .bim file
     # strain_set_variant_file = sys.argv[1]
-    strain_set_variant_file = "data/plink/TO_SIMS.bim"
+    strain_set_variant_file = (
+        "/Users/ryanmckeown/Desktop/nemascan-sims-nf/data/plink/TO_SIMS.bim"
+    )
 
     # get the number of varints to select from the command line argument
     # n_var = int(sys.argv[2])
