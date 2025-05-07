@@ -231,6 +231,7 @@ workflow {
     ch_grm_plink = PLINK_UPDATE_BY_H2.out.plink.map{ it: [it] }.combine(ch_mode).map{ it: it[0] }
     ch_grm_pheno = PLINK_UPDATE_BY_H2.out.pheno.map{ it: [it] }.combine(ch_mode).map{ it: it[0] }
 
+    ch_grm_params.view()
     ch_grm_plink.view()
     ch_grm_pheno.view()
 
