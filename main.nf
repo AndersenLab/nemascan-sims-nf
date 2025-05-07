@@ -131,15 +131,20 @@ workflow {
 
     // Get contig data from VCF file
     LOCAL_GET_CONTIG_INFO( ch_vcf )
+    ch_mito_num = LOCAL_GET_CONTIG_INFO.out.mapping.splitCsv(sep:"\t")
+        .filter{ row: row[0] == mito_name }
+        .map{ row: row[1] }
+        .first()
 
     // Extract desired strain sets
     BCFTOOLS_EXTRACT_STRAINS( ch_vcf,
-                              ch_strain_sets )
+                              ch_strain_sets,
+                              LOCAL_GET_CONTIG_INFO.out.mapping )
     ch_versions = ch_versions.mix(BCFTOOLS_EXTRACT_STRAINS.out.versions)
 
     // Recode the VCF file and create plink formatted files
     PLINK_RECODE_VCF( BCFTOOLS_EXTRACT_STRAINS.out.vcf,
-                      mito_name,
+                      ch_mito_num,
                       ch_mafs )
     ch_versions = ch_versions.mix(PLINK_RECODE_VCF.out.versions)
 
@@ -149,15 +154,11 @@ workflow {
     ch_versions = ch_versions.mix(BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.versions)
 
     // Find eigen values for genotype matrix
-    // ch_chrom_nums = LOCAL_GET_CONTIG_INFO.out.mapping
-    //     .splitCsv(sep: "\t")
-    //     .filter{ it: it[0] != params.mito_name }
-    //     .map{ it: it[1] }
-    //     .toSortedList()
-    ch_chrom_nums = LOCAL_GET_CONTIG_INFO.out.contigs
-        .splitCsv()
-        .map{ it: it[0] }
-        .filter{ it: it != mito_name }
+    ch_chrom_nums = LOCAL_GET_CONTIG_INFO.out.mapping
+        .splitCsv(sep: "\t")
+        .filter{ it: it[0] != mito_name }
+        .map{ it: it[1] }
+        .toSortedList()
 
     R_FIND_GENOTYPE_MATRIX_EIGEN( BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix,
                                   Channel.fromPath("${workflow.projectDir}/bin/Get_GenoMatrix_Eigen.R").first(),
