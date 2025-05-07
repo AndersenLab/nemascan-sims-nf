@@ -160,6 +160,8 @@ workflow {
         .map{ it: it[1] }
         .toSortedList()
 
+    ch_chrom_nums.view()
+
     R_FIND_GENOTYPE_MATRIX_EIGEN( BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix,
                                   Channel.fromPath("${workflow.projectDir}/bin/Get_GenoMatrix_Eigen.R").first(),
                                   ch_chrom_nums )
