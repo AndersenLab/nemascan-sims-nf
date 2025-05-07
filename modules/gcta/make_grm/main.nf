@@ -34,17 +34,17 @@ process GCTA_MAKE_GRM {
             --thread-num ${task.cpus}
 
     gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \\
-            --pheno tmp_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen \\
+            --pheno tmp_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno \\
             --reml --out check_vp \\
             --thread-num ${task.cpus}
 
     vp=\$(grep -w Vp check_vp.hsq | cut -f 1)
     if [[ \${vp} -le 0.00001 ]]; then
-        awk '{\$3=\$3*10000; print \$0}' tmp_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen > ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen
+        awk '{\$3=\$3*10000; print \$0}' tmp_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno > ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno
     else
-        cp tmp_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen
+        cp tmp_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno
     fi
-    cp tmp_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen
+    cp tmp_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno
     fi
 
     cat <<-END_VERSIONS > versions.yml
@@ -58,7 +58,7 @@ process GCTA_MAKE_GRM {
     touch TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm
     touch TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm.N
     touch TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm.id
-    touch "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen"
+    touch "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
