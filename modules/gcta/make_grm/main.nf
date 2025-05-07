@@ -28,7 +28,7 @@ process GCTA_MAKE_GRM {
         GRM_OPTION="--make-grm"
     fi
 
-    gcta64 --bfile TO_SIMS_${nqtl}_${rep}_${maf}_${effect}_${group} \\
+    gcta64 --bfile TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group} \\
             --autosome --maf ${maf} \${GRM_OPTION} \\
             --out TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \\
             --thread-num ${task.cpus}
