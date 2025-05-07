@@ -159,9 +159,6 @@ workflow {
         .map{ it: it[0] }
         .filter{ it: it != mito_name }
 
-    // add view statement for debugging
-    ch_chrom_nums.view()
-
     R_FIND_GENOTYPE_MATRIX_EIGEN( BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix,
                                   Channel.fromPath("${workflow.projectDir}/bin/Get_GenoMatrix_Eigen.R").first(),
                                   ch_chrom_nums )
@@ -245,6 +242,9 @@ workflow {
     ch_gwa_grm = GCTA_MAKE_GRM.out.plink.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
     ch_gwa_plink = GCTA_MAKE_GRM.out.plink.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
     ch_gwa_pheno = GCTA_MAKE_GRM.out.pheno.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
+
+    ch_gwa_plink.view()
+    ch_gwa_pheno.view()
 
     GCTA_PERFORM_GWA( ch_gwa_params,
                       ch_gwa_grm,
