@@ -39,12 +39,10 @@ process GCTA_MAKE_GRM {
             --thread-num ${task.cpus}
 
     vp=\$(grep -w '^Vp' check_vp.hsq | cut -f 2)
-    if [[ \${vp} -le 0.00001 ]]; then
+    if [ \$(echo "\${vp} <= 0.00001" | bc -l) -eq 1 ]; then
         awk '{\$3=\$3*10000; print \$0}' tmp_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen > ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen
     else
         cp tmp_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen
-    fi
-    cp tmp_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen
     fi
 
     cat <<-END_VERSIONS > versions.yml
