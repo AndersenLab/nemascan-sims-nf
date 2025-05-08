@@ -156,8 +156,8 @@ workflow {
     // Find eigen values for genotype matrix
     ch_chrom_nums = LOCAL_GET_CONTIG_INFO.out.mapping
         .splitCsv(sep: "\t")
-        .filter{ it: it[0] != mito_name }
-        .map{ it: it[1] }
+        .filter { it -> it[0] != mito_name }
+        .map { it -> it[1] }
         .toSortedList()
 
     ch_chrom_nums.view()
