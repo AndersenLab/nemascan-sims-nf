@@ -6,24 +6,23 @@ process PYTHON_CHECK_VP {
 
     input:
     tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix)
-    tuple path(tmp_pheno_file), path(hsq_file) // From GCTA_MAKE_GRM.out.pheno_and_hsq
-    path par_file                              // Original .par file, needs to be piped into this process
+    tuple path(tmp_pheno_in), path(hsq_in), path(par_in)
     path check_vp_script                       // Path to bin/check_vp.py
 
     output:
     tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix), emit: params
-    tuple path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen"), path(par_file), emit: pheno
+    tuple path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen"), path(par_in), emit: pheno
     path "versions.yml", emit: versions
 
     script:
     def final_pheno_name = "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen"
     """
-    python3 ${check_vp_script} --check_vp ${hsq_file} --simulated_phenos ${tmp_pheno_file}
+    python3 ${check_vp_script} --check_vp ${hsq_in} --simulated_phenos ${tmp_pheno_in}
 
     if [ -f new_phenos.temp ]; then
         mv new_phenos.temp ${final_pheno_name}
     else
-        cp ${tmp_pheno_file} ${final_pheno_name}
+        cp ${tmp_pheno_in} ${final_pheno_name}
     fi
 
     cat <<-END_VERSIONS > versions.yml
@@ -33,11 +32,10 @@ process PYTHON_CHECK_VP {
     """
 
     stub:
-    def final_pheno_name = "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen"
+    def final_pheno_name_stub = "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen"
     """
-    touch ${final_pheno_name}
-    // par_file is an input, so it's expected to exist for the stub.
-    // No need to touch par_file in stub output as it's passed through.
+    touch ${final_pheno_name_stub}
+    touch ${par_in} // par_in is the path object from input
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
