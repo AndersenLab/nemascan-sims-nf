@@ -244,24 +244,15 @@ workflow {
                    ch_grm_pheno )
     ch_versions = ch_versions.mix(GCTA_MAKE_GRM.out.versions)
 
-    // Prepare inputs for PYTHON_CHECK_VP
-    // GCTA_MAKE_GRM.out.params is: meta_tuple (group, maf, nqtl, ...)
-    // GCTA_MAKE_GRM.out.pheno_hsq_and_par is: tuple (tmp_pheno_path, hsq_path, par_path)
-    
-    // We need to feed PYTHON_CHECK_VP with:
-    // 1. meta_tuple from GCTA_MAKE_GRM.out.params
-    // 2. tuple (tmp_pheno_path, hsq_path) -> from first two elements of GCTA_MAKE_GRM.out.pheno_hsq_and_par
-    // 3. par_path -> from third element of GCTA_MAKE_GRM.out.pheno_hsq_and_par
-    // 4. script_path
+    // Prepare inputs for PYTHON_CHECK_VP to match its 3-input definition
+    // Input 1: meta_tuple (group, maf, nqtl, ...)
+    // Input 2: tuple (tmp_pheno_path, hsq_path, par_path)
+    // Input 3: script_path
 
-    ch_gcta_params_for_py = GCTA_MAKE_GRM.out.params
-    ch_gcta_tmp_pheno_hsq_for_py = GCTA_MAKE_GRM.out.pheno_hsq_and_par.map { tmp, hsq, par -> [tmp, hsq] }
-    ch_gcta_par_for_py = GCTA_MAKE_GRM.out.pheno_hsq_and_par.map { tmp, hsq, par -> par }
-
-    PYTHON_CHECK_VP( ch_gcta_params_for_py,
-                     ch_gcta_tmp_pheno_hsq_for_py,
-                     ch_gcta_par_for_py,
-                     Channel.fromPath("${workflow.projectDir}/bin/check_vp.py").first() )
+    PYTHON_CHECK_VP( GCTA_MAKE_GRM.out.params,                         // Arg 1: Metadata
+                     GCTA_MAKE_GRM.out.pheno_hsq_and_par,              // Arg 2: Tuple of (tmp_pheno, hsq, par)
+                     Channel.fromPath("${workflow.projectDir}/bin/check_vp.py").first() // Arg 3: Script path
+                   )
     ch_versions = ch_versions.mix(PYTHON_CHECK_VP.out.versions)
 
     // Simulate GWA using output from PYTHON_CHECK_VP
