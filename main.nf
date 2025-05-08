@@ -275,15 +275,15 @@ workflow {
     ch_gwa_plink = GCTA_MAKE_GRM.out.plink.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
     
     // Pheno file for GWA now comes from PYTHON_CHECK_VP.out.pheno
-    // GCTA_PERFORM_GWA expects only the .phen file path for its pheno input.
+    // GCTA_PERFORM_GWA expects a tuple: (phen_path, par_path).
     // PYTHON_CHECK_VP.out.pheno is: tuple (final_pheno_path, par_path)
-    ch_gwa_pheno_from_py = PYTHON_CHECK_VP.out.pheno.map { phen_path, par_path -> phen_path }
+    ch_gwa_pheno_from_py = PYTHON_CHECK_VP.out.pheno
     ch_gwa_pheno = ch_gwa_pheno_from_py.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
 
     GCTA_PERFORM_GWA( ch_gwa_params,
                       ch_gwa_grm,
                       ch_gwa_plink,
-                      ch_gwa_pheno, // Use updated pheno channel
+                      ch_gwa_pheno,
                       params.sparse_cut )
     ch_versions = ch_versions.mix(GCTA_PERFORM_GWA.out.versions)
 
