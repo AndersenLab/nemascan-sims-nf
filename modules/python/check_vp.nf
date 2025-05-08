@@ -1,4 +1,3 @@
-\
 process PYTHON_CHECK_VP {
 
     label 'python_check_vp'
@@ -7,15 +6,15 @@ process PYTHON_CHECK_VP {
     input:
     tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix)
     tuple path(tmp_pheno_in), path(hsq_in), path(par_in)
-    path check_vp_script                       // Path to bin/check_vp.py
+    path check_vp_script
 
     output:
     tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix), emit: params
-    tuple path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen"), path(par_in), emit: pheno
+    tuple path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"), path(par_in), emit: pheno
     path "versions.yml", emit: versions
 
     script:
-    def final_pheno_name = "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen"
+    def final_pheno_name = "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"
     """
     python3 ${check_vp_script} --check_vp ${hsq_in} --simulated_phenos ${tmp_pheno_in}
 
@@ -32,7 +31,7 @@ process PYTHON_CHECK_VP {
     """
 
     stub:
-    def final_pheno_name_stub = "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen"
+    def final_pheno_name_stub = "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"
     """
     touch ${final_pheno_name_stub}
     touch ${par_in} // par_in is the path object from input
@@ -42,4 +41,4 @@ process PYTHON_CHECK_VP {
         python: \$(python3 --version 2>&1 | awk '{print \$2}')
     END_VERSIONS
     """
-} 
+}
