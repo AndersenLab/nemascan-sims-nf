@@ -18,6 +18,7 @@ include { R_ASSESS_SIMS                   } from './modules/r/assess_sims/main'
 include { GCTA_SIMULATE_PHENOTYPES        } from './modules/gcta/simulate_phenotypes/main'
 include { GCTA_MAKE_GRM                   } from './modules/gcta/make_grm/main'
 include { GCTA_PERFORM_GWA                } from './modules/gcta/perform_gwa/main'
+include { PYTHON_CHECK_VP               } from './modules/python/check_vp.nf'
 
 workflow {
     main:
@@ -243,19 +244,46 @@ workflow {
                    ch_grm_pheno )
     ch_versions = ch_versions.mix(GCTA_MAKE_GRM.out.versions)
 
-    // Simulate GWA
+    // Prepare inputs for PYTHON_CHECK_VP
+    // GCTA_MAKE_GRM.out.params is: meta_tuple (group, maf, nqtl, ...)
+    // GCTA_MAKE_GRM.out.pheno_hsq_and_par is: tuple (tmp_pheno_path, hsq_path, par_path)
+    
+    // We need to feed PYTHON_CHECK_VP with:
+    // 1. meta_tuple from GCTA_MAKE_GRM.out.params
+    // 2. tuple (tmp_pheno_path, hsq_path) -> from first two elements of GCTA_MAKE_GRM.out.pheno_hsq_and_par
+    // 3. par_path -> from third element of GCTA_MAKE_GRM.out.pheno_hsq_and_par
+    // 4. script_path
+
+    ch_gcta_params_for_py = GCTA_MAKE_GRM.out.params
+    ch_gcta_tmp_pheno_hsq_for_py = GCTA_MAKE_GRM.out.pheno_hsq_and_par.map { tmp, hsq, par -> [tmp, hsq] }
+    ch_gcta_par_for_py = GCTA_MAKE_GRM.out.pheno_hsq_and_par.map { tmp, hsq, par -> par }
+
+    PYTHON_CHECK_VP( ch_gcta_params_for_py,
+                     ch_gcta_tmp_pheno_hsq_for_py,
+                     ch_gcta_par_for_py,
+                     Channel.fromPath("${workflow.projectDir}/bin/check_vp.py").first() )
+    ch_versions = ch_versions.mix(PYTHON_CHECK_VP.out.versions)
+
+    // Simulate GWA using output from PYTHON_CHECK_VP
     ch_type = Channel.of( "pca", "nopca" )
+    
+    // Params for GWA come from GCTA_MAKE_GRM (these are not changed by PYTHON_CHECK_VP)
     ch_gwa_params = GCTA_MAKE_GRM.out.params.combine(ch_type)
-    ch_gwa_grm = GCTA_MAKE_GRM.out.plink.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
+    
+    // GRM and PLINK files also come from GCTA_MAKE_GRM
+    ch_gwa_grm = GCTA_MAKE_GRM.out.grm.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
     ch_gwa_plink = GCTA_MAKE_GRM.out.plink.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
-    ch_gwa_pheno = GCTA_MAKE_GRM.out.pheno.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
-
-
+    
+    // Pheno file for GWA now comes from PYTHON_CHECK_VP.out.pheno
+    // GCTA_PERFORM_GWA expects only the .phen file path for its pheno input.
+    // PYTHON_CHECK_VP.out.pheno is: tuple (final_pheno_path, par_path)
+    ch_gwa_pheno_from_py = PYTHON_CHECK_VP.out.pheno.map { phen_path, par_path -> phen_path }
+    ch_gwa_pheno = ch_gwa_pheno_from_py.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
 
     GCTA_PERFORM_GWA( ch_gwa_params,
                       ch_gwa_grm,
                       ch_gwa_plink,
-                      ch_gwa_pheno,
+                      ch_gwa_pheno, // Use updated pheno channel
                       params.sparse_cut )
     ch_versions = ch_versions.mix(GCTA_PERFORM_GWA.out.versions)
 
