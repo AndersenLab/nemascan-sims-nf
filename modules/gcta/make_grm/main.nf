@@ -38,7 +38,7 @@ process GCTA_MAKE_GRM {
             --reml --out check_vp \\
             --thread-num ${task.cpus}
 
-    vp=\$(grep -w Vp check_vp.hsq | cut -f 1)
+    vp=\$(grep -w '^Vp' check_vp.hsq | cut -f 2)
     if [[ \${vp} -le 0.00001 ]]; then
         awk '{\$3=\$3*10000; print \$0}' tmp_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen > ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen
     else
