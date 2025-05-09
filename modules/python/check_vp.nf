@@ -18,12 +18,8 @@ process PYTHON_CHECK_VP {
     """
     python3 ${check_vp_script} --check_vp ${hsq_in} --simulated_phenos ${tmp_pheno_in}
 
-    if [ -f new_phenos.temp ]; then
-        mv new_phenos.temp ${final_pheno_name}
-    else
-        mv ${tmp_pheno_in} ${final_pheno_name}
-    fi
-
+    mv new_phenos.temp ${final_pheno_name}
+    
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         python: \$(python3 --version 2>&1 | awk '{print \$2}')
