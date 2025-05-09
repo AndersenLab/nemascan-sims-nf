@@ -254,7 +254,10 @@ workflow {
     ch_versions = ch_versions.mix(PYTHON_CHECK_VP.out.versions)
 
     // Simulate GWA using output from PYTHON_CHECK_VP
-    ch_type = Channel.of( "pca", "nopca" )
+    ch_type = Channel.of( 
+        "pca"//, just PCA for now
+        //"nopca"
+        )
     
     // Params for GWA come from GCTA_MAKE_GRM (these are not changed by PYTHON_CHECK_VP)
     ch_gwa_params = GCTA_MAKE_GRM.out.params.combine(ch_type)
@@ -299,17 +302,17 @@ workflow {
 
     // Split results by algorithm and compile into summary file
     R_ASSESS_SIMS.out.assessment.branch{ v ->
-        inbred: v.contains("inbred_nopca")
+        //inbred: v.contains("inbred_nopca")
         inbred_pca: v.contains("inbred_pca")
-        loco: v.contains("loco_nopca")
-        loco_pca: v.contains("loco_pca")
+        //loco: v.contains("loco_nopca")
+        //loco_pca: v.contains("loco_pca")
         }.set{ result }
 
     publish:
-    result.inbred     >> "."
+    //result.inbred     >> "."
     result.inbred_pca >> "."
-    result.loco       >> "."
-    result.loco_pca   >> "."
+    //result.loco       >> "."
+    //result.loco_pca   >> "."
 }
 
 // Current bug that publish doesn't work without an output closure
