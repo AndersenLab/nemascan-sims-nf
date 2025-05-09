@@ -21,7 +21,7 @@ process PYTHON_CHECK_VP {
     if [ -f new_phenos.temp ]; then
         mv new_phenos.temp ${final_pheno_name}
     else
-        cp ${tmp_pheno_in} ${final_pheno_name}
+        mv ${tmp_pheno_in} ${final_pheno_name}
     fi
 
     cat <<-END_VERSIONS > versions.yml
