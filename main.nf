@@ -161,8 +161,6 @@ workflow {
         .map { it -> it[1] }
         .toSortedList()
 
-    ch_chrom_nums.view()
-
     R_FIND_GENOTYPE_MATRIX_EIGEN( BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix,
                                   Channel.fromPath("${workflow.projectDir}/bin/Get_GenoMatrix_Eigen.R").first(),
                                   ch_chrom_nums )
@@ -230,15 +228,15 @@ workflow {
     ch_versions = ch_versions.mix(PLINK_UPDATE_BY_H2.out.versions)
 
     // Create genetic relatedness matrix
-    ch_mode = Channel.of( ["inbred", "fastGWA"], ["loco", "mlma"] )
+    ch_mode = Channel.of( 
+        ["inbred", "fastGWA"]//, temporary for testing - just inbred 
+        //["loco", "mlma"] 
+        )
     ch_grm_params = PLINK_UPDATE_BY_H2.out.params.combine(ch_mode)
     ch_grm_plink = PLINK_UPDATE_BY_H2.out.plink.map{ it: [it] }.combine(ch_mode).map{ it: it[0] }
     ch_grm_pheno = PLINK_UPDATE_BY_H2.out.pheno.map{ it: [it] }.combine(ch_mode).map{ it: it[0] }
 
-    ch_grm_params.view()
-    ch_grm_plink.view()
-    ch_grm_pheno.view()
-
+    
     GCTA_MAKE_GRM( ch_grm_params,
                    ch_grm_plink,
                    ch_grm_pheno )
