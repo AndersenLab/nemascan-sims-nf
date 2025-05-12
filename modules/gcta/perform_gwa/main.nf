@@ -25,8 +25,8 @@ process GCTA_PERFORM_GWA {
     def args = task.ext.args ?: ''
     """
     if [[ ${mode} == "inbred" ]]; then
-        GRM_OPTION="--grm-sparse"
-        COMMAND="--fastGWA-lmm-exact"
+        GRM_OPTION='--grm-sparse'
+        COMMAND='--fastGWA-lmm-exact'
     else
         GRM_OPTION="--grm"
         COMMAND="--mlma-loco"
