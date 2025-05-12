@@ -26,7 +26,7 @@ process GCTA_PERFORM_GWA {
     """
     if [[ ${mode} == "inbred" ]]; then
         GRM_OPTION='--grm-sparse'
-        COMMAND='--fastGWA-lmm-exact'
+        COMMAND='--fastGWA-mlm-exact'
     else
         GRM_OPTION="--grm"
         COMMAND="--mlma-loco"
