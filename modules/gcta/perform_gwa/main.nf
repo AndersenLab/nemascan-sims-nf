@@ -49,7 +49,7 @@ process GCTA_PERFORM_GWA {
     fi
 
     gcta64 \${COMMAND} \\
-        --bfile TO_SIMS_${nqtl}_${rep}_${maf}_${effect}_${group} \\
+        --bfile TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group} \\
         \${GRM_OPTION} ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \\
         \${COVAR} \\
         --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_lmm-exact_${mode}_${type} \\
