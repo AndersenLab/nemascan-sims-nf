@@ -53,7 +53,7 @@ process GCTA_PERFORM_GWA {
         \${GRM_OPTION} ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \\
         \${COVAR} \\
         --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_lmm-exact_${mode}_${type} \\
-        --pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen \\
+        --pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno \\
         --maf ${maf} \\
         --thread-num ${task.cpus}
 
