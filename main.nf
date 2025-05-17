@@ -176,8 +176,11 @@ workflow {
     // Compile required files for simulations by strain group and MAF
     ch_plink_genomat_eigen = PLINK_RECODE_VCF.out.plink
         .join(BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix, by: [0, 1])
-        .join(ch_eigens, by: [0, 1])
+        //.join(ch_eigens, by: [0, 1])
         .join(LOCAL_COMPILE_EIGENS.out.tests, by: [0, 1])
+    
+    // check for just total independent tests
+    ch_plink_genomat_eigen.view()
     
     // Simulate QTL or genome
     if (simulate_qtlloc){
