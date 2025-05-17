@@ -296,9 +296,9 @@ processed_mapping <- process_mapping_df(mapping_df = map_df,
                                         geno = genotype_matrix)
 
 # save processed mapping data
-label <- paste("LMM-EXACT", toupper(args[14]), sep="_")
+label <- glue::glue("LMM-EXACT_{args[14]}")
 readr::write_tsv(processed_mapping,
-                 path = glue::glue("{trait_name}_{args[12]}_{args[13]}_{args[11]}_processed_{label}_mapping.tsv"),
+                 file = glue::glue("{trait_name}_{args[12]}_{args[13]}_{args[11]}_processed_{label}_mapping.tsv"),
                  col_names = T)
 
 
@@ -310,7 +310,7 @@ qtl_region <- processed_mapping %>%
 
 # save processed mapping data
 readr::write_tsv(qtl_region,
-                 path = glue::glue("{trait_name}_{args[12]}_{args[13]}_{args[11]}_{label}_qtl_region.tsv"),
+                 file = glue::glue("{trait_name}_{args[12]}_{args[13]}_{args[11]}_{label}_qtl_region.tsv"),
                  col_names = T)
 
 # ## LD ###
