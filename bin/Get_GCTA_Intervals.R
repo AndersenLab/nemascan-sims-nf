@@ -45,7 +45,7 @@ phenotype_data <- data.table::fread(args[2], col.names = c("strain", "strain_dro
   as.data.frame()
 
 # load GCTA mapping data
-if(args[14] == "inbred"){
+if(args[14] == "inbred" | args[14] == "inbred_pca"){
   map_df <- data.table::fread(args[3]) %>%
     dplyr::rename(marker = SNP, CHROM = CHR) %>%
     dplyr::mutate(log10p = -log10(P))
