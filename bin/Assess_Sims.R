@@ -1,6 +1,9 @@
-require(tidyverse)
-require(data.table)
-require(GenomicRanges)
+library(dplyr)
+library(tidyr)
+library(data.table)
+library(GenomicRanges)
+library(purrr)
+library(glue)
 
 #############
 # ARGUMENTS #
