@@ -21,3 +21,44 @@ Optional arguments (General):
     --sparse_cut      Decimal            Any off-diagonal value in the genetic relatedness matrix greater than this is set to 0 (Default: 0.05)
     --simulate_qtlloc Boolean            Whether to simulate QTLs in specific genomic regions (Default: false)
     -output-dir       String             Name of folder that will contain the results (Default: Simulations_{date})
+
+# Simulations
+
+## Preparing marker sets
+[ ] - Add
+## Simulated traits
+Traits are simulated through a series of steps.
+1) Select causal variants 
+2) Simulate phenotypes
+3) Update by H2
+4) Make genetic relatedness matrix (GRM) & Check phenotypic variance
+5) Check & Update Vp
+### Selecting causal variants
+Causal variants are selected from the marker set in the process `PYTHON_SIMULATE_EFFECTS_GLOBAL` which runs the script `bin/create_causal_vars.py`. 
+
+The `.bim` file containing the markers is input into the script, along with the number of causal variants (`nQTL`) and the effect range. The effect range is either a numeric range (e.g. `0.4-0.9`) or `gamma`. 
+
+First the script randomly selects N variants without replacement from the marker set with the `select_variants()` function. 
+
+Next, the script assigns the selected variants an effect size.
+
+If the effect range is `gamma` the script pulls the effect sizes from a gamma distribution `gamma(effect_shape=0.4, effect_scale=1.66)` and randomly assigns the variants a direction (either `-1` or `1`). These steps are performed by the function `simulate_effect_gamma()` which is defined in the script.
+
+If the effect range is numeric (e.g. `0.4-0.9`) a uniform distribution is created ranging from the `low_end` of the distribution (`0.4`) to the high_end of the distribution (`0.9`) and effects are randomly drawn from the distribution and a direction (either `-1` or `1`) is assigned. These steps are perfromed by the `simulate_effect_uniform()` function defined in the script.
+
+Finally, the script saves the causal_variants to a file `causal_variants.txt` in the output directory.
+
+```causal_variants.txt
+14266 -0.46737319855194537
+741541 -0.41074062864697813
+4210220 -0.41437796351367484
+14314458 -0.47016528365409455
+627759 0.47718905922917665
+14211523 -0.41997813721985267
+2278072 -0.4364813139721949
+3481620 0.43486733972778335
+8059998 -0.45881269191927904
+16687130 -0.43335413403568435
+```
+### Simulating phenotypes
+The outputs are then passed to the `GCTA_SIMULATE_PHENOTYPES` process which runs the command `gcta64 --simu-qt` 
