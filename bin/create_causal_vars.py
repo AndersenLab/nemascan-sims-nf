@@ -14,7 +14,7 @@ def load_strain_set_variants(strain_set_variant_file):
         strain_set_variant_file,
         sep="\t",
         header=None,
-        usecols=[3],
+        usecols=[1],
         names=["Marker"],
     )
 
