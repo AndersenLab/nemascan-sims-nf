@@ -11,6 +11,7 @@ include { BCFTOOLS_CREATE_GENOTYPE_MATRIX } from './modules/bcftools/create_geno
 include { PLINK_RECODE_VCF                } from './modules/plink/recode_vcf/main'
 include { PLINK_UPDATE_BY_H2              } from './modules/plink/update_by_h2/main'
 include { R_FIND_GENOTYPE_MATRIX_EIGEN    } from './modules/r/find_genotype_matrix_eigen/main'
+include { PYTHON_SIMULATE_EFFECTS_GLOBAL   } from './modules/python/simulate_effects_global/main'
 include { R_SIMULATE_EFFECTS_LOCAL        } from './modules/r/simulate_effects_local/main'
 include { R_SIMULATE_EFFECTS_GLOBAL       } from './modules/r/simulate_effects_global/main'
 include { R_GET_GCTA_INTERVALS           } from './modules/r/get_gcta_intervals/main'
@@ -179,44 +180,41 @@ workflow {
         //.join(ch_eigens, by: [0, 1])
         .join(LOCAL_COMPILE_EIGENS.out.tests, by: [0, 1])
     
-    // check for just total independent tests
-    ch_plink_genomat_eigen.view()
-    
-    // Simulate QTL or genome
-    if (simulate_qtlloc){
-        R_SIMULATE_EFFECTS_LOCAL( ch_plink_genomat_eigen,
-                                  Channel.fromPath(params.qtlloc),
-                                  Channel.fromPath("${workflow.projectDir}/bin/Create_Causal_QTLs.R").first(),
-                                  Channel.of(1..params.reps).toSortedList(),
-                                  Channel.fromPath(nqtl_file)
-                                    .splitCsv()
-                                    .map{ it: it[0] }
-                                    .toSortedList(),
-                                  Channel.fromPath(effect_file)
-                                    .splitCsv()
-                                    .map{ it: it[0] }
-                                    .toSortedList() 
+    // // Simulate QTL or genome
+    // if (simulate_qtlloc){
+    //     R_SIMULATE_EFFECTS_LOCAL( ch_plink_genomat_eigen,
+    //                               Channel.fromPath(params.qtlloc),
+    //                               Channel.fromPath("${workflow.projectDir}/bin/Create_Causal_QTLs.R").first(),
+    //                               Channel.of(1..params.reps).toSortedList(),
+    //                               Channel.fromPath(nqtl_file)
+    //                                 .splitCsv()
+    //                                 .map{ it: it[0] }
+    //                                 .toSortedList(),
+    //                               Channel.fromPath(effect_file)
+    //                                 .splitCsv()
+    //                                 .map{ it: it[0] }
+    //                                 .toSortedList() 
+    //                             )
+    //     ch_versions = ch_versions.mix(R_SIMULATE_EFFECTS_LOCAL.out.versions)
+    //     ch_sim_phenos = R_SIMULATE_EFFECTS_LOCAL.out.causal
+    //     ch_sim_plink = R_SIMULATE_EFFECTS_LOCAL.out.plink
+    // } else {
+    PYTHON_SIMULATE_EFFECTS_GLOBAL( ch_plink_genomat_eigen,
+                                Channel.fromPath("${workflow.projectDir}/bin/create_causal_vars.py").first(),
+                                Channel.of(1..params.reps).toSortedList(),
+                                Channel.fromPath(nqtl_file)
+                                .splitCsv()
+                                .map{ it: it[0] }
+                                .toSortedList(),
+                                Channel.fromPath(effect_file)
+                                .splitCsv()
+                                .map{ it: it[0] }
+                                .toSortedList() 
                                 )
-        ch_versions = ch_versions.mix(R_SIMULATE_EFFECTS_LOCAL.out.versions)
-        ch_sim_phenos = R_SIMULATE_EFFECTS_LOCAL.out.causal
-        ch_sim_plink = R_SIMULATE_EFFECTS_LOCAL.out.plink
-    } else {
-        R_SIMULATE_EFFECTS_GLOBAL( ch_plink_genomat_eigen,
-                                   Channel.fromPath("${workflow.projectDir}/bin/Create_Causal_QTLs.R").first(),
-                                   Channel.of(1..params.reps).toSortedList(),
-                                   Channel.fromPath(nqtl_file)
-                                    .splitCsv()
-                                    .map{ it: it[0] }
-                                    .toSortedList(),
-                                   Channel.fromPath(effect_file)
-                                    .splitCsv()
-                                    .map{ it: it[0] }
-                                    .toSortedList() 
-                                    )
-        ch_versions = ch_versions.mix(R_SIMULATE_EFFECTS_GLOBAL.out.versions)
-        ch_sim_phenos = R_SIMULATE_EFFECTS_GLOBAL.out.causal
-        ch_sim_plink = R_SIMULATE_EFFECTS_GLOBAL.out.plink
-    }
+    ch_versions = ch_versions.mix(PYTHON_SIMULATE_EFFECTS_GLOBAL.out.versions)
+    ch_sim_phenos = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.causal
+    ch_sim_plink = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.plink
+    // }
 
     // Adjust plink data by heritability
     GCTA_SIMULATE_PHENOTYPES( ch_sim_phenos,
