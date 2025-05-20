@@ -19,6 +19,7 @@ include { R_ASSESS_SIMS                   } from './modules/r/assess_sims/main'
 include { GCTA_SIMULATE_PHENOTYPES        } from './modules/gcta/simulate_phenotypes/main'
 include { GCTA_MAKE_GRM                   } from './modules/gcta/make_grm/main'
 include { GCTA_PERFORM_GWA                } from './modules/gcta/perform_gwa/main'
+include { PYTHON_CHECK_VP               } from './modules/python/check_vp.nf'
 
 workflow {
     main:
@@ -132,15 +133,20 @@ workflow {
 
     // Get contig data from VCF file
     LOCAL_GET_CONTIG_INFO( ch_vcf )
+    ch_mito_num = LOCAL_GET_CONTIG_INFO.out.mapping.splitCsv(sep:"\t")
+        .filter{ row -> row[0] == mito_name }
+        .map{ row -> row[1] }
+        .first()
 
     // Extract desired strain sets
     BCFTOOLS_EXTRACT_STRAINS( ch_vcf,
-                              ch_strain_sets )
+                              ch_strain_sets,
+                              LOCAL_GET_CONTIG_INFO.out.mapping )
     ch_versions = ch_versions.mix(BCFTOOLS_EXTRACT_STRAINS.out.versions)
 
     // Recode the VCF file and create plink formatted files
     PLINK_RECODE_VCF( BCFTOOLS_EXTRACT_STRAINS.out.vcf,
-                      mito_name,
+                      ch_mito_num,
                       ch_mafs )
     ch_versions = ch_versions.mix(PLINK_RECODE_VCF.out.versions)
 
@@ -150,18 +156,11 @@ workflow {
     ch_versions = ch_versions.mix(BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.versions)
 
     // Find eigen values for genotype matrix
-    // ch_chrom_nums = LOCAL_GET_CONTIG_INFO.out.mapping
-    //     .splitCsv(sep: "\t")
-    //     .filter{ it: it[0] != params.mito_name }
-    //     .map{ it: it[1] }
-    //     .toSortedList()
-    ch_chrom_nums = LOCAL_GET_CONTIG_INFO.out.contigs
-        .splitCsv()
-        .map{ it: it[0] }
-        .filter{ it: it != mito_name }
-
-    // add view statement for debugging
-    ch_chrom_nums.view()
+    ch_chrom_nums = LOCAL_GET_CONTIG_INFO.out.mapping
+        .splitCsv(sep: "\t")
+        .filter { it -> it[0] != mito_name }
+        .map { it -> it[1] }
+        .toSortedList()
 
     R_FIND_GENOTYPE_MATRIX_EIGEN( BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix,
                                   Channel.fromPath("${workflow.projectDir}/bin/Get_GenoMatrix_Eigen.R").first(),
@@ -178,7 +177,7 @@ workflow {
     // Compile required files for simulations by strain group and MAF
     ch_plink_genomat_eigen = PLINK_RECODE_VCF.out.plink
         .join(BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix, by: [0, 1])
-        .join(ch_eigens, by: [0, 1])
+        //.join(ch_eigens, by: [0, 1])
         .join(LOCAL_COMPILE_EIGENS.out.tests, by: [0, 1])
     
     // // Simulate QTL or genome
@@ -230,22 +229,49 @@ workflow {
     ch_versions = ch_versions.mix(PLINK_UPDATE_BY_H2.out.versions)
 
     // Create genetic relatedness matrix
-    ch_mode = Channel.of( ["inbred", "fastGWA"], ["loco", "mlma"] )
+    ch_mode = Channel.of( 
+        ["inbred", "fastGWA"]//, temporary for testing - just inbred 
+        //["loco", "mlma"] 
+        )
     ch_grm_params = PLINK_UPDATE_BY_H2.out.params.combine(ch_mode)
     ch_grm_plink = PLINK_UPDATE_BY_H2.out.plink.map{ it: [it] }.combine(ch_mode).map{ it: it[0] }
     ch_grm_pheno = PLINK_UPDATE_BY_H2.out.pheno.map{ it: [it] }.combine(ch_mode).map{ it: it[0] }
 
+    
     GCTA_MAKE_GRM( ch_grm_params,
                    ch_grm_plink,
                    ch_grm_pheno )
     ch_versions = ch_versions.mix(GCTA_MAKE_GRM.out.versions)
 
-    // Simulate GWA
-    ch_type = Channel.of( "pca", "nopca" )
+    // Prepare inputs for PYTHON_CHECK_VP to match its 3-input definition
+    // Input 1: meta_tuple (group, maf, nqtl, ...)
+    // Input 2: tuple (tmp_pheno_path, hsq_path, par_path)
+    // Input 3: script_path
+
+    PYTHON_CHECK_VP( GCTA_MAKE_GRM.out.params,                         // Arg 1: Metadata
+                     GCTA_MAKE_GRM.out.pheno_hsq_and_par,              // Arg 2: Tuple of (tmp_pheno, hsq, par)
+                     Channel.fromPath("${workflow.projectDir}/bin/check_vp.py").first() // Arg 3: Script path
+                   )
+    ch_versions = ch_versions.mix(PYTHON_CHECK_VP.out.versions)
+
+    // Simulate GWA using output from PYTHON_CHECK_VP
+    ch_type = Channel.of( 
+        "pca"//, just PCA for now
+        //"nopca"
+        )
+    
+    // Params for GWA come from GCTA_MAKE_GRM (these are not changed by PYTHON_CHECK_VP)
     ch_gwa_params = GCTA_MAKE_GRM.out.params.combine(ch_type)
-    ch_gwa_grm = GCTA_MAKE_GRM.out.plink.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
+    
+    // GRM and PLINK files also come from GCTA_MAKE_GRM
+    ch_gwa_grm = GCTA_MAKE_GRM.out.grm.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
     ch_gwa_plink = GCTA_MAKE_GRM.out.plink.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
-    ch_gwa_pheno = GCTA_MAKE_GRM.out.pheno.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
+    
+    // Pheno file for GWA now comes from PYTHON_CHECK_VP.out.pheno
+    // GCTA_PERFORM_GWA expects a tuple: (phen_path, par_path).
+    // PYTHON_CHECK_VP.out.pheno is: tuple (final_pheno_path, par_path)
+    ch_gwa_pheno_from_py = PYTHON_CHECK_VP.out.pheno
+    ch_gwa_pheno = ch_gwa_pheno_from_py.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
 
     GCTA_PERFORM_GWA( ch_gwa_params,
                       ch_gwa_grm,
@@ -277,17 +303,17 @@ workflow {
 
     // Split results by algorithm and compile into summary file
     R_ASSESS_SIMS.out.assessment.branch{ v ->
-        inbred: v.contains("inbred_nopca")
+        //inbred: v.contains("inbred_nopca")
         inbred_pca: v.contains("inbred_pca")
-        loco: v.contains("loco_nopca")
-        loco_pca: v.contains("loco_pca")
+        //loco: v.contains("loco_nopca")
+        //loco_pca: v.contains("loco_pca")
         }.set{ result }
 
     publish:
-    result.inbred     >> "."
+    //result.inbred     >> "."
     result.inbred_pca >> "."
-    result.loco       >> "."
-    result.loco_pca   >> "."
+    //result.loco       >> "."
+    //result.loco_pca   >> "."
 }
 
 // Current bug that publish doesn't work without an output closure

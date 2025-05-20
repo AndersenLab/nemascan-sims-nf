@@ -9,10 +9,10 @@ process PLINK_UPDATE_BY_H2 {
     tuple path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"), path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par")
 
     output:
-    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2),                                                                        emit: params
-    tuple path("TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bed"), path("TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bim"), path("TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.fam"), path("TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.map"), path("TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.nosex"), path("TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.ped"), path("TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.log"), path(gm), path(n_indep_tests), path(causal_variants), emit: plink
-    tuple path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"), path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par"),     emit: pheno
-    path "versions.yml",                                                                                                                          emit: versions
+    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), emit: params
+    tuple path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bed"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bim"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.fam"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.map"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.nosex"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.ped"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.log"), path(gm), path(n_indep_tests), emit: plink
+    tuple path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"), path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par"), emit: pheno
+    path "versions.yml", emit: versions
 
     when:
     task.ext.when == null || task.ext.when
@@ -28,10 +28,10 @@ process PLINK_UPDATE_BY_H2 {
         --set-missing-var-ids @:# \\
         --geno \\
         --recode \\
-        --out TO_SIMS_${nqtl}_${rep}_${maf}_${effect}_${group} \\
+        --out TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group} \\
         --allow-extra-chr \\
         --allow-no-sex \\
-        --pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen
+        --pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
@@ -41,13 +41,13 @@ process PLINK_UPDATE_BY_H2 {
 
     stub:
     """
-    touch TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bed
-    touch TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bim
-    touch TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.fam
-    touch TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.map
-    touch TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.nosex
-    touch TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.ped
-    touch TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.log
+    touch TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bed
+    touch TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bim
+    touch TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.fam
+    touch TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.map
+    touch TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.nosex
+    touch TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.ped
+    touch TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.log
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

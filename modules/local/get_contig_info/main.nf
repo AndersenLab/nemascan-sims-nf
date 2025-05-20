@@ -17,7 +17,7 @@ process LOCAL_GET_CONTIG_INFO {
     def args = task.ext.args ?: ''
     """
     zcat ${vcf} | head -n 200 | grep "##contig" | \\
-        awk 'BEGIN{COUNT=0}{split(\$1,A,"="); split(A[3],B,","); CHROM=B[1]; printf "%s\\t%i\\n", CHROM, COUNT; COUNT=COUNT+1}' > contig_mapping.tsv
+        awk 'BEGIN{COUNT=1}{split(\$1,A,"="); split(A[3],B,","); CHROM=B[1]; printf "%s\\t%i\\n", CHROM, COUNT; COUNT=COUNT+1}' > contig_mapping.tsv
     cut -f 1 contig_mapping.tsv > contigs.txt
     """
 
