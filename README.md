@@ -27,26 +27,28 @@ Optional arguments (General):
 ## Preparing marker sets
 [ ] - Add
 ## Simulated traits
-Traits are simulated through a series of steps.
-1) Select causal variants 
-2) Simulate phenotypes
-3) Update by H2
-4) Make genetic relatedness matrix (GRM) & Check phenotypic variance
-5) Check & Update Vp
-### Selecting causal variants
-Causal variants are selected from the marker set in the process `PYTHON_SIMULATE_EFFECTS_GLOBAL` which runs the script `bin/create_causal_vars.py`. 
+Trait simulation involves the following sequential steps:
+1.  Select causal variants.
+2.  Simulate phenotypes based on these variants.
+3.  Update PLINK fileset with simulated phenotypes.
+4.  Create a Genetic Relatedness Matrix (GRM) and estimate phenotypic variance.
+5.  Verify and adjust phenotypic variance (Vp).
+### 1. Selecting Causal Variants
+Causal variants are chosen from the available marker set by the `PYTHON_SIMULATE_EFFECTS_GLOBAL` process, which executes the `bin/create_causal_vars.py` script.
 
-The `.bim` file containing the markers is input into the script, along with the number of causal variants (`nQTL`) and the effect range. The effect range is either a numeric range (e.g. `0.4-0.9`) or `gamma`. 
 
-First the script randomly selects N variants without replacement from the marker set with the `select_variants()` function. 
+This script takes the following inputs:
+*   A `.bim` file (PLINK binary marker information).
+*   The desired number of causal variants (`nQTL`).
+*   The effect range, specified either as a numeric range (e.g., `0.4-0.9`) or as `gamma`.
 
-Next, the script assigns the selected variants an effect size.
+The selection process involves two main steps:
+1.  **Variant Selection**: The `select_variants()` function randomly chooses `nQTL` variants without replacement from the markers listed in the `.bim` file.
+2.  **Effect Size Assignment**:
+    *   If the effect range is `gamma`, the `simulate_effect_gamma()` function assigns effect sizes. These sizes are drawn from a gamma distribution (`gamma(effect_shape=0.4, effect_scale=1.66)`), and each variant is randomly assigned a direction (positive or negative effect, i.e., `1` or `-1`).
+    *   If a numeric range (e.g., `0.4-0.9`) is provided, the `simulate_effect_uniform()` function assigns effect sizes. These are drawn from a uniform distribution spanning the specified `low_end` to `high_end`, and a direction (`1` or `-1`) is also randomly assigned.
 
-If the effect range is `gamma` the script pulls the effect sizes from a gamma distribution `gamma(effect_shape=0.4, effect_scale=1.66)` and randomly assigns the variants a direction (either `-1` or `1`). These steps are performed by the function `simulate_effect_gamma()` which is defined in the script.
-
-If the effect range is numeric (e.g. `0.4-0.9`) a uniform distribution is created ranging from the `low_end` of the distribution (`0.4`) to the high_end of the distribution (`0.9`) and effects are randomly drawn from the distribution and a direction (either `-1` or `1`) is assigned. These steps are perfromed by the `simulate_effect_uniform()` function defined in the script.
-
-Finally, the script saves the causal_variants to a file `causal_variants.txt` in the output directory.
+The script outputs a file named `causal_variants.txt` in the designated output directory. This file lists the selected causal variant IDs and their assigned effect sizes.
 
 ```causal_variants.txt
 14266 -0.46737319855194537
@@ -60,49 +62,58 @@ Finally, the script saves the causal_variants to a file `causal_variants.txt` in
 8059998 -0.45881269191927904
 16687130 -0.43335413403568435
 ```
-### Simulating phenotypes with `GCTA_SIMULATE_PHENOTYPES`
-The outputs are then passed to the `GCTA_SIMULATE_PHENOTYPES` process which runs the command `gcta64 --simu-qt` to simulate a quantitative trait [GWAS Simulation documentation](https://yanglab.westlake.edu.cn/software/gcta/#GWASSimulation)
+### 2. Simulating Phenotypes with `GCTA_SIMULATE_PHENOTYPES`
+The `causal_variants.txt` file (generated in the previous step) is used by the `GCTA_SIMULATE_PHENOTYPES` process. This process employs the `gcta64 --simu-qt` command to simulate quantitative traits based on the selected causal variants. (Refer to the [GCTA GWAS Simulation documentation](https://yanglab.westlake.edu.cn/software/gcta/#GWASSimulation) for more details).
 
-The parameter `--simu-causal-loci` supplies the causal variants selected in the prior step. GCTA expects the input to have two columns (SNP ID and effect size)
+Key parameters for `gcta64 --simu-qt`:
+*   `--simu-causal-loci`: This parameter takes the `causal_variants.txt` file, which provides the SNP IDs and their effect sizes for the simulation.
+*   `--simu-hsq`: This specifies the target heritability (h²) of the trait. The value for this parameter is taken from the file provided to the `--h2` pipeline parameter.
 
-The parameter `--simu-hsq` specifies the heritability of the trait. This is passed to the command by the values in the file suppled to the pipeline parameter `--h2`
 
-There are two outputs from this process:
-`{prefix}.par`
-  - The parfile has a header and the following columns:
-    - QTL: SNPid of the causal variant
-    - RefAllele: Reference allele 
-    - Frequency
-    - Effect size
-`{prefix}.phen`
-  - This is the simulated phenotype data. The file has no header and multiple columns:
-    - family ID
-    - individual ID
-    - simulated phenotypes
-### Add simulated phenotype data to plink file set `PLINK_UPDATE_BY_H2`
-In essence, this process updates the TO_SIMS PLINK fileset by associating the simulated phenotypes with the genetic data, preparing it for downstream analysis like association mapping.
+This process generates two primary output files:
+*   `{prefix}.par`: A parameter file with a header, detailing:
+    *   `QTL`: SNP ID of the causal variant.
+    *   `RefAllele`: Reference allele.
+    *   `Frequency`: Allele frequency.
+    *   `Effect size`: The effect size used in the simulation for that QTL.
+*   `{prefix}.phen`: A phenotype file without a header, containing:
+    *   Column 1: Family ID.
+    *   Column 2: Individual ID.
+    *   Column 3: Simulated phenotype value.
+
+### 3. Updating PLINK Fileset with Simulated Phenotypes (`PLINK_UPDATE_BY_H2`)
+This step, handled by the `PLINK_UPDATE_BY_H2` process, integrates the simulated phenotypes (from `{prefix}.phen`) into the primary PLINK fileset used for simulation (referred to as the "TO_SIMS" fileset). This associates the newly generated phenotype data with the existing genetic data for each individual, preparing it for downstream analyses such as association mapping.
 
 The filtering parameters that are applied should remain consistent across all plink commands
 
-[ ] - Evaluate if this processess is needed.
-### Create the GRM and estimate Vp with `GCTA_MAKE_GRM`
-This process runs two GCTA commands. Only one pertains to simulated phenotype data. However, the first step `gcta64 --make-grm-inbred` or `gcta64 --make-grm` creates a GRM which is required for the second step - restricted maximum likelihood (REML) analysis (`gcta64 --reml`)
+[ ] - Evaluate if this process is needed. Would be useful if we wanted to select causal variants from a different pool of markers.
 
-[REML analysis](https://yanglab.westlake.edu.cn/software/gcta/#GREMLanalysis) estimates the phenotypic varaince explained by the SNPS that were used to estimate the GRM.
+
+### 4. Creating GRM and Estimating Phenotypic Variance (`GCTA_MAKE_GRM`)
+The `GCTA_MAKE_GRM` process performs two sequential GCTA operations:
+
+1.  **Genetic Relatedness Matrix (GRM) Construction**:
+    *   Command: `gcta64 --make-grm-inbred` or `gcta64 --make-grm`.
+    *   Purpose: This command builds a GRM using the genetic data from the PLINK fileset. The GRM quantifies the genetic similarity between pairs of individuals.
+
+2.  **Restricted Maximum Likelihood (REML) Analysis**:
+    *   Command: `gcta64 --reml`.
+    *   Purpose: This analysis uses the GRM (from step 1) and the simulated phenotype data (`{prefix}.phen`) to estimate the proportion of phenotypic variance (Vp) explained by the SNPs included in the GRM. (See [GCTA GREML analysis documentation](https://yanglab.westlake.edu.cn/software/gcta/#GREMLanalysis)).
 
 The output of the `gcta64 --reml` analysis is a plain text file with the `*.hsq` extension 
 
 [ ] - example *.hsq output
-### Check Vp with `PYTHON_CHECK_VP`
-This process checks the the `*.hsq` file output by the previous step to ensure that enough phenotypic variance is explained by genetic variants in the marker set.
 
-This process runs the script `bin/check_vp.py` which reads in the the `*.hsq` file and the phenotype file.
+The `PYTHON_CHECK_VP` process, which runs the `bin/check_vp.py` script, inspects the estimated phenotypic variance (Vp) from the `*.hsq` file (produced by GCTA REML). This step ensures that the simulated phenotypes exhibit sufficient variance.
 
-The script parses the `*.hsq` file to find the `Vp` value. 
+Inputs to `bin/check_vp.py`:
+*   The `*.hsq` file (containing Vp estimates).
+*   The current phenotype file (e.g., `{prefix}.phen` from the GCTA simulation step).
 
-If `Vp` is less than < 0.000001 the script increase the phenotype values for all strains in the pheno type file by multiplying the phenotypes values by `1000` and outputs a file with the name `new_phenos.temp`
-
-If `Vp` is greater than Vp> 0.000001, the script does not alter the phenotype values and outputs a file named `new_phenos.temp`
-
-Regardless of the `Vp` value the script outputs a `new_phenos.temp` file. The final step is to rename the `new_phenos.temp` file to include the simulation details (e.g. `${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno`).
-
+Script Logic:
+1.  The script parses the `*.hsq` file to extract the `Vp` value.
+2.  It then checks the `Vp` against a threshold:
+    *   If `Vp` is less than `0.000001`: The script scales up the phenotype values for all individuals by multiplying them by `1000`. This adjustment aims to increase the phenotypic variance.
+    *   If `Vp` is greater than or equal to `0.000001`: The original phenotype values are retained without modification.
+3.  The script writes the (potentially modified) phenotype data to a temporary file named `new_phenos.temp`.
+4.  Finally, this `new_phenos.temp` file is renamed to reflect the specific simulation parameters, following a pattern like `${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno`. This becomes the final phenotype file for this simulation iteration.
