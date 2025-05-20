@@ -60,7 +60,7 @@ Finally, the script saves the causal_variants to a file `causal_variants.txt` in
 8059998 -0.45881269191927904
 16687130 -0.43335413403568435
 ```
-### Simulating phenotypes
+### Simulating phenotypes with `GCTA_SIMULATE_PHENOTYPES`
 The outputs are then passed to the `GCTA_SIMULATE_PHENOTYPES` process which runs the command `gcta64 --simu-qt` to simulate a quantitative trait [GWAS Simulation documentation](https://yanglab.westlake.edu.cn/software/gcta/#GWASSimulation)
 
 The parameter `--simu-causal-loci` supplies the causal variants selected in the prior step. GCTA expects the input to have two columns (SNP ID and effect size)
@@ -79,3 +79,30 @@ There are two outputs from this process:
     - family ID
     - individual ID
     - simulated phenotypes
+### Add simulated phenotype data to plink file set `PLINK_UPDATE_BY_H2`
+In essence, this process updates the TO_SIMS PLINK fileset by associating the simulated phenotypes with the genetic data, preparing it for downstream analysis like association mapping.
+
+The filtering parameters that are applied should remain consistent across all plink commands
+
+[ ] - Evaluate if this processess is needed.
+### Create the GRM and estimate Vp with `GCTA_MAKE_GRM`
+This process runs two GCTA commands. Only one pertains to simulated phenotype data. However, the first step `gcta64 --make-grm-inbred` or `gcta64 --make-grm` creates a GRM which is required for the second step - restricted maximum likelihood (REML) analysis (`gcta64 --reml`)
+
+[REML analysis](https://yanglab.westlake.edu.cn/software/gcta/#GREMLanalysis) estimates the phenotypic varaince explained by the SNPS that were used to estimate the GRM.
+
+The output of the `gcta64 --reml` analysis is a plain text file with the `*.hsq` extension 
+
+[ ] - example *.hsq output
+### Check Vp with `PYTHON_CHECK_VP`
+This process checks the the `*.hsq` file output by the previous step to ensure that enough phenotypic variance is explained by genetic variants in the marker set.
+
+This process runs the script `bin/check_vp.py` which reads in the the `*.hsq` file and the phenotype file.
+
+The script parses the `*.hsq` file to find the `Vp` value. 
+
+If `Vp` is less than < 0.000001 the script increase the phenotype values for all strains in the pheno type file by multiplying the phenotypes values by `1000` and outputs a file with the name `new_phenos.temp`
+
+If `Vp` is greater than Vp> 0.000001, the script does not alter the phenotype values and outputs a file named `new_phenos.temp`
+
+Regardless of the `Vp` value the script outputs a `new_phenos.temp` file. The final step is to rename the `new_phenos.temp` file to include the simulation details (e.g. `${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno`).
+
