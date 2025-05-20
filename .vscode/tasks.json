@@ -1,0 +1,27 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "docker-run",
+      "label": "docker-run: debug",
+      "dockerRun": {
+        "image": "andersenlab/numpy:20250506",
+        "volumes": [
+          {
+            "localPath": "${workspaceFolder}",
+            "containerPath": "${workspaceFolder}",
+          }
+        ],
+        "workingDirectory": "${workspaceFolder}",
+      },
+      "python": {
+        "file": "${file}",
+        "args": [
+          "${workspaceFolder}/data/plink/TO_SIMS.bim",
+          "100",
+          "gamma"
+        ]
+      }
+    }
+  ]
+}

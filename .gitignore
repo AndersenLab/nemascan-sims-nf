@@ -4,3 +4,5 @@ nemascan-sims-nf.code-workspace
 .nextflow/
 pipeline_info/
 cache/
+.vscode/launch.json
+.vscode/tasks.json
