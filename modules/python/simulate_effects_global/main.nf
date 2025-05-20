@@ -22,7 +22,7 @@ process PYTHON_SIMULATE_EFFECTS_GLOBAL {
   def args = task.ext.args ?: ''
   """
       python ${create_causal_qtls} TO_SIMS.bim ${nqtl} ${effect}
-      mv causal.variants.sim.${nqtl}.txt causal.variants.sim.${nqtl}.${rep}.txt
+      mv causal_vars.txt causal.variants.sim.${nqtl}.${rep}.txt
     
   cat <<-END_VERSIONS > versions.yml
       "${task.process}":
