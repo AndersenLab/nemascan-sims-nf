@@ -61,4 +61,21 @@ Finally, the script saves the causal_variants to a file `causal_variants.txt` in
 16687130 -0.43335413403568435
 ```
 ### Simulating phenotypes
-The outputs are then passed to the `GCTA_SIMULATE_PHENOTYPES` process which runs the command `gcta64 --simu-qt` 
+The outputs are then passed to the `GCTA_SIMULATE_PHENOTYPES` process which runs the command `gcta64 --simu-qt` to simulate a quantitative trait [GWAS Simulation documentation](https://yanglab.westlake.edu.cn/software/gcta/#GWASSimulation)
+
+The parameter `--simu-causal-loci` supplies the causal variants selected in the prior step. GCTA expects the input to have two columns (SNP ID and effect size)
+
+The parameter `--simu-hsq` specifies the heritability of the trait. This is passed to the command by the values in the file suppled to the pipeline parameter `--h2`
+
+There are two outputs from this process:
+`{prefix}.par`
+  - The parfile has a header and the following columns:
+    - QTL: SNPid of the causal variant
+    - RefAllele: Reference allele 
+    - Frequency
+    - Effect size
+`{prefix}.phen`
+  - This is the simulated phenotype data. The file has no header and multiple columns:
+    - family ID
+    - individual ID
+    - simulated phenotypes
