@@ -1,0 +1,74 @@
+*******************************************************************
+* Genome-wide Complex Trait Analysis (GCTA)
+* version v1.94.1 Linux
+* Built at Nov 15 2022 21:14:25, by GCC 8.5
+* (C) 2010-present, Yang Lab, Westlake University
+* Please report bugs to Jian Yang <jian.yang@westlake.edu.cn>
+*******************************************************************
+Analysis started at 15:14:07 EDT on Tue May 20 2025.
+Hostname: c383
+
+Options: 
+ 
+--fastGWA-mlm-exact 
+--bfile TO_SIMS_1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak 
+--grm-sparse 1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sparse_grm_inbred 
+--qcovar 1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sparse_grm_inbred.eigenvec 
+--out 1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_lmm-exact_inbred_pca 
+--pheno 1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.pheno 
+--maf 0.05 
+--thread-num 4 
+
+The program will be running with up to 4 threads.
+Reading PLINK FAM file from [TO_SIMS_1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak.fam]...
+96 individuals to be included from FAM file.
+Reading phenotype data from [1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.pheno]...
+96 overlapping individuals with non-missing data to be included from the phenotype file.
+96 individuals to be included. 0 males, 0 females, 96 unknown.
+Reading PLINK BIM file from [TO_SIMS_1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak.bim]...
+33210 SNPs to be included from BIM file(s).
+Threshold to filter variants: MAF > 0.050000.
+Reading quantitative covariates from [1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sparse_grm_inbred.eigenvec].
+1 covariates of 96 samples to be included.
+96 overlapping individuals with non-missing data to be included from the covariate file(s).
+Reading the sparse GRM file from [1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sparse_grm_inbred]...
+After matching all the files, 96 individuals to be included in the analysis.
+Estimating the genetic variance (Vg) by fastGWA-REML (grid search)...
+Iteration 1, step size: 0.675759, logL: -227.586. Vg: 0, searching range: 0 to 0.675759
+Iteration 2, step size: 0.0450506, logL: -227.586. Vg: 0, searching range: 0 to 0.0450506
+Iteration 3, step size: 0.00300337, logL: -227.586. Vg: 0, searching range: 0 to 0.00300337
+Iteration 4, step size: 0.000200225, logL: -227.586. Vg: 0, searching range: 0 to 0.000200225
+Iteration 5, step size: 1.33483e-05, logL: -227.586. Vg: 0, searching range: 0 to 1.33483e-05
+Iteration 6, step size: 8.89889e-07, logL: -227.586. Vg: 0, searching range: 0 to 8.89889e-07
+Iteration 7, step size: 5.93259e-08, logL: -227.586. Vg: 0, searching range: 0 to 5.93259e-08
+Iteration 8, step size: 3.95506e-09, logL: -227.586. Vg: 0, searching range: 0 to 3.95506e-09
+Iteration 9, step size: 2.63671e-10, logL: -227.586. Vg: 0, searching range: 0 to 2.63671e-10
+Iteration 10, step size: 1.7578e-11, logL: -227.586. Vg: 0, searching range: 0 to 1.7578e-11
+Iteration 11, step size: 1.17187e-12, logL: -227.586. Vg: 1.17187e-12, searching range: 0 to 2.34374e-12
+Iteration 12, step size: 1.56249e-13, logL: -227.586. Vg: 1.56249e-13, searching range: 0 to 3.12499e-13
+Iteration 13, step size: 2.08332e-14, logL: -227.586. Vg: 1.24999e-13, searching range: 1.04166e-13 to 1.45833e-13
+fastGWA-REML converged.
+logL: -227.586
+Sampling variance/covariance of the estimates of Vg and Ve:
+ 97.3213 -85.8484
+-85.8484  113.281
+
+Source	Variance	SE
+Vg	1.24999e-13	9.86516
+Ve	42.235	10.6434
+Vp	42.235
+
+Heritability = 2.95962e-15 (Pval = 1)
+fastGWA-REML runtime: 0.0250282 sec.
+Warning: the estimate of Vg is not statistically significant (i.e., p > 0.05). This is likely because the number of closely related individuals in the sample is not large enough. 
+In this case, the program will use linear regression for association test.
+
+Performing fastGWA linear regression analysis...
+fastGWA results will be saved in text format to [1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_lmm-exact_inbred_pca.fastGWA].
+  Filtering out variants with missingness rate > 0.10, or customise it with --geno flag.
+  100% finished in 0.1 sec
+33210 SNPs have been processed.
+Saved 33210 SNPs.
+
+Analysis finished at 15:14:07 EDT on Tue May 20 2025
+Overall computational time: 0.18 sec.

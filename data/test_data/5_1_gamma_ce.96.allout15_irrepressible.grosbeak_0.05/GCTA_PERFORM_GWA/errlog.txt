@@ -1,0 +1,130 @@
+*******************************************************************
+* Genome-wide Complex Trait Analysis (GCTA)
+* version v1.94.1 Linux
+* Built at Nov 15 2022 21:14:25, by GCC 8.5
+* (C) 2010-present, Yang Lab, Westlake University
+* Please report bugs to Jian Yang <jian.yang@westlake.edu.cn>
+*******************************************************************
+Analysis started at 15:14:07 EDT on Tue May 20 2025.
+Hostname: c383
+
+Options: 
+ 
+--grm TO_SIMS_5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_gcta_grm_inbred 
+--make-bK-sparse 0.05 
+--out 5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sparse_grm_inbred 
+--thread-num 4 
+
+The program will be running with up to 4 threads.
+Pruning the GRM to a sparse matrix with a cutoff of 0.050000...
+Total number of parts to be processed: 1
+    Saving 96 individual IDs
+    Processing part 1
+Saving the sparse GRM (983 pairs) to [5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sparse_grm_inbred.grm.sp]
+finished generating a sparse GRM Success:
+
+Analysis finished at 15:14:07 EDT on Tue May 20 2025
+Overall computational time: 0.04 sec.
+*******************************************************************
+* Genome-wide Complex Trait Analysis (GCTA)
+* version v1.94.1 Linux
+* Built at Nov 15 2022 21:14:25, by GCC 8.5
+* (C) 2010-present, Yang Lab, Westlake University
+* Please report bugs to Jian Yang <jian.yang@westlake.edu.cn>
+*******************************************************************
+Analysis started at 15:14:07 EDT on Tue May 20 2025.
+Hostname: c383
+
+Accepted options:
+--grm TO_SIMS_5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_gcta_grm_inbred
+--pca 1
+--out 5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sparse_grm_inbred
+--thread-num 4
+
+Note: the program will be running on 4 threads.
+
+Reading IDs of the GRM from [TO_SIMS_5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_gcta_grm_inbred.grm.id].
+96 IDs are read from [TO_SIMS_5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_gcta_grm_inbred.grm.id].
+Reading the GRM from [TO_SIMS_5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_gcta_grm_inbred.grm.bin].
+GRM for 96 individuals are included from [TO_SIMS_5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_gcta_grm_inbred.grm.bin].
+
+Performing principal component analysis ...
+Eigenvalues of 96 individuals have been saved in [5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sparse_grm_inbred.eigenval].
+The first 1 eigenvectors of 96 individuals have been saved in [5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sparse_grm_inbred.eigenvec].
+
+Analysis finished at 15:14:07 EDT on Tue May 20 2025
+Overall computational time: 0.07 sec.
+*******************************************************************
+* Genome-wide Complex Trait Analysis (GCTA)
+* version v1.94.1 Linux
+* Built at Nov 15 2022 21:14:25, by GCC 8.5
+* (C) 2010-present, Yang Lab, Westlake University
+* Please report bugs to Jian Yang <jian.yang@westlake.edu.cn>
+*******************************************************************
+Analysis started at 15:14:07 EDT on Tue May 20 2025.
+Hostname: c383
+
+Options: 
+ 
+--fastGWA-mlm-exact 
+--bfile TO_SIMS_5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak 
+--grm-sparse 5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sparse_grm_inbred 
+--qcovar 5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sparse_grm_inbred.eigenvec 
+--out 5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_lmm-exact_inbred_pca 
+--pheno 5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.pheno 
+--maf 0.05 
+--thread-num 4 
+
+The program will be running with up to 4 threads.
+Reading PLINK FAM file from [TO_SIMS_5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak.fam]...
+96 individuals to be included from FAM file.
+Reading phenotype data from [5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.pheno]...
+96 overlapping individuals with non-missing data to be included from the phenotype file.
+96 individuals to be included. 0 males, 0 females, 96 unknown.
+Reading PLINK BIM file from [TO_SIMS_5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak.bim]...
+33210 SNPs to be included from BIM file(s).
+Threshold to filter variants: MAF > 0.050000.
+Reading quantitative covariates from [5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sparse_grm_inbred.eigenvec].
+1 covariates of 96 samples to be included.
+96 overlapping individuals with non-missing data to be included from the covariate file(s).
+Reading the sparse GRM file from [5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sparse_grm_inbred]...
+After matching all the files, 96 individuals to be included in the analysis.
+Estimating the genetic variance (Vg) by fastGWA-REML (grid search)...
+Iteration 1, step size: 3.65506, logL: -306.192. Vg: 84.0664, searching range: 80.4113 to 87.7214
+Iteration 2, step size: 0.487341, logL: -306.192. Vg: 83.8227, searching range: 83.3353 to 84.31
+Iteration 3, step size: 0.0649788, logL: -306.192. Vg: 83.7902, searching range: 83.7252 to 83.8552
+Iteration 4, step size: 0.00866384, logL: -306.192. Vg: 83.7685, searching range: 83.7599 to 83.7772
+Iteration 5, step size: 0.00115518, logL: -306.192. Vg: 83.7691, searching range: 83.768 to 83.7703
+Iteration 6, step size: 0.000154024, logL: -306.192. Vg: 83.7695, searching range: 83.7693 to 83.7696
+Iteration 7, step size: 2.05365e-05, logL: -306.192. Vg: 83.7695, searching range: 83.7694 to 83.7695
+Iteration 8, step size: 2.7382e-06, logL: -306.192. Vg: 83.7695, searching range: 83.7695 to 83.7695
+Iteration 9, step size: 3.65094e-07, logL: -306.192. Vg: 83.7695, searching range: 83.7695 to 83.7695
+Iteration 10, step size: 4.86792e-08, logL: -306.192. Vg: 83.7695, searching range: 83.7695 to 83.7695
+Iteration 11, step size: 6.49055e-09, logL: -306.192. Vg: 83.7695, searching range: 83.7695 to 83.7695
+Iteration 12, step size: 8.65407e-10, logL: -306.192. Vg: 83.7695, searching range: 83.7695 to 83.7695
+Iteration 13, step size: 1.15387e-10, logL: -306.192. Vg: 83.7695, searching range: 83.7695 to 83.7695
+fastGWA-REML converged.
+logL: -306.192
+Sampling variance/covariance of the estimates of Vg and Ve:
+ 3143.13 -2078.73
+-2078.73   2240.5
+
+Source	Variance	SE
+Vg	83.7695	56.0636
+Ve	144.672	47.3339
+Vp	228.441
+
+Heritability = 0.3667 (Pval = 0.135127)
+fastGWA-REML runtime: 0.0246775 sec.
+Warning: the estimate of Vg is not statistically significant (i.e., p > 0.05). This is likely because the number of closely related individuals in the sample is not large enough. 
+In this case, the program will use linear regression for association test.
+
+Performing fastGWA linear regression analysis...
+fastGWA results will be saved in text format to [5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_lmm-exact_inbred_pca.fastGWA].
+  Filtering out variants with missingness rate > 0.10, or customise it with --geno flag.
+  100% finished in 0.1 sec
+33210 SNPs have been processed.
+Saved 33210 SNPs.
+
+Analysis finished at 15:14:07 EDT on Tue May 20 2025
+Overall computational time: 0.19 sec.

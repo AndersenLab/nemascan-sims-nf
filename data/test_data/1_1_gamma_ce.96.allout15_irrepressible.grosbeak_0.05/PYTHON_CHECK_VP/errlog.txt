@@ -1,0 +1,3 @@
+Vp: 41.392900
+Vp is greater than or equal to 0.000001. Writing original phenotypes to new_phenos.temp.
+Output written to new_phenos.temp
