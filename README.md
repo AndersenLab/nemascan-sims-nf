@@ -50,17 +50,14 @@ The selection process involves two main steps:
 
 The script outputs a file named `causal_variants.txt` in the designated output directory. This file lists the selected causal variant IDs and their assigned effect sizes.
 
-```causal_variants.txt
-14266 -0.46737319855194537
-741541 -0.41074062864697813
-4210220 -0.41437796351367484
-14314458 -0.47016528365409455
-627759 0.47718905922917665
-14211523 -0.41997813721985267
-2278072 -0.4364813139721949
-3481620 0.43486733972778335
-8059998 -0.45881269191927904
-16687130 -0.43335413403568435
+Example of causal variants selected for a simulation rep 1 where nQTL = 5
+
+```causal.variants.sim.5.1.txt
+2:14378543 0.38901223435837223
+2:7459092 -4.532985639400811
+3:1537674 -0.0063686130105886415
+4:16212978 0.47805937866664927
+2:13733845 -0.03046281285149475
 ```
 ### 2. Simulating Phenotypes with `GCTA_SIMULATE_PHENOTYPES`
 The `causal_variants.txt` file (generated in the previous step) is used by the `GCTA_SIMULATE_PHENOTYPES` process. This process employs the `gcta64 --simu-qt` command to simulate quantitative traits based on the selected causal variants. (Refer to the [GCTA GWAS Simulation documentation](https://yanglab.westlake.edu.cn/software/gcta/#GWASSimulation) for more details).
@@ -71,15 +68,40 @@ Key parameters for `gcta64 --simu-qt`:
 
 
 This process generates two primary output files:
-*   `{prefix}.par`: A parameter file with a header, detailing:
+*   `{prefix}.par`: A par file with a header, detailing:
     *   `QTL`: SNP ID of the causal variant.
     *   `RefAllele`: Reference allele.
     *   `Frequency`: Allele frequency.
     *   `Effect size`: The effect size used in the simulation for that QTL.
+    *   Example of the `*.par` file generated for simulation replicate #1, with `nqtl = 5` and `h2 = 0.2` (`5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.par`)
+        Example file:
+        ```
+        QTL           RefAllele   Frequency    Effect
+        2:7459092     A           0.0520833    -4.53299
+        2:13733845    A           0.125        -0.0304628
+        2:14378543    A           0.104167     0.389012
+        3:1537674     G           0.125        -0.00636861
+        4:16212978    T           0.0625       0.478059
+        ```
 *   `{prefix}.phen`: A phenotype file without a header, containing:
     *   Column 1: Family ID.
     *   Column 2: Individual ID.
     *   Column 3: Simulated phenotype value.
+
+    * Example of the phenotype file generated for simulation replicate #1, with `nqtl = 5` and `h2 = 0.2` (`5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.phen`)
+    *   ```
+        MY2713 MY2713 -6.04369 
+        JU323 JU323 11.1615 
+        XZ1734 XZ1734 4.15316 
+        QG4080 QG4080 9.589 
+        DL226 DL226 -4.79251 
+        ECA2533 ECA2533 8.34439 
+        XZ1672 XZ1672 5.00596 
+        ED3046 ED3046 -2.37417 
+        NIC1786 NIC1786 11.8277 
+        NIC274 NIC274 -22.5104 
+        ```
+
 
 ### 3. Updating PLINK Fileset with Simulated Phenotypes (`PLINK_UPDATE_BY_H2`)
 This step, handled by the `PLINK_UPDATE_BY_H2` process, integrates the simulated phenotypes (from `{prefix}.phen`) into the primary PLINK fileset used for simulation (referred to as the "TO_SIMS" fileset). This associates the newly generated phenotype data with the existing genetic data for each individual, preparing it for downstream analyses such as association mapping.
