@@ -1,0 +1,44 @@
+PLINK v1.9.0-b.7.7 64-bit (22 Oct 2024)
+Options in effect:
+  --allow-extra-chr
+  --allow-no-sex
+  --bfile TO_SIMS
+  --biallelic-only
+  --geno
+  --maf 0.05
+  --make-bed
+  --out TO_SIMS_1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak
+  --pheno 1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.pheno
+  --recode
+  --set-missing-var-ids @:#
+  --snps-only
+
+Hostname: c383
+Working directory: /scratch4/eande106/Ryan/29/016539823befcdff1b4cf4b79ce50f
+Start time: Tue May 20 15:12:36 2025
+
+Random number seed: 1747768356
+193096 MB RAM detected; reserving 96548 MB for main workspace.
+33210 variants loaded from .bim file.
+96 people (0 males, 0 females, 96 ambiguous) loaded from .fam.
+Ambiguous sex IDs written to
+TO_SIMS_1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak.nosex .
+96 phenotype values present after --pheno.
+Using 1 thread (no multithreaded calculations invoked).
+Before main variant filters, 96 founders and 0 nonfounders present.
+Calculating allele frequencies... done.
+Total genotyping rate is exactly 1.
+0 variants removed due to missing genotype data (--geno).
+0 variants removed due to minor allele threshold(s)
+(--maf/--max-maf/--mac/--max-mac).
+33210 variants and 96 people pass filters and QC.
+Phenotype data is quantitative.
+--make-bed to
+TO_SIMS_1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak.bed +
+TO_SIMS_1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak.bim +
+TO_SIMS_1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak.fam ... done.
+--recode ped to
+TO_SIMS_1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak.ped +
+TO_SIMS_1_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak.map ... done.
+
+End time: Tue May 20 15:12:36 2025

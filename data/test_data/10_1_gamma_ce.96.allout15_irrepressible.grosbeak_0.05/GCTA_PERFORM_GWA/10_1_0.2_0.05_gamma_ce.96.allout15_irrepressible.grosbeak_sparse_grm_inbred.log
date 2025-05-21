@@ -1,0 +1,29 @@
+*******************************************************************
+* Genome-wide Complex Trait Analysis (GCTA)
+* version v1.94.1 Linux
+* Built at Nov 15 2022 21:14:25, by GCC 8.5
+* (C) 2010-present, Yang Lab, Westlake University
+* Please report bugs to Jian Yang <jian.yang@westlake.edu.cn>
+*******************************************************************
+Analysis started at 15:14:07 EDT on Tue May 20 2025.
+Hostname: c383
+
+Accepted options:
+--grm TO_SIMS_10_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_gcta_grm_inbred
+--pca 1
+--out 10_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sparse_grm_inbred
+--thread-num 4
+
+Note: the program will be running on 4 threads.
+
+Reading IDs of the GRM from [TO_SIMS_10_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_gcta_grm_inbred.grm.id].
+96 IDs are read from [TO_SIMS_10_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_gcta_grm_inbred.grm.id].
+Reading the GRM from [TO_SIMS_10_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_gcta_grm_inbred.grm.bin].
+GRM for 96 individuals are included from [TO_SIMS_10_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_gcta_grm_inbred.grm.bin].
+
+Performing principal component analysis ...
+Eigenvalues of 96 individuals have been saved in [10_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sparse_grm_inbred.eigenval].
+The first 1 eigenvectors of 96 individuals have been saved in [10_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sparse_grm_inbred.eigenvec].
+
+Analysis finished at 15:14:07 EDT on Tue May 20 2025
+Overall computational time: 0.09 sec.
