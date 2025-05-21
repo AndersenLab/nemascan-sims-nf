@@ -123,7 +123,7 @@ The `GCTA_MAKE_GRM` process performs two sequential GCTA operations:
     *   Purpose: This analysis uses the GRM (from step 1) and the simulated phenotype data (`{prefix}.phen`) to estimate the proportion of phenotypic variance (Vp) explained by the SNPs included in the GRM. (See [GCTA GREML analysis documentation](https://yanglab.westlake.edu.cn/software/gcta/#GREMLanalysis)).
 
 
-The output of the `gcta64 --reml` analysis is a plain text file with the `*.hsq` extension. For our example replicate `5_1_gamma_ce.96.allout15_irrepressible.grosbeak_0.05`, after constructing the GRM, the REML analysis produces an `*.hsq` file. This file, typically found in `data/test_data/5_1_gamma_ce.96.allout15_irrepressible.grosbeak_0.05/GCTA_MAKE_GRM/` (e.g., named `gcta_reml.hsq` or using a simulation-specific prefix like `5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.hsq`), contains variance component estimates. Here's an example of its content:
+The output of the `gcta64 --reml` analysis is a plain text file with the `*.hsq` extension and contains variance component estimates.. For our example replicate `5_1_gamma_ce.96.allout15_irrepressible.grosbeak_0.05`  Here's an example of its content:
 
 ```
 // filepath: data/test_data/5_1_gamma_ce.96.allout15_irrepressible.grosbeak_0.05/GCTA_MAKE_GRM/check_vp.hsq
@@ -139,6 +139,7 @@ df	1
 Pval	8.2935e-02
 n	96
 ```
+### 5. Verify and adjust phenotypic variance with `PYTHON_CHECK_VP`
 The `PYTHON_CHECK_VP` process, which runs the `bin/check_vp.py` script, inspects the estimated phenotypic variance (Vp) from the `*.hsq` file (produced by GCTA REML). This step ensures that the simulated phenotypes exhibit sufficient variance.
 
 Inputs to `bin/check_vp.py`:
