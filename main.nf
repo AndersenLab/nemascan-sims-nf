@@ -313,19 +313,19 @@ workflow {
         //loco_pca: v.contains("loco_pca")
         }.set{ result }
 
-    publish:
-    //result.inbred     >> "."
-    result.inbred_pca >> "."
-    //result.loco       >> "."
-    //result.loco_pca   >> "."
+    // publish:
+    // //result.inbred     >> "."
+    // result.inbred_pca >> "."
+    // //result.loco       >> "."
+    // //result.loco_pca   >> "."
 }
 
 // Current bug that publish doesn't work without an output closure
 output {
-    "." {
-        mode "copy"
-    }
-}
+output {
+    path: result.inbred_pca, stageAs: "inbred_pca_assessment_results"
+
+}}
 
 
 /*
