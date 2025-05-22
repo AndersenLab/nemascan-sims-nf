@@ -219,7 +219,11 @@ workflow {
     // Adjust plink data by heritability
     GCTA_SIMULATE_PHENOTYPES( ch_sim_phenos,
                               ch_sim_plink,
-                              Channel.fromPath("${h2_file}").splitCsv().first() )
+                              Channel.fromPath("${h2_file}")
+                              .splitCsv()
+                              .map{ it: it[0] }
+                              .toSortedList()
+                              )
     ch_versions = ch_versions.mix(GCTA_SIMULATE_PHENOTYPES.out.versions)
 
     // Update plink data by heritability
