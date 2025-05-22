@@ -321,11 +321,11 @@ workflow {
 }
 
 // Current bug that publish doesn't work without an output closure
-output {
+
 output {
     path: result.inbred_pca, stageAs: "inbred_pca_assessment_results"
 
-}}
+}
 
 
 /*
