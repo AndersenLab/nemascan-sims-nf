@@ -313,18 +313,20 @@ workflow {
         //loco_pca: v.contains("loco_pca")
         }.set{ result }
 
-    // publish:
-    // //result.inbred     >> "."
-    // result.inbred_pca >> "."
-    // //result.loco       >> "."
-    // //result.loco_pca   >> "."
+    publish:
+    //result.inbred     >> "."
+    result.inbred_pca >> "."
+    //result.loco       >> "."
+    //result.loco_pca   >> "."
 }
 
 // Current bug that publish doesn't work without an output closure
 
+// The output definition must be defined after the implicit workflow.
 output {
-    path: result.inbred_pca, stageAs: "inbred_pca_assessment_results"
-
+    // Add a name (e.g., 'published_inbred_pca_results') to the output definition
+    // Corrected syntax: 'path' is followed directly by the channel, then options.
+    published_inbred_pca_results path result.inbred_pca, stageAs: "inbred_pca_assessment_results"
 }
 
 
