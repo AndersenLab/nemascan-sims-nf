@@ -314,15 +314,17 @@ workflow {
         name:"${params.out}/simulation_assessment_results.tsv", sort:false
     )
 
-    // // Split results by algorithm and compile into summary file
-    // R_ASSESS_SIMS.out.assessment.branch{ v ->
-    //     //inbred: v.contains("inbred_nopca")
-    //     inbred_pca: v.contains("inbred_pca")
-    //     //loco: v.contains("loco_nopca")
-    //     //loco_pca: v.contains("loco_pca")
-    //     }.set{ result }
+    // Split results by algorithm and compile into summary file
+    R_ASSESS_SIMS.out.assessment.branch{ v ->
+        //inbred: v.contains("inbred_nopca")
+        inbred_pca: v.contains("inbred_pca")
+        //loco: v.contains("loco_nopca")
+        //loco_pca: v.contains("loco_pca")
+        }.set{ result }
 
-    // result.inbred_pca.view()
+    result.inbred_pca | collectFile(
+        name:"${params.out}/inbred_pca_assessment_results.tsv", sort:false
+    )
 
 
 }
