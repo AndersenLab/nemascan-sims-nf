@@ -139,9 +139,7 @@ workflow {
         .map { SM, STRAINS -> [SM, STRAINS] }
     ch_mafs = Channel.fromPath(maf_file).splitCsv().first()
     
-    ch_strain_sets.view()
-
-    Get contig data from VCF file
+    // Get contig data from VCF file
     LOCAL_GET_CONTIG_INFO( ch_vcf )
     ch_mito_num = LOCAL_GET_CONTIG_INFO.out.mapping.splitCsv(sep:"\t")
         .filter{ row -> row[0] == mito_name }
