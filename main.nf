@@ -64,6 +64,11 @@ workflow {
     } else {
         simulate_qtlloc = params.simulate_qtlloc
     }
+    if (params.out == null){
+        out = "Analysis_Results-${date}"
+    } else {
+        out = params.out
+    }
 
     // set help message
     if (params.help) {
@@ -95,7 +100,7 @@ workflow {
     log.info "--sparse_cut      Decimal            Any off-diagonal value in the genetic relatedness matrix greater than this is set to 0 (Default: 0.05)"
     log.info "--mito_name       Strain             Name of mitochondrial chromosome"
     log.info "--simulate_qtlloc Boolean            Whether to simulate QTLs in specific genomic regions (Default: false)"
-    log.info "-out       String             Name of folder that will contain the results (Default: Simulations_{date})"
+    log.info "--out       String             Name of folder that will contain the results (Default: Simulations_{date})"
     log.info " "
 
 
