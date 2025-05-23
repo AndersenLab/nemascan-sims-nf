@@ -95,7 +95,7 @@ workflow {
     log.info "--sparse_cut      Decimal            Any off-diagonal value in the genetic relatedness matrix greater than this is set to 0 (Default: 0.05)"
     log.info "--mito_name       Strain             Name of mitochondrial chromosome"
     log.info "--simulate_qtlloc Boolean            Whether to simulate QTLs in specific genomic regions (Default: false)"
-    log.info "-output-dir       String             Name of folder that will contain the results (Default: Simulations_{date})"
+    log.info "-out       String             Name of folder that will contain the results (Default: Simulations_{date})"
     log.info " "
 
 
@@ -305,27 +305,20 @@ workflow {
                    Channel.fromPath("${workflow.projectDir}/bin/Assess_Sims.R").first() )
     ch_versions = ch_versions.mix(R_ASSESS_SIMS.out.versions)
 
-    // Split results by algorithm and compile into summary file
-    R_ASSESS_SIMS.out.assessment.branch{ v ->
-        //inbred: v.contains("inbred_nopca")
-        inbred_pca: v.contains("inbred_pca")
-        //loco: v.contains("loco_nopca")
-        //loco_pca: v.contains("loco_pca")
-        }.set{ result }
+    // // Split results by algorithm and compile into summary file
+    // R_ASSESS_SIMS.out.assessment.branch{ v ->
+    //     //inbred: v.contains("inbred_nopca")
+    //     inbred_pca: v.contains("inbred_pca")
+    //     //loco: v.contains("loco_nopca")
+    //     //loco_pca: v.contains("loco_pca")
+    //     }.set{ result }
 
-    result.inbred_pca.view()
+    // result.inbred_pca.view()
 
-    result.inbred_pca.collectFile(
-        name:"${workflow.outputDir}/inbred_pca_assessment_results.tsv", sort:false
-        )
 
 }
 
-output {
-   "." {
-    mode "copy"
-   }
-}
+
 
 
 /*

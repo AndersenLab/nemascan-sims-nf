@@ -3,6 +3,8 @@ process R_ASSESS_SIMS {
     label 'r_assess_sims'
     tag "${nqtl} ${rep} ${h2} ${effect} ${mode} ${type} ${group}_${maf}"
 
+    publishDir "${params.out}/scored_sims", mode: 'copy', pattern: "*_mapping.tsv"
+
     input:
     tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix), val(type)
     tuple path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm.N"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm.id")
