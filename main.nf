@@ -6,6 +6,7 @@ nextflow.preview.output = true
 // import the subworkflows
 include { LOCAL_GET_CONTIG_INFO           } from './modules/local/get_contig_info/main'
 include { LOCAL_COMPILE_EIGENS            } from './modules/local/compile_eigens/main'
+include { BCFTOOLS_RENAME_CHROMS          } from './modules/bcftools/rename_chroms/main'
 include { BCFTOOLS_EXTRACT_STRAINS        } from './modules/bcftools/extract_strains/main'
 include { BCFTOOLS_CREATE_GENOTYPE_MATRIX } from './modules/bcftools/create_genotype_matrix/main'
 include { PLINK_RECODE_VCF                } from './modules/plink/recode_vcf/main'
@@ -144,9 +145,13 @@ workflow {
         .first()
 
     // Extract desired strain sets
-    BCFTOOLS_EXTRACT_STRAINS( ch_vcf,
-                              ch_strain_sets,
-                              LOCAL_GET_CONTIG_INFO.out.mapping )
+    BCFTOOLS_RENAME_CHROMS( 
+        ch_vcf,
+        LOCAL_GET_CONTIG_INFO.out.mapping
+        )
+    ch_versions = ch_versions.mix(BCFTOOLS_RENAME_CHROMS.out.versions)
+
+    BCFTOOLS_EXTRACT_STRAINS( BCFTOOLS_RENAME_CHROMS.out.vcf, ch_strain_sets )
     ch_versions = ch_versions.mix(BCFTOOLS_EXTRACT_STRAINS.out.versions)
 
     // Recode the VCF file and create plink formatted files
