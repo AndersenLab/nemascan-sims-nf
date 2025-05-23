@@ -64,6 +64,11 @@ workflow {
     } else {
         simulate_qtlloc = params.simulate_qtlloc
     }
+    if (params.out == null){
+        out = "Analysis_Results-${date}"
+    } else {
+        out = params.out
+    }
 
     // set help message
     if (params.help) {
@@ -95,7 +100,7 @@ workflow {
     log.info "--sparse_cut      Decimal            Any off-diagonal value in the genetic relatedness matrix greater than this is set to 0 (Default: 0.05)"
     log.info "--mito_name       Strain             Name of mitochondrial chromosome"
     log.info "--simulate_qtlloc Boolean            Whether to simulate QTLs in specific genomic regions (Default: false)"
-    log.info "-output-dir       String             Name of folder that will contain the results (Default: Simulations_{date})"
+    log.info "--out       String             Name of folder that will contain the results (Default: Simulations_{date})"
     log.info " "
 
 
@@ -120,7 +125,7 @@ workflow {
     log.info "Relatedness cutoff                      = ${params.sparse_cut}"
     log.info "Mitochondrial chromosome name           = ${mito_name}"
     log.info "Simulate QTLs in specific regions       = ${simulate_qtlloc}"
-    log.info "Output directory                        = ${workflow.outputDir}"
+    log.info "Output directory                        = ${params.out}"
     log.info ""
 }
 
@@ -305,27 +310,24 @@ workflow {
                    Channel.fromPath("${workflow.projectDir}/bin/Assess_Sims.R").first() )
     ch_versions = ch_versions.mix(R_ASSESS_SIMS.out.versions)
 
-    // Split results by algorithm and compile into summary file
-    R_ASSESS_SIMS.out.assessment.branch{ v ->
-        //inbred: v.contains("inbred_nopca")
-        inbred_pca: v.contains("inbred_pca")
-        //loco: v.contains("loco_nopca")
-        //loco_pca: v.contains("loco_pca")
-        }.set{ result }
+    R_ASSESS_SIMS.out.assessment | collectFile(
+        name:"${params.out}/simulation_assessment_results.tsv", sort:false
+    )
 
-    publish:
-    //result.inbred     >> "."
-    result.inbred_pca >> "."
-    //result.loco       >> "."
-    //result.loco_pca   >> "."
+    // // Split results by algorithm and compile into summary file
+    // R_ASSESS_SIMS.out.assessment.branch{ v ->
+    //     //inbred: v.contains("inbred_nopca")
+    //     inbred_pca: v.contains("inbred_pca")
+    //     //loco: v.contains("loco_nopca")
+    //     //loco_pca: v.contains("loco_pca")
+    //     }.set{ result }
+
+    // result.inbred_pca.view()
+
+
 }
 
-// Current bug that publish doesn't work without an output closure
-output {
-    "." {
-        mode "copy"
-    }
-}
+
 
 
 /*
