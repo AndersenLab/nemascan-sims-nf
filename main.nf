@@ -134,202 +134,204 @@ workflow {
 
     // Created needed channels
     ch_vcf = Channel.fromPath(params.vcf).map{ it: [[id: "vcf"], it, "${it}.tbi"] }
-    ch_strain_sets = Channel.fromPath(strainfile).splitCsv(sep: " ").map{ it: [[id: it[0]], it[1]] }
+    ch_strain_sets = Channel.fromPath(strainfile)
+        .splitCsv(sep:" ")
+        .map { SM, STRAINS -> [SM, STRAINS] }
     ch_mafs = Channel.fromPath(maf_file).splitCsv().first()
     
     ch_strain_sets.view()
 
-    // Get contig data from VCF file
-    // LOCAL_GET_CONTIG_INFO( ch_vcf )
-    // ch_mito_num = LOCAL_GET_CONTIG_INFO.out.mapping.splitCsv(sep:"\t")
-    //     .filter{ row -> row[0] == mito_name }
-    //     .map{ row -> row[1] }
-    //     .first()
+    Get contig data from VCF file
+    LOCAL_GET_CONTIG_INFO( ch_vcf )
+    ch_mito_num = LOCAL_GET_CONTIG_INFO.out.mapping.splitCsv(sep:"\t")
+        .filter{ row -> row[0] == mito_name }
+        .map{ row -> row[1] }
+        .first()
 
-    // // Extract desired strain sets
-    // BCFTOOLS_RENAME_CHROMS( 
-    //     ch_vcf,
-    //     LOCAL_GET_CONTIG_INFO.out.mapping
-    //     )
-    // ch_versions = ch_versions.mix(BCFTOOLS_RENAME_CHROMS.out.versions)
+    // Extract desired strain sets
+    BCFTOOLS_RENAME_CHROMS( 
+        ch_vcf,
+        LOCAL_GET_CONTIG_INFO.out.mapping
+        )
+    ch_versions = ch_versions.mix(BCFTOOLS_RENAME_CHROMS.out.versions)
 
-    // BCFTOOLS_EXTRACT_STRAINS( BCFTOOLS_RENAME_CHROMS.out.vcf, ch_strain_sets )
-    // ch_versions = ch_versions.mix(BCFTOOLS_EXTRACT_STRAINS.out.versions)
+    BCFTOOLS_EXTRACT_STRAINS( BCFTOOLS_RENAME_CHROMS.out.vcf, ch_strain_sets )
+    ch_versions = ch_versions.mix(BCFTOOLS_EXTRACT_STRAINS.out.versions)
 
-    // // Recode the VCF file and create plink formatted files
-    // PLINK_RECODE_VCF( BCFTOOLS_EXTRACT_STRAINS.out.vcf,
-    //                   ch_mito_num,
-    //                   ch_mafs )
-    // ch_versions = ch_versions.mix(PLINK_RECODE_VCF.out.versions)
+    // Recode the VCF file and create plink formatted files
+    PLINK_RECODE_VCF( BCFTOOLS_EXTRACT_STRAINS.out.vcf,
+                      ch_mito_num,
+                      ch_mafs )
+    ch_versions = ch_versions.mix(PLINK_RECODE_VCF.out.versions)
 
-    // // Create plaintext genotype matrix
-    // BCFTOOLS_CREATE_GENOTYPE_MATRIX( PLINK_RECODE_VCF.out.vcf,
-    //                                  PLINK_RECODE_VCF.out.markers )
-    // ch_versions = ch_versions.mix(BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.versions)
+    // Create plaintext genotype matrix
+    BCFTOOLS_CREATE_GENOTYPE_MATRIX( PLINK_RECODE_VCF.out.vcf,
+                                     PLINK_RECODE_VCF.out.markers )
+    ch_versions = ch_versions.mix(BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.versions)
 
-    // // Find eigen values for genotype matrix
-    // ch_chrom_nums = LOCAL_GET_CONTIG_INFO.out.mapping
-    //     .splitCsv(sep: "\t")
-    //     .filter { it -> it[0] != mito_name }
-    //     .map { it -> it[1] }
-    //     .toSortedList()
+    // Find eigen values for genotype matrix
+    ch_chrom_nums = LOCAL_GET_CONTIG_INFO.out.mapping
+        .splitCsv(sep: "\t")
+        .filter { it -> it[0] != mito_name }
+        .map { it -> it[1] }
+        .toSortedList()
 
-    // R_FIND_GENOTYPE_MATRIX_EIGEN( BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix,
-    //                               Channel.fromPath("${workflow.projectDir}/bin/Get_GenoMatrix_Eigen.R").first(),
-    //                               ch_chrom_nums )
-    // ch_versions = ch_versions.mix(R_FIND_GENOTYPE_MATRIX_EIGEN.out.versions)
+    R_FIND_GENOTYPE_MATRIX_EIGEN( BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix,
+                                  Channel.fromPath("${workflow.projectDir}/bin/Get_GenoMatrix_Eigen.R").first(),
+                                  ch_chrom_nums )
+    ch_versions = ch_versions.mix(R_FIND_GENOTYPE_MATRIX_EIGEN.out.versions)
 
-    // // Concatenate eigen files with plink and genotype matrix sets
-    // ch_eigens = R_FIND_GENOTYPE_MATRIX_EIGEN.out.eigen
-    //     .groupTuple(by: [0, 1])
-    //     .map{ it: [it[0], it[1], it[3]] }
+    // Concatenate eigen files with plink and genotype matrix sets
+    ch_eigens = R_FIND_GENOTYPE_MATRIX_EIGEN.out.eigen
+        .groupTuple(by: [0, 1])
+        .map{ it: [it[0], it[1], it[3]] }
 
-    // LOCAL_COMPILE_EIGENS( ch_eigens )
+    LOCAL_COMPILE_EIGENS( ch_eigens )
 
-    // // Compile required files for simulations by strain group and MAF
-    // ch_plink_genomat_eigen = PLINK_RECODE_VCF.out.plink
-    //     .join(BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix, by: [0, 1])
-    //     //.join(ch_eigens, by: [0, 1])
-    //     .join(LOCAL_COMPILE_EIGENS.out.tests, by: [0, 1])
+    // Compile required files for simulations by strain group and MAF
+    ch_plink_genomat_eigen = PLINK_RECODE_VCF.out.plink
+        .join(BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix, by: [0, 1])
+        //.join(ch_eigens, by: [0, 1])
+        .join(LOCAL_COMPILE_EIGENS.out.tests, by: [0, 1])
     
-    // // // Simulate QTL or genome
-    // // if (simulate_qtlloc){
-    // //     R_SIMULATE_EFFECTS_LOCAL( ch_plink_genomat_eigen,
-    // //                               Channel.fromPath(params.qtlloc),
-    // //                               Channel.fromPath("${workflow.projectDir}/bin/Create_Causal_QTLs.R").first(),
-    // //                               Channel.of(1..params.reps).toSortedList(),
-    // //                               Channel.fromPath(nqtl_file)
-    // //                                 .splitCsv()
-    // //                                 .map{ it: it[0] }
-    // //                                 .toSortedList(),
-    // //                               Channel.fromPath(effect_file)
-    // //                                 .splitCsv()
-    // //                                 .map{ it: it[0] }
-    // //                                 .toSortedList() 
-    // //                             )
-    // //     ch_versions = ch_versions.mix(R_SIMULATE_EFFECTS_LOCAL.out.versions)
-    // //     ch_sim_phenos = R_SIMULATE_EFFECTS_LOCAL.out.causal
-    // //     ch_sim_plink = R_SIMULATE_EFFECTS_LOCAL.out.plink
-    // // } else {
-    // PYTHON_SIMULATE_EFFECTS_GLOBAL( ch_plink_genomat_eigen,
-    //                             Channel.fromPath("${workflow.projectDir}/bin/create_causal_vars.py").first(),
-    //                             Channel.of(1..params.reps).toSortedList(),
-    //                             Channel.fromPath(nqtl_file)
-    //                             .splitCsv()
-    //                             .map{ it: it[0] }
-    //                             .toSortedList(),
-    //                             Channel.fromPath(effect_file)
-    //                             .splitCsv()
-    //                             .map{ it: it[0] }
-    //                             .toSortedList() 
+    // // Simulate QTL or genome
+    // if (simulate_qtlloc){
+    //     R_SIMULATE_EFFECTS_LOCAL( ch_plink_genomat_eigen,
+    //                               Channel.fromPath(params.qtlloc),
+    //                               Channel.fromPath("${workflow.projectDir}/bin/Create_Causal_QTLs.R").first(),
+    //                               Channel.of(1..params.reps).toSortedList(),
+    //                               Channel.fromPath(nqtl_file)
+    //                                 .splitCsv()
+    //                                 .map{ it: it[0] }
+    //                                 .toSortedList(),
+    //                               Channel.fromPath(effect_file)
+    //                                 .splitCsv()
+    //                                 .map{ it: it[0] }
+    //                                 .toSortedList() 
     //                             )
-    // ch_versions = ch_versions.mix(PYTHON_SIMULATE_EFFECTS_GLOBAL.out.versions)
-    // ch_sim_phenos = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.causal
-    // ch_sim_plink = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.plink
-    // // }
+    //     ch_versions = ch_versions.mix(R_SIMULATE_EFFECTS_LOCAL.out.versions)
+    //     ch_sim_phenos = R_SIMULATE_EFFECTS_LOCAL.out.causal
+    //     ch_sim_plink = R_SIMULATE_EFFECTS_LOCAL.out.plink
+    // } else {
+    PYTHON_SIMULATE_EFFECTS_GLOBAL( ch_plink_genomat_eigen,
+                                Channel.fromPath("${workflow.projectDir}/bin/create_causal_vars.py").first(),
+                                Channel.of(1..params.reps).toSortedList(),
+                                Channel.fromPath(nqtl_file)
+                                .splitCsv()
+                                .map{ it: it[0] }
+                                .toSortedList(),
+                                Channel.fromPath(effect_file)
+                                .splitCsv()
+                                .map{ it: it[0] }
+                                .toSortedList() 
+                                )
+    ch_versions = ch_versions.mix(PYTHON_SIMULATE_EFFECTS_GLOBAL.out.versions)
+    ch_sim_phenos = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.causal
+    ch_sim_plink = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.plink
+    // }
 
-    // // Adjust plink data by heritability
-    // GCTA_SIMULATE_PHENOTYPES( ch_sim_phenos,
-    //                           ch_sim_plink,
-    //                           Channel.fromPath("${h2_file}")
-    //                           .splitCsv()
-    //                           .map{ it: it[0] }
-    //                           .toSortedList()
-    //                           )
-    // ch_versions = ch_versions.mix(GCTA_SIMULATE_PHENOTYPES.out.versions)
+    // Adjust plink data by heritability
+    GCTA_SIMULATE_PHENOTYPES( ch_sim_phenos,
+                              ch_sim_plink,
+                              Channel.fromPath("${h2_file}")
+                              .splitCsv()
+                              .map{ it: it[0] }
+                              .toSortedList()
+                              )
+    ch_versions = ch_versions.mix(GCTA_SIMULATE_PHENOTYPES.out.versions)
 
-    // // Update plink data by heritability
-    // PLINK_UPDATE_BY_H2( GCTA_SIMULATE_PHENOTYPES.out.params,
-    //                     GCTA_SIMULATE_PHENOTYPES.out.plink,
-    //                     GCTA_SIMULATE_PHENOTYPES.out.pheno )
-    // ch_versions = ch_versions.mix(PLINK_UPDATE_BY_H2.out.versions)
+    // Update plink data by heritability
+    PLINK_UPDATE_BY_H2( GCTA_SIMULATE_PHENOTYPES.out.params,
+                        GCTA_SIMULATE_PHENOTYPES.out.plink,
+                        GCTA_SIMULATE_PHENOTYPES.out.pheno )
+    ch_versions = ch_versions.mix(PLINK_UPDATE_BY_H2.out.versions)
 
-    // // Create genetic relatedness matrix
-    // ch_mode = Channel.of( 
-    //     ["inbred", "fastGWA"]//, temporary for testing - just inbred 
-    //     //["loco", "mlma"] 
-    //     )
-    // ch_grm_params = PLINK_UPDATE_BY_H2.out.params.combine(ch_mode)
-    // ch_grm_plink = PLINK_UPDATE_BY_H2.out.plink.map{ it: [it] }.combine(ch_mode).map{ it: it[0] }
-    // ch_grm_pheno = PLINK_UPDATE_BY_H2.out.pheno.map{ it: [it] }.combine(ch_mode).map{ it: it[0] }
+    // Create genetic relatedness matrix
+    ch_mode = Channel.of( 
+        ["inbred", "fastGWA"]//, temporary for testing - just inbred 
+        //["loco", "mlma"] 
+        )
+    ch_grm_params = PLINK_UPDATE_BY_H2.out.params.combine(ch_mode)
+    ch_grm_plink = PLINK_UPDATE_BY_H2.out.plink.map{ it: [it] }.combine(ch_mode).map{ it: it[0] }
+    ch_grm_pheno = PLINK_UPDATE_BY_H2.out.pheno.map{ it: [it] }.combine(ch_mode).map{ it: it[0] }
 
     
-    // GCTA_MAKE_GRM( ch_grm_params,
-    //                ch_grm_plink,
-    //                ch_grm_pheno )
-    // ch_versions = ch_versions.mix(GCTA_MAKE_GRM.out.versions)
+    GCTA_MAKE_GRM( ch_grm_params,
+                   ch_grm_plink,
+                   ch_grm_pheno )
+    ch_versions = ch_versions.mix(GCTA_MAKE_GRM.out.versions)
 
-    // // Prepare inputs for PYTHON_CHECK_VP to match its 3-input definition
-    // // Input 1: meta_tuple (group, maf, nqtl, ...)
-    // // Input 2: tuple (tmp_pheno_path, hsq_path, par_path)
-    // // Input 3: script_path
+    // Prepare inputs for PYTHON_CHECK_VP to match its 3-input definition
+    // Input 1: meta_tuple (group, maf, nqtl, ...)
+    // Input 2: tuple (tmp_pheno_path, hsq_path, par_path)
+    // Input 3: script_path
 
-    // PYTHON_CHECK_VP( GCTA_MAKE_GRM.out.params,                         // Arg 1: Metadata
-    //                  GCTA_MAKE_GRM.out.pheno_hsq_and_par,              // Arg 2: Tuple of (tmp_pheno, hsq, par)
-    //                  Channel.fromPath("${workflow.projectDir}/bin/check_vp.py").first() // Arg 3: Script path
-    //                )
-    // ch_versions = ch_versions.mix(PYTHON_CHECK_VP.out.versions)
+    PYTHON_CHECK_VP( GCTA_MAKE_GRM.out.params,                         // Arg 1: Metadata
+                     GCTA_MAKE_GRM.out.pheno_hsq_and_par,              // Arg 2: Tuple of (tmp_pheno, hsq, par)
+                     Channel.fromPath("${workflow.projectDir}/bin/check_vp.py").first() // Arg 3: Script path
+                   )
+    ch_versions = ch_versions.mix(PYTHON_CHECK_VP.out.versions)
 
-    // // Simulate GWA using output from PYTHON_CHECK_VP
-    // ch_type = Channel.of( 
-    //     "pca"//, just PCA for now
-    //     //"nopca"
-    //     )
+    // Simulate GWA using output from PYTHON_CHECK_VP
+    ch_type = Channel.of( 
+        "pca"//, just PCA for now
+        //"nopca"
+        )
     
-    // // Params for GWA come from GCTA_MAKE_GRM (these are not changed by PYTHON_CHECK_VP)
-    // ch_gwa_params = GCTA_MAKE_GRM.out.params.combine(ch_type)
+    // Params for GWA come from GCTA_MAKE_GRM (these are not changed by PYTHON_CHECK_VP)
+    ch_gwa_params = GCTA_MAKE_GRM.out.params.combine(ch_type)
     
-    // // GRM and PLINK files also come from GCTA_MAKE_GRM
-    // ch_gwa_grm = GCTA_MAKE_GRM.out.grm.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
-    // ch_gwa_plink = GCTA_MAKE_GRM.out.plink.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
+    // GRM and PLINK files also come from GCTA_MAKE_GRM
+    ch_gwa_grm = GCTA_MAKE_GRM.out.grm.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
+    ch_gwa_plink = GCTA_MAKE_GRM.out.plink.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
     
-    // // Pheno file for GWA now comes from PYTHON_CHECK_VP.out.pheno
-    // // GCTA_PERFORM_GWA expects a tuple: (phen_path, par_path).
-    // // PYTHON_CHECK_VP.out.pheno is: tuple (final_pheno_path, par_path)
-    // ch_gwa_pheno_from_py = PYTHON_CHECK_VP.out.pheno
-    // ch_gwa_pheno = ch_gwa_pheno_from_py.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
+    // Pheno file for GWA now comes from PYTHON_CHECK_VP.out.pheno
+    // GCTA_PERFORM_GWA expects a tuple: (phen_path, par_path).
+    // PYTHON_CHECK_VP.out.pheno is: tuple (final_pheno_path, par_path)
+    ch_gwa_pheno_from_py = PYTHON_CHECK_VP.out.pheno
+    ch_gwa_pheno = ch_gwa_pheno_from_py.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
 
-    // GCTA_PERFORM_GWA( ch_gwa_params,
-    //                   ch_gwa_grm,
-    //                   ch_gwa_plink,
-    //                   ch_gwa_pheno,
-    //                   params.sparse_cut )
-    // ch_versions = ch_versions.mix(GCTA_PERFORM_GWA.out.versions)
+    GCTA_PERFORM_GWA( ch_gwa_params,
+                      ch_gwa_grm,
+                      ch_gwa_plink,
+                      ch_gwa_pheno,
+                      params.sparse_cut )
+    ch_versions = ch_versions.mix(GCTA_PERFORM_GWA.out.versions)
 
-    // // Find GCTA intervals
-    // R_GET_GCTA_INTERVALS( GCTA_PERFORM_GWA.out.params,
-    //                        GCTA_PERFORM_GWA.out.grm,
-    //                        GCTA_PERFORM_GWA.out.plink,
-    //                        GCTA_PERFORM_GWA.out.pheno,
-    //                        GCTA_PERFORM_GWA.out.gwa,
-    //                        Channel.fromPath("${workflow.projectDir}/bin/Get_GCTA_Intervals.R").first(),
-    //                        params.sthresh,
-    //                        params.group_qtl,
-    //                        params.ci_size )
-    // ch_versions = ch_versions.mix(R_GET_GCTA_INTERVALS.out.versions)
+    // Find GCTA intervals
+    R_GET_GCTA_INTERVALS( GCTA_PERFORM_GWA.out.params,
+                           GCTA_PERFORM_GWA.out.grm,
+                           GCTA_PERFORM_GWA.out.plink,
+                           GCTA_PERFORM_GWA.out.pheno,
+                           GCTA_PERFORM_GWA.out.gwa,
+                           Channel.fromPath("${workflow.projectDir}/bin/Get_GCTA_Intervals.R").first(),
+                           params.sthresh,
+                           params.group_qtl,
+                           params.ci_size )
+    ch_versions = ch_versions.mix(R_GET_GCTA_INTERVALS.out.versions)
 
-    // // Compile results
-    // R_ASSESS_SIMS( R_GET_GCTA_INTERVALS.out.params,
-    //                R_GET_GCTA_INTERVALS.out.grm,
-    //                R_GET_GCTA_INTERVALS.out.plink,
-    //                R_GET_GCTA_INTERVALS.out.pheno,
-    //                R_GET_GCTA_INTERVALS.out.interval,
-    //                Channel.fromPath("${workflow.projectDir}/bin/Assess_Sims.R").first() )
-    // ch_versions = ch_versions.mix(R_ASSESS_SIMS.out.versions)
+    // Compile results
+    R_ASSESS_SIMS( R_GET_GCTA_INTERVALS.out.params,
+                   R_GET_GCTA_INTERVALS.out.grm,
+                   R_GET_GCTA_INTERVALS.out.plink,
+                   R_GET_GCTA_INTERVALS.out.pheno,
+                   R_GET_GCTA_INTERVALS.out.interval,
+                   Channel.fromPath("${workflow.projectDir}/bin/Assess_Sims.R").first() )
+    ch_versions = ch_versions.mix(R_ASSESS_SIMS.out.versions)
 
-    // R_ASSESS_SIMS.out.assessment | collectFile(
-    //     name:"${params.out}/simulation_assessment_results.tsv", sort:false
-    // )
+    R_ASSESS_SIMS.out.assessment | collectFile(
+        name:"${params.out}/simulation_assessment_results.tsv", sort:false
+    )
 
-    // // Split results by algorithm and compile into summary file
-    // R_ASSESS_SIMS.out.assessment.branch{ v ->
-    //     //inbred: v.contains("inbred_nopca")
-    //     inbred_pca: v.contains("inbred_pca")
-    //     //loco: v.contains("loco_nopca")
-    //     //loco_pca: v.contains("loco_pca")
-    //     }.set{ result }
+    // Split results by algorithm and compile into summary file
+    R_ASSESS_SIMS.out.assessment.branch{ v ->
+        //inbred: v.contains("inbred_nopca")
+        inbred_pca: v.contains("inbred_pca")
+        //loco: v.contains("loco_nopca")
+        //loco_pca: v.contains("loco_pca")
+        }.set{ result }
 
-    // result.inbred_pca.view()
+    result.inbred_pca.view()
 
 
 }
