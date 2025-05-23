@@ -310,9 +310,9 @@ workflow {
                    Channel.fromPath("${workflow.projectDir}/bin/Assess_Sims.R").first() )
     ch_versions = ch_versions.mix(R_ASSESS_SIMS.out.versions)
 
-    R_ASSESS_SIMS.out.assessment | collectFile(
-        name:"${params.out}/simulation_assessment_results.tsv", sort:false
-    )
+    // R_ASSESS_SIMS.out.assessment | collectFile(
+    //     name:"${params.out}/simulation_assessment_results.tsv", sort:false
+    // )
 
     // Split results by algorithm and compile into summary file
     R_ASSESS_SIMS.out.assessment.branch{ v ->
