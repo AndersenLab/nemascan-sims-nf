@@ -125,7 +125,7 @@ workflow {
     log.info "Relatedness cutoff                      = ${params.sparse_cut}"
     log.info "Mitochondrial chromosome name           = ${mito_name}"
     log.info "Simulate QTLs in specific regions       = ${simulate_qtlloc}"
-    log.info "Output directory                        = ${workflow.outputDir}"
+    log.info "Output directory                        = ${params.out}"
     log.info ""
 }
 
