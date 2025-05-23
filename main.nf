@@ -311,7 +311,7 @@ workflow {
     ch_versions = ch_versions.mix(R_ASSESS_SIMS.out.versions)
 
     R_ASSESS_SIMS.out.assessment | collectFile(
-        name:"${params.out}/inbred_pca_assessment_results.tsv", sort:false
+        name:"${params.out}/simulation_assessment_results.tsv", sort:false
     )
 
     // // Split results by algorithm and compile into summary file
