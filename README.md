@@ -160,3 +160,59 @@ Script Logic:
     XZ1734 XZ1734 4.15316 
     QG4080 QG4080 9.589 
     ```
+## GWAS Mappings
+### Mappings with GCTA_PERFORM_GWA
+### Define QTL regions of interest
+* QTL regions are defined with the NF process `R_GET_GCTA_INTERVALS`
+* This process runs an Rscript `bin/Get_GCTA_Intervals.R` which defines QTL intervals from the mapping outputs of `GCTA_PERFORM_GWA` and several pipeline parameters
+* Essentially the script takes the raw mapping results, applies significance criteria, groups significant markers into QTLs, defiens confidence intervals for those QTL regions and estimates thier effect size.
+* The script has several processing steps
+    1. Load the libraries and command line arguments given by the pipeline
+    2. Load the input data
+        * Phenotype Data
+        * GCTA Mapping Data
+        * Genotype matrix
+    3. Set the significance threshold
+        * The script accepts a commandline argument (argument #10) which specifies the significance threshold to be applied to markers .
+        * This argument can one of the following: 
+            * `BF` - Bonferroni threshold
+            * `EIGEN` - Defined by the number of independent tests from Eigen decomposistion of the genotype matrix
+            * A user defined numeric value that is used as the threshold.
+        * The `--sthresh` argument supplied to th pipeline sets the input for this argument to the process. 
+            * The default setting for the pipeline `--sthresh` argument is the `BF` threshold in the `nextflow.config` file.
+    4. Process Mapping Data w/ `process_mapping_df()` function
+#### `process_mapping_df()`
+This is the core function of the script and performs many operations to define QTL intervals.The function returns the variable `Processed` which contains the orginal mapping data and theses additional columns
+- `strain`
+- `value`
+- `allele`
+- `var.exp`
+- `startPOS`: the starting position of the QTL interval
+- `peakPOS`: The position of the peak marker of the QTL interval
+- `endPOS`: the end position of the QTL interval
+- `peak_id`: the id of the QTL interval. Is `1` if there is just one QTL identified for the trait or `2`..`Inf` if there are multiple QTL identified for the trait.
+- `interval_size`: The number of bases spanned by the QTL interval
+1. Threshold application
+    * Step calculates the significance threshold and identifies marker SNPs exceeding that threshold.
+        1. First the mapping df is grouped by trait (in the case that multiple mappings of different traits occured)
+        2. Depending on the threshold set, SNPs are flagged as being beind above `1` or below `0` the significance threshold in a newly created column `aboveBF`
+    Noted issues:  
+    * [ ] - the function uses an externally defined variable `QTL_cutoff` which is not passed as an argument to the script.
+    * The column to denote if a SNP is above the sigthreshold is named `aboveBF` regardless of the significance threhsold that is applied. This could lead to confusion in later processing steps. But is likely required so that the outputs have standard formatting for later processing steps
+        * [ ] - Determine if this is an issue that needs to be addressed or just well documented.
+2. Filtering
+    * After applying the significance threshold to flag SNPs as either above (`1`) or below (`2`) the significncance thresold in the column `aboveBF` there are three possible next steps
+    1. If more than 15% of the total SNPs are above the significance threshold all columns added by the mapping function `process_mapping_df()` are set to `NA`.
+    2. If there are no significant SNPs the columns added by the `process_mapping_df()` are also set to `NA` 
+3. Variant effect calculation for significant SNPs
+    * This step adds the `var.exp` column to the processed mapping result by correlating phenotype values with genotype values at the significant SNPs.
+    * Uses pearsons correlation R2 between the phenotype values and alleleic state (REF/ALT).
+4. QTL interval definition
+    * Identifies the most significant SNP in a QTL region of interest 
+The output is a processed dataframe containing the original mapping data augmented with QTL interval information (start, peak, end posisitions, peak ID, interval size, and Variance explained)
+
+## Assessing Mapping Performance
+The process `R_ASSESS_SIMS` runs the Rscript `Assess_Sims.R` to evaluate the performance of GWAS simulations.
+
+It loads the simulated trait outputs, mapping outputs, and a number of simulation pipeline parameters.
+
