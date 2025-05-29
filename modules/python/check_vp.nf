@@ -5,7 +5,7 @@ process PYTHON_CHECK_VP {
 
     input:
     tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix)
-    tuple path(tmp_pheno_in), path(hsq_in), path(par_in)
+    tuple path("tmp.pheno"), path(hsq_in), path(par_in)
     path check_vp_script
 
     output:
@@ -16,7 +16,7 @@ process PYTHON_CHECK_VP {
     script:
     def final_pheno_name = "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"
     """
-    python3 ${check_vp_script} --check_vp ${hsq_in} --simulated_phenos ${tmp_pheno_in}
+    python3 ${check_vp_script} --check_vp ${hsq_in} --simulated_phenos tmp.pheno
 
     mv new_phenos.temp ${final_pheno_name}
     
