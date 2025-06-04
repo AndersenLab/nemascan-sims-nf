@@ -19,7 +19,7 @@ to_sims_bim_file <- "20250527_Troubleshoot_Assess/PLINK_RECODE_VCF/TO_SIMS.bim"
 markers_file <- "20250527_Troubleshoot_Assess/PLINK_RECODE_VCF/markers.txt"
 plink_prune_in_file <- "20250527_Troubleshoot_Assess/PLINK_RECODE_VCF/plink.prune.in"
 
-effects_file <- "20250527_Troubleshoot_Assess/5_2_0.2_0.05_gamma_cb.strain.set.290_literal.harborporpoise_sims.par"
+effects_file <- "20250527_Troubleshoot_Assess/R_ASSESS_SIMS/5_2_0.2_0.05_gamma_cb.strain.set.290_literal.harborporpoise_sims.par"
 ```
 Causal variant missing from the genotype matrix
 ```{r}
