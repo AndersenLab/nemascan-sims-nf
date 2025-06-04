@@ -272,6 +272,8 @@ workflow {
     PYTHON_CHECK_VP(
         GCTA_MAKE_GRM.out.params,                         // Arg 1: Metadata
         GCTA_MAKE_GRM.out.pheno_hsq_and_par,              // Arg 2: Tuple of (tmp_pheno, hsq, par)
+        GCTA_MAKE_GRM.out.grm,
+        GCTA_MAKE_GRM.out.plink,
         Channel.fromPath("${workflow.projectDir}/bin/check_vp.py").first() // Arg 3: Script path
         )
     ch_versions = ch_versions.mix(PYTHON_CHECK_VP.out.versions)
@@ -282,19 +284,16 @@ workflow {
         //"nopca"
         )
     
-    // Params for GWA come from GCTA_MAKE_GRM (these are not changed by PYTHON_CHECK_VP)
-    ch_gwa_params = GCTA_MAKE_GRM.out.params.combine(ch_type)
-    
-    // GRM and PLINK files also come from GCTA_MAKE_GRM
-    ch_gwa_grm = GCTA_MAKE_GRM.out.grm.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
-    ch_gwa_plink = GCTA_MAKE_GRM.out.plink.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
-    
     // Pheno file for GWA now comes from PYTHON_CHECK_VP.out.pheno
     // GCTA_PERFORM_GWA expects a tuple: (phen_path, par_path).
     // PYTHON_CHECK_VP.out.pheno is: tuple (final_pheno_path, par_path)
-    ch_gwa_pheno_from_py = PYTHON_CHECK_VP.out.pheno
-    ch_gwa_pheno = ch_gwa_pheno_from_py.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
-
+    // The rest of the outputs (GRM, plink, and params) are passed through
+    // PYTHON_CHECK_VP to maintain correct ordering of parallel channels
+    ch_gwa_params = PYTHON_CHECK_VP.out.params.combine(ch_type)
+    ch_gwa_grm =    PYTHON_CHECK_VP.out.grm.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
+    ch_gwa_plink =  PYTHON_CHECK_VP.out.plink.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
+    ch_gwa_pheno =  PYTHON_CHECK_VP.out.pheno.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
+    
     GCTA_PERFORM_GWA(
         ch_gwa_params,
         ch_gwa_grm,
