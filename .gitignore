@@ -10,3 +10,4 @@ cache/
 .Rproj.user
 .Rhistory
 *.Rproj
+.vscode/tasks.json

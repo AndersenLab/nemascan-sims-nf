@@ -1,0 +1,3 @@
+Selected Causal Variants
+Simulating effects using gamma distribution
+Simulated effects
