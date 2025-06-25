@@ -1,7 +1,7 @@
 process R_GET_GCTA_INTERVALS {
 
     label 'r_get_gcta_intervals'
-    tag "${nqtl} ${rep} ${h2} ${effect} ${mode} ${type} ${group}_${maf}"
+    tag "${threshold} ${nqtl} ${rep} ${h2} ${effect} ${mode} ${type} ${group}_${maf}"
 
     input:
     tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix), val(type)
