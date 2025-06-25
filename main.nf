@@ -115,7 +115,7 @@ workflow {
         log.info "Minor allele freq. threshold file       = ${maf_file}"
         log.info "Effect size range file                  = ${effect_file}"
         log.info "Genome range file                       = ${params.qtlloc}"
-        log.info "Significance Threshold                  = ${params.sthresh}"
+        log.info "Significance Thresholds                 = BF, EIGEN"
         log.info "Window for combining QTLs               = ${params.group_qtl}"
         log.info "Number of SNVs to define QTL CI         = ${params.ci_size}"
         log.info "Relatedness cutoff                      = ${params.sparse_cut}"
@@ -304,6 +304,7 @@ workflow {
     ch_versions = ch_versions.mix(GCTA_PERFORM_GWA.out.versions)
 
     // Find GCTA intervals
+    ch_sthresh = Channel.of("BF", "EIGEN")
     R_GET_GCTA_INTERVALS(
         GCTA_PERFORM_GWA.out.params,
         GCTA_PERFORM_GWA.out.grm,
@@ -311,7 +312,7 @@ workflow {
         GCTA_PERFORM_GWA.out.pheno,
         GCTA_PERFORM_GWA.out.gwa,
         Channel.fromPath("${workflow.projectDir}/bin/Get_GCTA_Intervals.R").first(),
-        params.sthresh,
+        ch_sthresh,
         params.group_qtl,
         params.ci_size
         )
@@ -388,7 +389,7 @@ workflow.onComplete {
     MAF Threshold File                      = ${maf_file}
     Effect Size Range File                  = ${effect_file}
     Marker Genomic Range File               = ${params.qtlloc}
-    Significance Threshold                  = ${params.sthresh}
+    Significance Thresholds                 = BF, EIGEN
     Threshold for grouping QTL              = ${params.group_qtl}
     Number of SNVs to define CI             = ${params.ci_size}
     Relatedness Matrix Cutoff               = ${params.sparse_cut}
