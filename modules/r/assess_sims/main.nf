@@ -1,11 +1,10 @@
 process R_ASSESS_SIMS {
 
     label 'r_assess_sims'
-    tag "${nqtl} ${rep} ${h2} ${effect} ${mode} ${type} ${group}_${maf}"
+    tag " ${threshold} ${nqtl} ${rep} ${h2} ${effect} ${mode} ${type} ${group}_${maf}"
 
-    
     input:
-    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix), val(type)
+    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix), val(type), val(threshold)
     tuple path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm.N"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm.id")
     tuple path("TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bed"), path("TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bim"), path("TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.fam"), path("TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.map"), path("TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.nosex"), path("TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.ped"), path("TO_SIM_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.log"), path(gm), path(n_indep_tests)
     tuple path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"), path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par")
@@ -14,7 +13,7 @@ process R_ASSESS_SIMS {
 
     output:
     path "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_${mode}_${type}_mapping.tsv", emit: assessment
-    path "versions.yml",                                                               emit: versions
+    path "versions.yml", emit: versions
 
     when:
     task.ext.when == null || task.ext.when
@@ -24,7 +23,7 @@ process R_ASSESS_SIMS {
     """
     Rscript --vanilla ${assess_sims} ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_processed_LMM-EXACT_${mode}_${type}_mapping.tsv \\
         ${gm} ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno \\
-        ${nqtl} ${rep} ${h2} ${maf} ${effect} ${group} ${mode}_${type}
+        ${nqtl} ${rep} ${h2} ${maf} ${effect} ${group} ${mode}_${type}_${threshold} 
     
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
