@@ -235,3 +235,34 @@ The process `R_ASSESS_SIMS` runs the Rscript `Assess_Sims.R` to evaluate the per
 
 It loads the simulated trait outputs, mapping outputs, and a number of simulation pipeline parameters.
 
+This final process outputs a `simulation_assessment_results.tsv` to the analysis directory. Each row represents a QTL simulated or Detected with the following columns:
+
+- `QTL`: Peak marker ID for the QTL interval
+- `Simulated`: TRUE/FALSE if the QTL was simulated
+- `Detected`: TRUE/FALSE if the QTL was detected in mapping
+- `CHROM`: Chromosome of the QTL (numeric ID e.g., 1 = I, 2 = II, etc.)
+- `POS`: Position of the marker
+- `RefAllele`: Reference allele for the marker
+- `Frequency`: Allele frequency of the marker
+- `Effect`: Effect size of the marker
+- `Simulated.QTL.Var.Exp`: Variance explained by the simulated QTL
+- `log10p`: -log10(p-value) of the marker from mapping
+- `aboveBF`: TRUE/FALSE if the peak marker is above the significance threshold (see `algorithm_id` column)
+- `startPOS`: Start position of the QTL interval
+- `peakPOS`: Peak position of the QTL interval
+- `endPOS`: End position of the QTL interval
+- `detected.peak`: TRUE/FALSE if the marker is the detected peak in mapping
+- `interval.Frequency`: Allele frequency of the peak marker in the QTL interval
+- `BETA`: Effect size estimate from mapping for the peak marker
+- `interval.log10p`: -log10(p-value) of the peak marker in the QTL interval
+- `peak_id`: Numeric ID of the QTL interval (e.g 1, 2, ... n, where N is the total number of QTL detected)
+- `interval_size`: Size of the QTL interval in base pairs
+- `interval.var.exp`: Variance explained by the peak marker in the QTL interval
+- `top.hit`: TRUE/FALSE if the marker is the top hit in QTL interval
+- `nQTL`: Number of QTL simulated for the trait
+- `simREP`: Replicate number of the simulation
+- `h2`: Heritability of the simulated trait
+- `maf`: Minor allele frequency threshold used in simulation
+- `effect_distribution`: Effect size range used in simulation
+- `strain_set_id`: Name of the strain set used in simulation
+- `algorithm_id`: Mapping method (Inbred, Loco, Inbred + PCA, LOCO + PCA) and significance threshold (e.g. `inbred_pca_EIGEN`, or `inbred_pca_BF`)
