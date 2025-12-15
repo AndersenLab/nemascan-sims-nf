@@ -249,8 +249,8 @@ workflow {
 
     // Create genetic relatedness matrix
     ch_mode = Channel.of( 
-        ["inbred", "fastGWA"]//, temporary for testing - just inbred 
-        //["loco", "mlma"] 
+        ["inbred", "fastGWA"],
+        ["loco", "mlma"]
         )
     ch_grm_params = PLINK_UPDATE_BY_H2.out.params.combine(ch_mode)
     ch_grm_plink = PLINK_UPDATE_BY_H2.out.plink.map{ it: [it] }.combine(ch_mode).map{ it: it[0] }
