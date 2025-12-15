@@ -12,7 +12,7 @@ process R_ASSESS_SIMS {
     path assess_sims
 
     output:
-    path "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_${mode}_${type}_mapping.tsv", emit: assessment
+    path "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_${mode}_${type}_${threshold}_mapping.tsv", emit: assessment
     path "versions.yml", emit: versions
 
     when:
