@@ -115,7 +115,7 @@ workflow {
         log.info "Minor allele freq. threshold file       = ${maf_file}"
         log.info "Effect size range file                  = ${effect_file}"
         log.info "Genome range file                       = ${params.qtlloc}"
-        log.info "Significance Threshold                  = ${params.sthresh}"
+        log.info "Significance Thresholds                 = BF, EIGEN"
         log.info "Window for combining QTLs               = ${params.group_qtl}"
         log.info "Number of SNVs to define QTL CI         = ${params.ci_size}"
         log.info "Relatedness cutoff                      = ${params.sparse_cut}"
@@ -304,17 +304,24 @@ workflow {
     ch_versions = ch_versions.mix(GCTA_PERFORM_GWA.out.versions)
 
     // Find GCTA intervals
+    ch_intervals_sthresh = Channel.of("BF", "EIGEN")
+    ch_intervals_params = GCTA_PERFORM_GWA.out.params.combine(ch_intervals_sthresh)
+    ch_intervals_grm = GCTA_PERFORM_GWA.out.grm.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
+    ch_intervals_plink = GCTA_PERFORM_GWA.out.plink.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
+    ch_intervals_pheno = GCTA_PERFORM_GWA.out.pheno.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
+    ch_intervals_gwa = GCTA_PERFORM_GWA.out.gwa.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
+
     R_GET_GCTA_INTERVALS(
-        GCTA_PERFORM_GWA.out.params,
-        GCTA_PERFORM_GWA.out.grm,
-        GCTA_PERFORM_GWA.out.plink,
-        GCTA_PERFORM_GWA.out.pheno,
-        GCTA_PERFORM_GWA.out.gwa,
+        ch_intervals_params,
+        ch_intervals_grm,
+        ch_intervals_plink,
+        ch_intervals_pheno,
+        ch_intervals_gwa,
         Channel.fromPath("${workflow.projectDir}/bin/Get_GCTA_Intervals.R").first(),
-        params.sthresh,
         params.group_qtl,
         params.ci_size
         )
+        
     ch_versions = ch_versions.mix(R_GET_GCTA_INTERVALS.out.versions)
 
     // Compile results
@@ -388,7 +395,7 @@ workflow.onComplete {
     MAF Threshold File                      = ${maf_file}
     Effect Size Range File                  = ${effect_file}
     Marker Genomic Range File               = ${params.qtlloc}
-    Significance Threshold                  = ${params.sthresh}
+    Significance Thresholds                 = BF, EIGEN
     Threshold for grouping QTL              = ${params.group_qtl}
     Number of SNVs to define CI             = ${params.ci_size}
     Relatedness Matrix Cutoff               = ${params.sparse_cut}
