@@ -32,11 +32,12 @@ process GCTA_PERFORM_GWA {
         COMMAND="--mlma-loco"
     fi
 
+    gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \\
+        --make-bK-sparse ${sparse_cut} \\
+        --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \\
+        --thread-num ${task.cpus}
+
     if [[ ${type} == "pca" ]]; then
-        gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \\
-            --make-bK-sparse ${sparse_cut} \\
-            --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \\
-            --thread-num ${task.cpus}
 
         gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \\
             --pca 1 \\

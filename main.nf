@@ -280,8 +280,8 @@ workflow {
 
     // Simulate GWA using output from PYTHON_CHECK_VP
     ch_type = Channel.of( 
-        "pca"//, just PCA for now
-        //"nopca"
+        "pca", //just PCA for now
+        "nopca"
         )
     
     // Pheno file for GWA now comes from PYTHON_CHECK_VP.out.pheno
