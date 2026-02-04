@@ -66,7 +66,7 @@ print(
   glue::glue("Loading GCTA mapping data from {args[3]}...")
 )
 
-if (args[14] == "inbred" | args[14] == "inbred_pca") {
+if (args[14] == "inbred_nopca" | args[14] == "inbred_pca") {
   print(
     glue::glue("Mapping data is in inbred format, processing accordingly...")
   )
