@@ -69,7 +69,7 @@ process PLINK_RECODE_VCF {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        plink: \$( plink --version |& head -n 1 | cut -f 2 )
+        plink: stub
     END_VERSIONS
     """
 }

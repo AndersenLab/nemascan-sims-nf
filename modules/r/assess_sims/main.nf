@@ -33,11 +33,11 @@ process R_ASSESS_SIMS {
 
     stub:
     """
-    touch "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_${mode}_${type}_mapping.tsv"
+    touch "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_${mode}_${type}_${threshold}_mapping.tsv"
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        R: \$( Rscript --version |& cut -f 4 )
+        R: stub
     END_VERSIONS
     """
 }

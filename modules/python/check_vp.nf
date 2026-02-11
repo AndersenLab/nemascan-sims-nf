@@ -34,11 +34,10 @@ process PYTHON_CHECK_VP {
     def final_pheno_name_stub = "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"
     """
     touch ${final_pheno_name_stub}
-    touch ${par_in} // par_in is the path object from input
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: \$(python3 --version 2>&1 | awk '{print \$2}')
+        python: stub
     END_VERSIONS
     """
 }

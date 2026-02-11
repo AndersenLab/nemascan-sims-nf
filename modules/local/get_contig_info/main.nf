@@ -23,8 +23,7 @@ process LOCAL_GET_CONTIG_INFO {
 
     stub:
     """
-    touch contigs.txt
-    touch contig_lengths.tsv
-    touch genome_partition.txt
+    printf 'I\t1\nII\t2\nIII\t3\nIV\t4\nV\t5\nX\t6\nMtDNA\t7\n' > contig_mapping.tsv
+    cut -f 1 contig_mapping.tsv > contigs.txt
     """
 }
