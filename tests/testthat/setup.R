@@ -12,6 +12,7 @@ if (r_dir == "" || !dir.exists(r_dir)) {
   r_dir <- file.path(.project_root, "R")
 }
 for (f in list.files(r_dir, pattern = "\\.R$", full.names = TRUE)) {
+  if (basename(f) == "setup.R") next  # skip convenience loader
   source(f, local = FALSE)
 }
 
