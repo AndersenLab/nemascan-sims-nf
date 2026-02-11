@@ -46,8 +46,8 @@ process GCTA_MAKE_GRM {
 
     stub:
     """
-    touch TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm
-    touch TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm.N
+    touch TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm.bin
+    touch TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm.N.bin
     touch TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm.id
     touch ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen
     touch ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par
@@ -55,7 +55,7 @@ process GCTA_MAKE_GRM {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        GCTA: \$( gcta64 --version |& grep version |& cut -f 3 )
+        GCTA: stub
     END_VERSIONS
     """
 }
