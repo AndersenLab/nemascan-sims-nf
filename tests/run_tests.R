@@ -12,6 +12,7 @@ library(testthat)
 r_dir <- file.path(dirname(getwd()), "R")  # adjust if run from tests/
 if (!dir.exists(r_dir)) r_dir <- file.path(getwd(), "R")
 for (f in list.files(r_dir, pattern = "\\.R$", full.names = TRUE)) {
+  if (basename(f) == "setup.R") next  # skip convenience loader
   source(f)
 }
 
