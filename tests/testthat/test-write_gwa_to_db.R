@@ -1,0 +1,94 @@
+test_that("fastGWA data writes to database with correct schema and values", {
+  db_dir <- create_temp_db()
+  init_database(db_dir)
+
+  df <- read_raw_gwa_file(fixture_path("test.fastGWA"), verbose = FALSE)
+  params <- list(nqtl = 5L, rep = 1L, h2 = 0.8, maf = 0.05, effect = "gamma",
+                 population = "test_pop", algorithm = "LMM-EXACT-INBRED", pca = TRUE,
+                 trait = "5_1_0.8")
+  write_mapping_partitioned(df, params, db_dir)
+
+  # Verify parquet was created
+  mapping_id <- generate_mapping_id(params)
+  partition_path <- get_partition_path("test_pop", mapping_id, db_dir)
+  parquet_path <- file.path(partition_path, "data.parquet")
+  expect_true(file.exists(parquet_path))
+
+  # Read back and verify
+  result <- arrow::read_parquet(parquet_path)
+  expect_equal(nrow(result), nrow(df))
+  expect_true("AF1" %in% names(result))
+  expect_false("N" %in% names(result))
+  expect_false("log10p" %in% names(result))
+
+  # Verify values are preserved (not transformed)
+  expect_equal(result$P, df$P)
+  expect_equal(result$BETA, df$BETA)
+  expect_equal(result$AF1, df$AF1)
+
+  # Verify metadata columns
+  expect_equal(unique(result$algorithm), "LMM-EXACT-INBRED")
+  expect_true(unique(result$pca))
+  expect_match(unique(result$mapping_id), "_PCA$")
+})
+
+test_that("mlma data writes with correct LOCO metadata", {
+  db_dir <- create_temp_db()
+  init_database(db_dir)
+
+  df <- read_raw_gwa_file(fixture_path("test.mlma"), verbose = FALSE)
+  params <- list(nqtl = 5L, rep = 1L, h2 = 0.8, maf = 0.05, effect = "gamma",
+                 population = "test_pop", algorithm = "LMM-EXACT-LOCO", pca = FALSE,
+                 trait = "5_1_0.8")
+  write_mapping_partitioned(df, params, db_dir)
+
+  mapping_id <- generate_mapping_id(params)
+  partition_path <- get_partition_path("test_pop", mapping_id, db_dir)
+  result <- arrow::read_parquet(file.path(partition_path, "data.parquet"))
+
+  expect_equal(unique(result$algorithm), "LMM-EXACT-LOCO")
+  expect_false(unique(result$pca))
+  expect_match(unique(result$mapping_id), "_noPCA$")
+})
+
+test_that("marker set creation from bim file works end-to-end", {
+  db_dir <- create_temp_db()
+  init_database(db_dir)
+
+  marker_df <- read_bim_file(fixture_path("test.bim"))
+  write_marker_set(marker_df, "test_pop", 0.05, db_dir,
+                   overwrite = TRUE,
+                   n_independent_tests = 1234)
+
+  # Verify marker set
+  ms <- read_marker_set("test_pop", 0.05, db_dir)
+  expect_equal(nrow(ms), 50)
+
+  # Verify metadata
+  meta <- read_marker_set_metadata("test_pop", 0.05, db_dir)
+  expect_equal(meta$n_markers, 50)
+  expect_equal(meta$n_independent_tests, 1234)
+
+  # Verify threshold calculation
+  tp <- get_threshold_params("test_pop", 0.05, base_dir = db_dir)
+  expect_equal(tp$n_markers, 50)
+  expect_equal(tp$bf_threshold, -log10(0.05 / 50))
+  expect_equal(tp$eigen_threshold, -log10(0.05 / 1234))
+})
+
+test_that("overwrite = TRUE replaces existing marker set on retry", {
+  db_dir <- create_temp_db()
+  init_database(db_dir)
+
+  marker_df <- read_bim_file(fixture_path("test.bim"))
+
+  write_marker_set(marker_df, "test_pop", 0.05, db_dir,
+                   overwrite = TRUE, n_independent_tests = 1234)
+  meta1 <- read_marker_set_metadata("test_pop", 0.05, db_dir)
+  expect_equal(meta1$n_independent_tests, 1234)
+
+  write_marker_set(marker_df, "test_pop", 0.05, db_dir,
+                   overwrite = TRUE, n_independent_tests = 5678)
+  meta2 <- read_marker_set_metadata("test_pop", 0.05, db_dir)
+  expect_equal(meta2$n_independent_tests, 5678)
+})
