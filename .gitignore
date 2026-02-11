@@ -16,3 +16,7 @@ CLAUDE.md
 Analysis_Results-*
 pipeline-info
 work
+
+# Full C. elegans VCF (22GB) — use data/test/test.vcf.gz subset instead
+WI.*.vcf.gz
+WI.*.vcf.gz.tbi
