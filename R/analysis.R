@@ -226,9 +226,9 @@ group_markers_to_intervals <- function(df, snp_grouping = 1000, verbose = TRUE) 
 #' Define confidence intervals for QTL peaks
 #'
 #' For each QTL peak, defines start and end positions based on CI size.
-#' Uses computed log10p values from safe_log10p(P).
+#' Computes log10p from P values using safe_log10p().
 #'
-#' @param df Mapping dataframe with peak_id and marker_index columns
+#' @param df Mapping dataframe with peak_id, marker_index, and P columns
 #' @param ci_size Number of markers to left and right of peak for CI boundary
 #' @param verbose Whether to log messages (default: TRUE)
 #' @return Dataframe with startPOS, peakPOS, endPOS, interval_size columns added
@@ -248,10 +248,8 @@ define_confidence_intervals <- function(df, ci_size = 150, verbose = TRUE) {
 
   if (verbose) log_msg(glue::glue("Defining confidence intervals (CI size: {ci_size} markers)..."))
 
-  # Ensure log10p is available (compute from P if not already present)
-  if (!"log10p" %in% names(df)) {
-    df <- df %>% dplyr::mutate(log10p = safe_log10p(P))
-  }
+  # Compute log10p from P
+  df <- df %>% dplyr::mutate(log10p = safe_log10p(P))
 
   # Get chromosome-wise index boundaries
   chrom_bounds <- df %>%
@@ -407,8 +405,9 @@ analyze_mapping <- function(df,
 #' Extract QTL regions from processed mapping
 #'
 #' Returns a summary dataframe with one row per QTL interval.
+#' Computes log10p from P values using safe_log10p().
 #'
-#' @param df Processed mapping dataframe with QTL annotations
+#' @param df Processed mapping dataframe with QTL annotations and P column
 #' @return Dataframe with QTL region summaries
 extract_qtl_regions <- function(df) {
   if (!"peak_id" %in% names(df) || all(is.na(df$peak_id))) {
@@ -416,10 +415,8 @@ extract_qtl_regions <- function(df) {
     return(data.frame())
   }
 
-  # Ensure log10p is available
-  if (!"log10p" %in% names(df)) {
-    df <- df %>% dplyr::mutate(log10p = safe_log10p(P))
-  }
+  # Compute log10p from P
+  df <- df %>% dplyr::mutate(log10p = safe_log10p(P))
 
   regions <- df %>%
     dplyr::filter(!is.na(peak_id)) %>%
@@ -448,16 +445,15 @@ extract_qtl_regions <- function(df) {
 #' Summarize detection results
 #'
 #' Returns summary statistics for a processed mapping.
+#' Computes log10p from P values using safe_log10p().
 #'
-#' @param df Processed mapping dataframe
+#' @param df Processed mapping dataframe with P column
 #' @return Named list with detection summary statistics
 summarize_detection <- function(df) {
   n_markers <- nrow(df)
 
-  # Ensure log10p is available
-  if (!"log10p" %in% names(df)) {
-    df <- df %>% dplyr::mutate(log10p = safe_log10p(P))
-  }
+  # Compute log10p from P
+  df <- df %>% dplyr::mutate(log10p = safe_log10p(P))
 
   n_sig <- sum(df$significant, na.rm = TRUE)
   n_qtl <- length(unique(na.omit(df$peak_id)))
