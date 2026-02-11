@@ -22,6 +22,11 @@ include { GCTA_MAKE_GRM                   } from './modules/gcta/make_grm/main'
 include { GCTA_PERFORM_GWA                } from './modules/gcta/perform_gwa/main'
 include { PYTHON_CHECK_VP               } from './modules/python/check_vp.nf'
 
+// Database migration modules
+include { DB_MIGRATION_WRITE_MARKER_SET  } from './modules/db_migration/write_marker_set/main'
+include { DB_MIGRATION_WRITE_GWA_TO_DB   } from './modules/db_migration/write_gwa_to_db/main'
+include { DB_MIGRATION_AGGREGATE_METADATA } from './modules/db_migration/aggregate_metadata/main'
+
 workflow {
     main:
     ch_versions = Channel.empty()
@@ -302,6 +307,92 @@ workflow {
         params.sparse_cut
         )
     ch_versions = ch_versions.mix(GCTA_PERFORM_GWA.out.versions)
+
+    // ── DATABASE WRITE PATH (parallel fork) ──────────────────────────────
+    // Writes raw GWA results to a Parquet database alongside the existing
+    // QTL analysis chain. The database is a bonus artifact — if DB writes
+    // fail, the pipeline still produces simulation_assessment_results.tsv.
+
+    // Resolve to absolute path so SLURM tasks write to the correct
+    // shared filesystem location, not relative to their work directory.
+    def db_output_dir = file(params.db_output).toAbsolutePath().toString()
+    log.info "Database output directory: ${db_output_dir}"
+
+    // ── MARKER SET CREATION ──────────────────────────────────────────
+    // Wire from upstream PLINK + EIGEN channels (not from GCTA_PERFORM_GWA).
+    // This eliminates the need for keyed_plink output or groupTuple dedup.
+    //
+    // PLINK_RECODE_VCF.out.plink emits:
+    //   tuple val(meta.id), val(maf), path(bed), path(bim), path(fam),
+    //         path(map), path(nosex), path(ped), path(log)
+    // We extract: (group, maf, bim)
+    ch_bim_for_marker = PLINK_RECODE_VCF.out.plink
+        .map { group, maf, _bed, bim, _fam, _map_f, _nosex, _ped, _log_f ->
+            tuple(group, maf, bim)
+        }
+
+    // LOCAL_COMPILE_EIGENS.out.tests emits:
+    //   tuple val(group), val(maf), path(n_indep_tests)
+    // Join by (group, maf) — 1:1 since both channels emit once per key
+    ch_marker_set_inputs = ch_bim_for_marker
+        .join(LOCAL_COMPILE_EIGENS.out.tests, by: [0, 1])
+    // Result: tuple(group, maf, bim, n_indep_tests)
+
+    DB_MIGRATION_WRITE_MARKER_SET(ch_marker_set_inputs, db_output_dir)
+
+    // ── GWA DATABASE WRITES ──────────────────────────────────────────
+    // Barrier: wait for ALL marker sets to complete before writing mappings.
+    //
+    // .collect() on an empty channel emits [] (does NOT hang), so we
+    // validate that at least one marker set was written. Without this
+    // guard, a complete WRITE_MARKER_SET failure would silently allow
+    // WRITE_GWA_TO_DB to proceed with no marker sets in the database.
+    ch_marker_barrier = DB_MIGRATION_WRITE_MARKER_SET.out.done
+        .collect()
+        .map { items ->
+            if (items.size() == 0) {
+                error("No marker sets were written — cannot proceed with DB population")
+            }
+            true
+        }
+
+    // Gate params behind the barrier using .combine()
+    //
+    // .combine() with a 1-element channel preserves emission order and
+    // cardinality: N params × 1 barrier = N elements in original order.
+    // This delays params until the barrier resolves, while gwa (ungated)
+    // waits for its corresponding params element via Nextflow's implicit
+    // emission-order synchronization.
+    //
+    // GCTA_PERFORM_GWA.out.params emits:
+    //   tuple val(group), val(maf), val(nqtl), val(effect), val(rep),
+    //         val(h2), val(mode), val(suffix), val(type)
+    //
+    // The DB write path intercepts GCTA_PERFORM_GWA.out BEFORE the
+    // threshold expansion (Channel.of("BF", "EIGEN")). WRITE_GWA_TO_DB
+    // runs once per (mode, type) combination, NOT once per threshold.
+    ch_db_params = GCTA_PERFORM_GWA.out.params
+        .combine(ch_marker_barrier)
+        .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type, _barrier ->
+            tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type)
+        }
+
+    // GCTA_PERFORM_GWA.out.gwa emits a single path per invocation.
+    // Nextflow pairs it with ch_db_params by emission index (lock-step).
+    // No barrier gating needed on gwa — the params gate is sufficient.
+    DB_MIGRATION_WRITE_GWA_TO_DB(
+        ch_db_params,
+        GCTA_PERFORM_GWA.out.gwa,
+        db_output_dir
+    )
+
+    // ── METADATA AGGREGATION ─────────────────────────────────────────
+    // Runs after ALL WRITE_GWA_TO_DB processes complete.
+    // Does NOT block the existing R_GET_GCTA_INTERVALS → R_ASSESS_SIMS chain.
+    DB_MIGRATION_AGGREGATE_METADATA(
+        DB_MIGRATION_WRITE_GWA_TO_DB.out.done.collect(),
+        db_output_dir
+    )
 
     // Find GCTA intervals
     ch_intervals_sthresh = Channel.of("BF", "EIGEN")
