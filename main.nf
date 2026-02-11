@@ -1,6 +1,4 @@
-nextflow.enable.dsl=2
-
-// Needed to publish results
+// Needed to publish results (NF 24.10.x preview feature)
 nextflow.preview.output = true
 
 // import the subworkflows
@@ -313,9 +311,12 @@ workflow {
     // QTL analysis chain. The database is a bonus artifact — if DB writes
     // fail, the pipeline still produces simulation_assessment_results.tsv.
 
-    // Resolve to absolute path so SLURM tasks write to the correct
+    // Resolve db_output to absolute path so SLURM tasks write to the correct
     // shared filesystem location, not relative to their work directory.
-    def db_output_dir = file(params.db_output).toAbsolutePath().toString()
+    // Default: {outputDir}/db (computed from workflow.outputDir when params.db_output is null)
+    def db_output_dir = params.db_output
+        ? file(params.db_output).toAbsolutePath().toString()
+        : file("${workflow.outputDir}/db").toAbsolutePath().toString()
     log.info "Database output directory: ${db_output_dir}"
 
     // ── MARKER SET CREATION ──────────────────────────────────────────
