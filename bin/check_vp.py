@@ -110,8 +110,11 @@ if __name__ == "__main__":
         print(f"Output written to new_phenos.temp")
 
     except FileNotFoundError as e:
-        print(f"Error: File not found. {e}")
+        print(f"Warning: File not found ({e}). Using original phenotypes.")
+        write_phenos_to_temp(read_original_phenos(phenos_file))
     except ValueError as e:
-        print(f"Error: {e}")
+        print(f"Warning: {e}. Using original phenotypes.")
+        write_phenos_to_temp(read_original_phenos(phenos_file))
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        print(f"Warning: Unexpected error ({e}). Using original phenotypes.")
+        write_phenos_to_temp(read_original_phenos(phenos_file))
