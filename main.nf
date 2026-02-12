@@ -24,6 +24,7 @@ include { PYTHON_CHECK_VP               } from './modules/python/check_vp.nf'
 include { DB_MIGRATION_WRITE_MARKER_SET  } from './modules/db_migration/write_marker_set/main'
 include { DB_MIGRATION_WRITE_GWA_TO_DB   } from './modules/db_migration/write_gwa_to_db/main'
 include { DB_MIGRATION_AGGREGATE_METADATA } from './modules/db_migration/aggregate_metadata/main'
+include { DB_MIGRATION_ANALYZE_AND_ASSESS } from './modules/db_migration/analyze_and_assess/main'
 
 workflow {
     main:
@@ -395,6 +396,45 @@ workflow {
         db_output_dir
     )
 
+    // ── DB-PATH QTL ANALYSIS (optional, --analyze_db) ─────────────────
+    // Queries the populated database, detects QTL intervals with flexible
+    // thresholds, and assesses against simulated truth. Produces
+    // db_simulation_assessment_results.tsv alongside the existing output.
+    if (params.analyze_db) {
+        // Barrier: wait for DB to be fully populated before querying
+        ch_db_analysis_barrier = DB_MIGRATION_AGGREGATE_METADATA.out.summary
+
+        // Expand GCTA_PERFORM_GWA params by threshold (BF × EIGEN)
+        ch_db_sthresh = Channel.of("BF", "EIGEN")
+        ch_db_analysis_params = GCTA_PERFORM_GWA.out.params
+            .combine(ch_db_sthresh)
+            .combine(ch_db_analysis_barrier)
+            .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold, _barrier ->
+                tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold)
+            }
+
+        // Expand pheno (contains .par file) by threshold — same pattern as existing ch_intervals_pheno
+        ch_db_analysis_pheno = GCTA_PERFORM_GWA.out.pheno
+            .map { it -> [it] }
+            .combine(ch_db_sthresh)
+            .combine(ch_db_analysis_barrier)
+            .map { it -> it[0] }
+
+        DB_MIGRATION_ANALYZE_AND_ASSESS(
+            ch_db_analysis_params,
+            ch_db_analysis_pheno,
+            db_output_dir,
+            params.ci_size,
+            params.group_qtl
+        )
+
+        ch_db_assessment_pub = DB_MIGRATION_ANALYZE_AND_ASSESS.out.assessment.collectFile(
+            name: "db_simulation_assessment_results.tsv", sort: false
+        )
+    } else {
+        ch_db_assessment_pub = Channel.empty()
+    }
+
     // Find GCTA intervals
     ch_intervals_sthresh = Channel.of("BF", "EIGEN")
     ch_intervals_params = GCTA_PERFORM_GWA.out.params.combine(ch_intervals_sthresh)
@@ -443,6 +483,7 @@ workflow {
 
     publish:
         ch_mapping_pub >> "."
+        ch_db_assessment_pub >> "."
 }
 
 

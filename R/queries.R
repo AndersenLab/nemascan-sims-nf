@@ -309,6 +309,12 @@ query_for_threshold_analysis <- function(mapping_id, base_dir = "data/db", con =
     con <- get_db_connection(base_dir, use_cache = TRUE)
   }
 
+  # Check if var.exp column exists in mappings (absent in inline-path databases)
+  mapping_cols <- DBI::dbGetQuery(con, "SELECT column_name FROM information_schema.columns WHERE table_name = 'mappings'")
+  has_var_exp <- "var.exp" %in% mapping_cols$column_name
+
+  var_exp_col <- if (has_var_exp) 'm."var.exp"' else 'NULL AS "var.exp"'
+
   result <- DBI::dbGetQuery(con, glue::glue("
     SELECT
       m.marker,
@@ -316,7 +322,7 @@ query_for_threshold_analysis <- function(mapping_id, base_dir = "data/db", con =
       m.P,
       m.BETA,
       m.SE,
-      m.\"var.exp\",
+      {var_exp_col},
       mk.CHROM,
       mk.POS,
       COALESCE(m.AF1, mk.AF1) AS AF1,
@@ -354,6 +360,12 @@ query_bulk_for_threshold_analysis <- function(mapping_ids, base_dir = "data/db",
     con <- get_db_connection(base_dir, use_cache = TRUE)
   }
 
+  # Check if var.exp column exists in mappings (absent in inline-path databases)
+  mapping_cols <- DBI::dbGetQuery(con, "SELECT column_name FROM information_schema.columns WHERE table_name = 'mappings'")
+  has_var_exp <- "var.exp" %in% mapping_cols$column_name
+
+  var_exp_col <- if (has_var_exp) 'm."var.exp"' else 'NULL AS "var.exp"'
+
   # Build IN clause with proper quoting
   ids_quoted <- paste0("'", mapping_ids, "'", collapse = ", ")
 
@@ -364,7 +376,7 @@ query_bulk_for_threshold_analysis <- function(mapping_ids, base_dir = "data/db",
       m.P,
       m.BETA,
       m.SE,
-      m.\"var.exp\",
+      {var_exp_col},
       mk.CHROM,
       mk.POS,
       COALESCE(m.AF1, mk.AF1) AS AF1,
