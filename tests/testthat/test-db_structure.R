@@ -274,18 +274,24 @@ test_that("P values are in valid range (0, 1]", {
   expect_equal(result$null_count[1], 0, label = "no NULL P values")
 })
 
-test_that("var.exp is NA for all inline-path mappings", {
+test_that("var.exp is absent or NA for inline-path mappings", {
   skip_if_no_db()
   con <- open_mapping_db(db_dir)
   on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
 
-  # For inline path (nemascan-sims-nf integration), var.exp should always be NA
-  result <- DBI::dbGetQuery(con, "
-    SELECT COUNT(*) as non_null_varexp
-    FROM mappings
-    WHERE \"var.exp\" IS NOT NULL
-  ")
-
-  expect_equal(result$non_null_varexp[1], 0,
-               label = "var.exp should be NA for inline-path databases")
+  # For inline path (nemascan-sims-nf integration), var.exp is not available
+  # (no genotype matrix during raw GWA import). The column may be absent entirely
+  # or present with all NA values depending on the write path.
+  cols <- DBI::dbGetQuery(con, "SELECT column_name FROM information_schema.columns WHERE table_name = 'mappings'")
+  if ("var.exp" %in% cols$column_name) {
+    result <- DBI::dbGetQuery(con, "
+      SELECT COUNT(*) as non_null_varexp
+      FROM mappings
+      WHERE \"var.exp\" IS NOT NULL
+    ")
+    expect_equal(result$non_null_varexp[1], 0,
+                 label = "var.exp should be NA for inline-path databases")
+  } else {
+    succeed("var.exp column absent — expected for inline-path databases")
+  }
 })

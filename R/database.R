@@ -407,6 +407,7 @@ marker_set_exists <- function(population, maf, base_dir = "data/db") {
 write_marker_set <- function(df, population, maf, base_dir = "data/db",
                              overwrite = FALSE, n_independent_tests = NA_real_,
                              eigen_source_file = NA_character_) {
+  init_database(base_dir)
   config <- .make_db_config(base_dir)
   markers_path <- get_markers_path(population, maf, base_dir)
 
