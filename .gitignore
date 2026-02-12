@@ -17,6 +17,12 @@ Analysis_Results-*
 pipeline-info
 work
 
-# Full C. elegans VCF (22GB) — use data/test/test.vcf.gz subset instead
+# Full C. elegans VCF (22GB)
 WI.*.vcf.gz
 WI.*.vcf.gz.tbi
+
+# Test VCF (825MB with 200 strains) — regenerate via data/test/generate_test_vcf.sh
+data/test/test.vcf.gz
+data/test/test.vcf.gz.tbi
+data/test/test.vcf.gz.bak
+data/test/test.vcf.gz.tbi.bak
