@@ -1,8 +1,8 @@
 # test-assessment_cross_validation.R - Cross-validation: DB-path vs existing-path assessment
 #
-# Compares db_simulation_assessment_results.tsv (from DB_MIGRATION_ANALYZE_AND_ASSESS)
-# against simulation_assessment_results.tsv (from R_ASSESS_SIMS) to verify that the
-# DB-path assessment reproduces the existing pipeline's analytical results.
+# Compares db_simulation_assessment_results.tsv (from DB_MIGRATION_ANALYZE_QTL + DB_MIGRATION_ASSESS_SIMS)
+# against simulation_assessment_results.tsv (from R_GET_GCTA_INTERVALS + R_ASSESS_SIMS) to verify
+# that the DB-path assessment reproduces the legacy pipeline's analytical results.
 #
 # Requires pipeline output from BOTH paths:
 #   TEST_DB_DIR              - Path to populated database directory
@@ -38,18 +38,22 @@ read_existing_assessment <- function(path) {
   # Column order determined by tracing through Assess_Sims.R:
   #   all.QTL = data.frame(QTL, Simulated, Detected)
   #     %>% full_join(effects.scores)  -- adds CHROM, POS, RefAllele, Frequency, Effect,
-  #                                       Simulated.QTL.VarExp, log10p, aboveBF
+  #                                       Simulated.QTL.VarExp, log10p, significant
   #     %>% full_join(overlap)         -- adds startPOS, peakPOS, endPOS, detected.peak,
-  #                                       interval.Frequency, BETA, interval.log10p,
-  #                                       peak_id, interval_size, interval.var.exp
-  #     %>% mutate(top.hit, nQTL, simREP, h2, maf, effect_distribution, strain_set_id, algorithm_id)
+  #                                       BETA, interval.log10p, peak_id, interval_size,
+  #                                       interval.var.exp, interval.Frequency
+  #     %>% mutate(top.hit, nQTL, simREP, h2, maf, effect_distribution, strain_set_id,
+  #                mode, type, threshold, algorithm_id, alpha, ci_size, snp_grouping)
   col_names <- c("QTL", "Simulated", "Detected", "CHROM", "POS", "RefAllele",
-                  "Frequency", "Effect", "Simulated.QTL.VarExp", "log10p", "aboveBF",
+                  "Frequency", "Effect", "Simulated.QTL.VarExp", "log10p", "significant",
                   "startPOS", "peakPOS", "endPOS",
-                  "detected.peak", "interval.Frequency", "BETA",
-                  "interval.log10p", "peak_id", "interval_size",
-                  "interval.var.exp", "top.hit", "nQTL", "simREP", "h2", "maf",
-                  "effect_distribution", "strain_set_id", "algorithm_id")
+                  "detected.peak", "BETA", "interval.log10p",
+                  "peak_id", "interval_size",
+                  "interval.var.exp", "interval.Frequency",
+                  "top.hit", "nQTL", "simREP", "h2", "maf",
+                  "effect_distribution", "strain_set_id",
+                  "mode", "type", "threshold", "algorithm_id",
+                  "alpha", "ci_size", "snp_grouping")
 
   df <- tryCatch(
     data.table::fread(path, header = FALSE, col.names = col_names,
@@ -79,14 +83,17 @@ read_existing_assessment <- function(path) {
   df
 }
 
-# Helper: parse the DB assessment TSV (no header, from analyze_and_assess.R)
+# Helper: parse the DB assessment TSV (no header, from assess_sims.R via format_assessment_tsv())
 read_db_assessment <- function(path) {
-  col_names <- c("QTL", "Simulated", "Detected", "log10p", "significant",
-                  "startPOS", "peakPOS", "endPOS", "detected.peak",
+  # format_assessment_tsv() outputs standardized 35-column schema:
+  col_names <- c("QTL", "Simulated", "Detected", "CHROM", "POS", "RefAllele",
+                  "Frequency", "Effect", "Simulated.QTL.VarExp", "log10p", "significant",
+                  "BETA", "startPOS", "peakPOS", "endPOS", "detected.peak",
                   "interval.log10p", "interval.var.exp", "interval.Frequency",
                   "peak_id", "interval_size", "top.hit",
                   "nQTL", "simREP", "h2", "maf", "effect_distribution",
-                  "strain_set_id", "algorithm_id")
+                  "strain_set_id", "mode", "type", "threshold", "algorithm_id",
+                  "alpha", "ci_size", "snp_grouping")
 
   df <- tryCatch(
     data.table::fread(path, header = FALSE, col.names = col_names,
@@ -272,26 +279,48 @@ test_that("QTL interval boundaries match between paths", {
 
 # ── Significant Marker Counts ────────────────────────────────────────────────
 
-test_that("significant marker count per mapping matches between paths", {
+test_that("detected and simulated counts per mapping match between paths", {
   skip_if_no_assessment_cross_validation()
 
-  if (db_dir == "" || !dir.exists(db_dir)) {
-    skip("TEST_DB_DIR not set — cannot query DB for marker counts")
+  existing <- read_existing_assessment(existing_assessment_path)
+  db_assess <- read_db_assessment(db_assessment_path)
+
+  # Count detected and simulated per unique mapping key, normalizing algorithm_id
+  count_by_mapping <- function(df) {
+    df %>%
+      dplyr::mutate(norm_alg = normalize_algorithm_id(algorithm_id)) %>%
+      dplyr::group_by(nQTL, simREP, h2, maf, strain_set_id, norm_alg) %>%
+      dplyr::summarise(
+        n_detected = sum(Detected == "TRUE", na.rm = TRUE),
+        n_simulated = sum(Simulated == "TRUE", na.rm = TRUE),
+        .groups = "drop"
+      )
   }
 
-  existing <- read_existing_assessment(existing_assessment_path)
+  existing_counts <- count_by_mapping(existing)
+  db_counts <- count_by_mapping(db_assess)
 
-  # Get unique mapping keys from existing assessment
-  mapping_keys <- existing %>%
-    dplyr::distinct(nQTL, simREP, h2, maf, strain_set_id, algorithm_id) %>%
-    utils::head(4)  # Test a sample for speed
+  expect_gt(nrow(existing_counts), 0, label = "existing assessment has mappings")
+  expect_gt(nrow(db_counts), 0, label = "DB assessment has mappings")
 
-  # For each mapping, compare significant marker counts
-  for (i in seq_len(nrow(mapping_keys))) {
-    key <- mapping_keys[i, ]
-    # This test verifies that the DB threshold params are consistent
-    # Full marker-level comparison requires querying individual mappings
-    expect_true(TRUE, label = paste("mapping key", i, "present"))
+  # Join and compare counts
+  merged <- dplyr::inner_join(
+    existing_counts,
+    db_counts,
+    by = c("nQTL", "simREP", "h2", "maf", "strain_set_id", "norm_alg"),
+    suffix = c("_existing", "_db")
+  )
+
+  if (nrow(merged) > 0) {
+    detect_mismatches <- merged %>%
+      dplyr::filter(n_detected_existing != n_detected_db)
+    expect_equal(nrow(detect_mismatches), 0,
+                 label = "detected counts match between paths")
+
+    sim_mismatches <- merged %>%
+      dplyr::filter(n_simulated_existing != n_simulated_db)
+    expect_equal(nrow(sim_mismatches), 0,
+                 label = "simulated counts match between paths")
   }
 })
 
