@@ -334,8 +334,22 @@ query_for_threshold_analysis <- function(mapping_id, base_dir = "data/db", con =
       AND m.population = mk.population
       AND m.maf = mk.maf
     WHERE m.mapping_id = '{mapping_id}'
-    ORDER BY mk.CHROM, mk.POS
+    ORDER BY mk.CHROM, mk.POS, m.marker
   "))
+
+  # Verify CHROM:POS uniqueness (LOCO files may have duplicates if not deduped at write time)
+  if (nrow(result) > 0) {
+    dup_check <- result %>% dplyr::group_by(CHROM, POS) %>% dplyr::filter(dplyr::n() > 1)
+    if (nrow(dup_check) > 0) {
+      n_dups <- nrow(dup_check)
+      example <- paste0(dup_check$CHROM[1], ":", dup_check$POS[1])
+      stop(glue::glue(
+        "CHROM:POS uniqueness violation in mapping {mapping_id}: ",
+        "{n_dups} duplicate rows (e.g. {example}). ",
+        "Check for LOCO deduplication in write_gwa_to_db.R"
+      ))
+    }
+  }
 
   result
 }
@@ -388,8 +402,25 @@ query_bulk_for_threshold_analysis <- function(mapping_ids, base_dir = "data/db",
       AND m.population = mk.population
       AND m.maf = mk.maf
     WHERE m.mapping_id IN ({ids_quoted})
-    ORDER BY m.mapping_id, mk.CHROM, mk.POS
+    ORDER BY m.mapping_id, mk.CHROM, mk.POS, m.marker
   "))
+
+  # Verify CHROM:POS uniqueness per mapping_id
+  if (nrow(result) > 0) {
+    dup_check <- result %>%
+      dplyr::group_by(mapping_id, CHROM, POS) %>%
+      dplyr::filter(dplyr::n() > 1)
+    if (nrow(dup_check) > 0) {
+      n_dups <- nrow(dup_check)
+      example_id <- dup_check$mapping_id[1]
+      example_pos <- paste0(dup_check$CHROM[1], ":", dup_check$POS[1])
+      stop(glue::glue(
+        "CHROM:POS uniqueness violation in bulk query: ",
+        "{n_dups} duplicate rows (e.g. {example_id} at {example_pos}). ",
+        "Check for LOCO deduplication in write_gwa_to_db.R"
+      ))
+    }
+  }
 
   result
 }
