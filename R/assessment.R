@@ -3,9 +3,11 @@
 # Implements the assessment logic from bin/Assess_Sims.R without
 # GenomicRanges or genotype matrix dependencies:
 #   - load_causal_variants(): read .par file
-#   - assess_qtl_detection(): match causal variants to detected QTL intervals
-#   - compile_full_assessment(): build the full Simulated/Detected dataframe
-#   - format_assessment_tsv(): format output to match existing pipeline output
+#   - score_causal_markers(): match causal variants to mapping data
+#   - find_peak_causal_overlaps(): match peaks to causal variants
+#   - build_assessment_union(): combine simulated + detected into unified df
+#   - compile_full_assessment(): orchestrate the above helpers
+#   - format_assessment_tsv(): format output with standardized column schema
 #
 # Dependencies: analysis.R (analyze_mapping, extract_qtl_regions, safe_log10p)
 #               utils.R (log_msg)
@@ -46,107 +48,22 @@ load_causal_variants <- function(par_file) {
 
 
 # =============================================================================
-# QTL Detection Assessment
+# Assessment Helper Functions
 # =============================================================================
 
-#' Check which causal variants fall within detected QTL intervals
+#' Score causal variant markers in the mapping data
 #'
-#' For each causal variant, checks if its position falls within any detected
-#' QTL interval (startPOS <= POS <= endPOS on the same chromosome).
-#' Uses simple position-based overlap (equivalent to GenomicRanges for
-#' point-in-interval queries).
+#' Joins causal variant markers against mapping data by QTL == marker to obtain
+#' log10p and significance status for each causal variant.
 #'
-#' @param qtl_regions Dataframe from extract_qtl_regions() with columns:
-#'   peak_id, CHROM, startPOS, peakPOS, endPOS, peak_marker, max_log10p, etc.
-#' @param causal_variants Dataframe from load_causal_variants() with columns:
-#'   QTL, CHROM, POS
-#' @return Dataframe with one row per (causal_variant, matched_interval) pair,
-#'   including unmatched causal variants (left join behavior)
-assess_qtl_detection <- function(qtl_regions, causal_variants) {
-
-  if (nrow(qtl_regions) == 0) {
-    # No detected intervals — all causal variants are undetected
-    log_msg("No QTL regions detected — all causal variants are undetected")
-    result <- causal_variants %>%
-      dplyr::mutate(
-        detected_peak_id = NA_integer_,
-        detected_peak_marker = NA_character_,
-        startPOS = NA_integer_,
-        peakPOS = NA_integer_,
-        endPOS = NA_integer_
-      )
-    return(result)
-  }
-
-  if (nrow(causal_variants) == 0) {
-    log_msg("No causal variants — returning empty assessment", level = "WARN")
-    return(data.frame())
-  }
-
-  # For each causal variant, find overlapping QTL intervals
-  # Simple position-based overlap: causal POS within [startPOS, endPOS] on same CHROM
-  overlap <- causal_variants %>%
-    dplyr::left_join(
-      qtl_regions %>%
-        dplyr::select(peak_id, CHROM, startPOS, peakPOS, endPOS, peak_marker),
-      by = "CHROM",
-      relationship = "many-to-many"
-    ) %>%
-    dplyr::filter(
-      !is.na(startPOS) & POS >= startPOS & POS <= endPOS
-    ) %>%
-    dplyr::rename(
-      detected_peak_id = peak_id,
-      detected_peak_marker = peak_marker
-    )
-
-  # Left join back to get unmatched causal variants
-  matched_qtls <- unique(overlap$QTL)
-  unmatched <- causal_variants %>%
-    dplyr::filter(!QTL %in% matched_qtls) %>%
-    dplyr::mutate(
-      detected_peak_id = NA_integer_,
-      detected_peak_marker = NA_character_,
-      startPOS = NA_integer_,
-      peakPOS = NA_integer_,
-      endPOS = NA_integer_
-    )
-
-  result <- dplyr::bind_rows(overlap, unmatched)
-
-  n_detected <- length(matched_qtls)
-  n_total <- nrow(causal_variants)
-  log_msg(glue::glue(
-    "Assessment: {n_detected}/{n_total} causal variants detected in QTL intervals"
-  ))
-
-  result
-}
-
-
-# =============================================================================
-# Full Assessment Compilation
-# =============================================================================
-
-#' Compile full assessment combining simulated and detected QTLs
+#' Causal variants are sampled post-MAF-filter in PYTHON_SIMULATE_EFFECTS_GLOBAL,
+#' so they should always be present in GWA output. The filter(!is.na(log10p))
+#' is defensive; both paths have identical behavior.
 #'
-#' Produces a dataframe matching the structure of Assess_Sims.R output,
-#' containing:
-#'   - True positives: causal variants that fall within detected intervals
-#'   - False negatives: causal variants not within any detected interval
-#'   - False positives: detected peaks that don't contain any causal variant
-#'
-#' @param mapping_data Processed mapping dataframe (from analyze_mapping())
-#'   with columns: marker, CHROM, POS, P, log10p, significant, peak_id,
-#'   startPOS, peakPOS, endPOS, AF1, BETA, var.exp
-#' @param qtl_regions Dataframe from extract_qtl_regions()
+#' @param mapping_data Processed mapping dataframe with marker, P, significant columns
 #' @param causal_variants Dataframe from load_causal_variants()
-#' @param mapping_params Named list with simulation parameters:
-#'   nqtl, rep, h2, maf, effect, population, algorithm, pca, threshold_method
-#' @return Dataframe with one row per QTL (simulated + detected, deduplicated)
-compile_full_assessment <- function(mapping_data, qtl_regions, causal_variants,
-                                    mapping_params) {
-
+#' @return Dataframe with causal variant info plus log10p and significant columns
+score_causal_markers <- function(mapping_data, causal_variants) {
   # Compute log10p on mapping data if not present
   if (!"log10p" %in% names(mapping_data)) {
     mapping_data <- mapping_data %>%
@@ -165,86 +82,84 @@ compile_full_assessment <- function(mapping_data, qtl_regions, causal_variants,
     dplyr::left_join(causal_marker_scores, by = "QTL") %>%
     dplyr::filter(!is.na(log10p))
 
-  # Build peak info from QTL regions (detected intervals)
-  if (nrow(qtl_regions) == 0) {
-    peak_info <- data.frame(
-      CHROM = character(), marker = character(), POS = integer(),
-      AF1 = numeric(), BETA = numeric(), log10p = numeric(),
-      startPOS = integer(), peakPOS = integer(), endPOS = integer(),
-      peak_id = integer(), interval_size = integer(), var.exp = numeric(),
-      detected.peak = character(),
-      stringsAsFactors = FALSE
-    )
-  } else {
-    # One row per peak: the marker with highest log10p in each peak group
-    peak_info <- mapping_data %>%
-      dplyr::filter(!is.na(peak_id)) %>%
-      dplyr::group_by(peak_id) %>%
-      dplyr::slice_max(log10p, n = 1, with_ties = FALSE) %>%
-      dplyr::ungroup() %>%
-      dplyr::select(
-        CHROM, marker, POS, AF1, BETA, log10p,
-        startPOS, peakPOS, endPOS, peak_id, interval_size,
-        dplyr::any_of("var.exp")
-      ) %>%
-      dplyr::mutate(detected.peak = marker)
+  effects_scores
+}
+
+
+#' Find overlaps between detected peaks and causal variants
+#'
+#' For each detected peak, finds causal variants with POS in [startPOS, endPOS]
+#' on the same chromosome. Peaks with no overlapping causal variant are
+#' included as false positives.
+#'
+#' @param peak_info Dataframe with one row per peak: CHROM, marker, POS, AF1, BETA,
+#'   log10p, startPOS, peakPOS, endPOS, peak_id, interval_size, detected.peak
+#' @param effects_scores Dataframe from score_causal_markers(): QTL, CHROM, POS,
+#'   RefAllele, Frequency, Effect, log10p, significant
+#' @return Dataframe with overlap info for detected peaks + false positive rows
+find_peak_causal_overlaps <- function(peak_info, effects_scores) {
+  if (nrow(peak_info) == 0 || nrow(effects_scores) == 0) {
+    return(data.frame(QTL = character(), stringsAsFactors = FALSE))
   }
 
-  # Match causal variants to detected intervals using position overlap
-  if (nrow(peak_info) > 0 && nrow(effects_scores) > 0) {
-    # For each detected peak, check which causal variants overlap
-    overlap_results <- lapply(seq_len(nrow(peak_info)), function(i) {
-      peak <- peak_info[i, ]
-      overlapping <- effects_scores %>%
-        dplyr::filter(CHROM == peak$CHROM,
-                      POS >= peak$startPOS,
-                      POS <= peak$endPOS)
-      if (nrow(overlapping) > 0) {
-        overlapping %>%
-          dplyr::mutate(
-            startPOS = peak$startPOS,
-            peakPOS = peak$peakPOS,
-            endPOS = peak$endPOS,
-            detected.peak = peak$detected.peak,
-            interval.log10p = peak$log10p,
-            interval.var.exp = if ("var.exp" %in% names(peak)) peak$var.exp else NA_real_,
-            interval.Frequency = peak$AF1,
-            peak_id = peak$peak_id,
-            interval_size = peak$interval_size
-          )
-      } else {
-        # No causal variant overlaps — this is a false positive peak
-        data.frame(
-          QTL = peak$detected.peak,
-          CHROM = peak$CHROM,
-          POS = peak$POS,
-          RefAllele = NA_character_,
-          Frequency = NA_real_,
-          Effect = NA_real_,
-          log10p = NA_real_,
-          significant = NA_integer_,
-          startPOS = peak$startPOS,
-          peakPOS = peak$peakPOS,
-          endPOS = peak$endPOS,
-          detected.peak = peak$detected.peak,
-          interval.log10p = peak$log10p,
-          interval.var.exp = if ("var.exp" %in% names(peak)) peak$var.exp else NA_real_,
-          interval.Frequency = peak$AF1,
-          peak_id = peak$peak_id,
-          interval_size = peak$interval_size,
-          stringsAsFactors = FALSE
-        )
-      }
-    })
-    overlap_df <- dplyr::bind_rows(overlap_results)
-  } else {
-    overlap_df <- data.frame(
-      QTL = character(),
-      stringsAsFactors = FALSE
-    )
-  }
+  has_var_exp <- "var.exp" %in% names(peak_info)
 
-  # Build the all.QTL dataframe
+  # Prepare peak-level interval info with renamed columns to avoid collisions
+  peaks <- peak_info %>%
+    dplyr::transmute(
+      peak_id, peak_CHROM = CHROM, peak_POS = POS,
+      startPOS, peakPOS, endPOS,
+      detected.peak, peak_BETA = BETA,
+      interval.log10p = log10p,
+      interval.var.exp = if (has_var_exp) var.exp else NA_real_,
+      interval.Frequency = AF1,
+      interval_size
+    )
+
+  # Cross-join peaks with causal variants on same chromosome, filter by position
+  matched <- peaks %>%
+    dplyr::inner_join(
+      effects_scores,
+      by = c("peak_CHROM" = "CHROM"),
+      relationship = "many-to-many"
+    ) %>%
+    dplyr::filter(POS >= startPOS, POS <= endPOS) %>%
+    dplyr::mutate(CHROM = peak_CHROM, BETA = peak_BETA) %>%
+    dplyr::select(-peak_CHROM, -peak_POS, -peak_BETA)
+
+  # False-positive peaks: no causal variant within interval
+  false_positives <- peaks %>%
+    dplyr::filter(!peak_id %in% matched$peak_id) %>%
+    dplyr::transmute(
+      QTL = detected.peak,
+      CHROM = peak_CHROM,
+      POS = peak_POS,
+      RefAllele = NA_character_,
+      Frequency = NA_real_,
+      Effect = NA_real_,
+      log10p = NA_real_,
+      significant = NA_integer_,
+      startPOS, peakPOS, endPOS,
+      detected.peak, BETA = peak_BETA,
+      interval.log10p, interval.var.exp, interval.Frequency,
+      peak_id, interval_size
+    )
+
+  dplyr::bind_rows(matched, false_positives)
+}
+
+
+#' Build the Simulated/Detected union dataframe
+#'
+#' Combines causal variant scores and peak overlap info into a unified assessment
+#' dataframe with simulation metadata and classification flags.
+#'
+#' @param effects_scores Dataframe from score_causal_markers()
+#' @param overlap_df Dataframe from find_peak_causal_overlaps()
+#' @param mapping_params Named list with: nqtl, rep, h2, maf, effect, population,
+#'   algorithm, pca, threshold_method. Optional: mode, type, alpha, ci_size, snp_grouping
+#' @return Assessment dataframe with Simulated/Detected classification
+build_assessment_union <- function(effects_scores, overlap_df, mapping_params) {
   all_qtl_ids <- unique(c(effects_scores$QTL, overlap_df$QTL))
 
   if (length(all_qtl_ids) == 0) {
@@ -260,37 +175,47 @@ compile_full_assessment <- function(mapping_data, qtl_regions, causal_variants,
       Detected = QTL %in% overlap_df$QTL
     )
 
-  # Join effect scores (causal variant info)
+  # Join causal variant info (CHROM, POS, RefAllele, Frequency, Effect, log10p, significant)
   if (nrow(effects_scores) > 0) {
-    join_cols <- intersect(
-      c("QTL", "log10p", "significant"),
-      names(effects_scores)
-    )
     all_qtl <- all_qtl %>%
       dplyr::left_join(
-        effects_scores %>% dplyr::select(dplyr::all_of(join_cols)),
-        by = "QTL"
-      )
-  }
-
-  # Join overlap info (detected interval info)
-  if (nrow(overlap_df) > 0) {
-    overlap_join_cols <- intersect(
-      c("QTL", "startPOS", "peakPOS", "endPOS", "detected.peak",
-        "interval.log10p", "interval.var.exp", "interval.Frequency",
-        "peak_id", "interval_size"),
-      names(overlap_df)
-    )
-    all_qtl <- all_qtl %>%
-      dplyr::left_join(
-        overlap_df %>%
-          dplyr::select(dplyr::all_of(overlap_join_cols)) %>%
+        effects_scores %>%
+          dplyr::select(QTL, CHROM, POS, RefAllele, Frequency, Effect,
+                        log10p, significant) %>%
           dplyr::filter(!duplicated(QTL)),
         by = "QTL"
       )
   }
 
-  # Add top.hit flag and simulation metadata
+  # Join overlap/interval info
+  if (nrow(overlap_df) > 0) {
+    overlap_join_cols <- intersect(
+      c("QTL", "startPOS", "peakPOS", "endPOS", "detected.peak", "BETA",
+        "interval.log10p", "interval.var.exp", "interval.Frequency",
+        "peak_id", "interval_size"),
+      names(overlap_df)
+    )
+    overlap_join <- overlap_df %>%
+      dplyr::select(dplyr::all_of(overlap_join_cols)) %>%
+      dplyr::filter(!duplicated(QTL))
+
+    # For false-positive peaks, also get CHROM/POS from overlap_df
+    fp_coords <- overlap_df %>%
+      dplyr::filter(!QTL %in% effects_scores$QTL) %>%
+      dplyr::select(QTL, CHROM_ov = CHROM, POS_ov = POS) %>%
+      dplyr::filter(!duplicated(QTL))
+
+    all_qtl <- all_qtl %>%
+      dplyr::left_join(overlap_join, by = "QTL") %>%
+      dplyr::left_join(fp_coords, by = "QTL") %>%
+      dplyr::mutate(
+        CHROM = dplyr::coalesce(CHROM, CHROM_ov),
+        POS = dplyr::coalesce(as.integer(POS), as.integer(POS_ov))
+      ) %>%
+      dplyr::select(-dplyr::any_of(c("CHROM_ov", "POS_ov")))
+  }
+
+  # Build algorithm_id and add metadata
   algorithm_id <- paste0(
     mapping_params$algorithm,
     if (isTRUE(mapping_params$pca)) "_PCA" else "_noPCA",
@@ -299,6 +224,7 @@ compile_full_assessment <- function(mapping_data, qtl_regions, causal_variants,
 
   all_qtl <- all_qtl %>%
     dplyr::mutate(
+      Simulated.QTL.VarExp = NA_real_,
       top.hit = if ("detected.peak" %in% names(.)) QTL == detected.peak else NA,
       nQTL = as.character(mapping_params$nqtl),
       simREP = as.character(mapping_params$rep),
@@ -306,7 +232,13 @@ compile_full_assessment <- function(mapping_data, qtl_regions, causal_variants,
       maf = as.character(mapping_params$maf),
       effect_distribution = as.character(mapping_params$effect),
       strain_set_id = as.character(mapping_params$population),
+      mode = if (!is.null(mapping_params$mode)) as.character(mapping_params$mode) else NA_character_,
+      type = if (!is.null(mapping_params$type)) as.character(mapping_params$type) else NA_character_,
+      threshold = as.character(mapping_params$threshold_method),
       algorithm_id = algorithm_id,
+      alpha = if (!is.null(mapping_params$alpha)) as.numeric(mapping_params$alpha) else NA_real_,
+      ci_size = if (!is.null(mapping_params$ci_size)) as.integer(mapping_params$ci_size) else NA_integer_,
+      snp_grouping = if (!is.null(mapping_params$snp_grouping)) as.integer(mapping_params$snp_grouping) else NA_integer_,
       Simulated = factor(Simulated, levels = c("TRUE", "FALSE")),
       Detected = factor(Detected, levels = c("TRUE", "FALSE"))
     )
@@ -323,28 +255,94 @@ compile_full_assessment <- function(mapping_data, qtl_regions, causal_variants,
 
 
 # =============================================================================
+# Full Assessment Compilation
+# =============================================================================
+
+#' Compile full assessment combining simulated and detected QTLs
+#'
+#' Orchestrates the assessment pipeline: score causal markers -> build peak info ->
+#' find overlaps -> build union dataframe.
+#'
+#' Produces a dataframe containing:
+#'   - True positives: causal variants that fall within detected intervals
+#'   - False negatives: causal variants not within any detected interval
+#'   - False positives: detected peaks that don't contain any causal variant
+#'
+#' @param mapping_data Processed mapping dataframe (from analyze_mapping())
+#'   with columns: marker, CHROM, POS, P, log10p, significant, peak_id,
+#'   startPOS, peakPOS, endPOS, AF1, BETA, var.exp
+#' @param qtl_regions Dataframe from extract_qtl_regions()
+#' @param causal_variants Dataframe from load_causal_variants()
+#' @param mapping_params Named list with simulation parameters:
+#'   nqtl, rep, h2, maf, effect, population, algorithm, pca, threshold_method.
+#'   Optional: mode, type, alpha, ci_size, snp_grouping
+#' @return Dataframe with one row per QTL (simulated + detected, deduplicated)
+compile_full_assessment <- function(mapping_data, qtl_regions, causal_variants,
+                                    mapping_params) {
+
+  # Step 1: Score causal variant markers
+  effects_scores <- score_causal_markers(mapping_data, causal_variants)
+
+  # Step 2: Build peak info from QTL regions (one row per peak: highest log10p marker)
+  if (nrow(qtl_regions) == 0) {
+    peak_info <- data.frame(
+      CHROM = character(), marker = character(), POS = integer(),
+      AF1 = numeric(), BETA = numeric(), log10p = numeric(),
+      startPOS = integer(), peakPOS = integer(), endPOS = integer(),
+      peak_id = integer(), interval_size = integer(),
+      detected.peak = character(),
+      stringsAsFactors = FALSE
+    )
+  } else {
+    # Compute log10p if not present
+    if (!"log10p" %in% names(mapping_data)) {
+      mapping_data <- mapping_data %>%
+        dplyr::mutate(log10p = safe_log10p(P))
+    }
+    peak_info <- mapping_data %>%
+      dplyr::filter(!is.na(peak_id)) %>%
+      dplyr::group_by(peak_id) %>%
+      dplyr::slice_max(log10p, n = 1, with_ties = FALSE) %>%
+      dplyr::ungroup() %>%
+      dplyr::select(
+        CHROM, marker, POS, AF1, BETA, log10p,
+        startPOS, peakPOS, endPOS, peak_id, interval_size,
+        dplyr::any_of("var.exp")
+      ) %>%
+      dplyr::mutate(detected.peak = marker)
+  }
+
+  # Step 3: Find peak-causal overlaps
+  overlap_df <- find_peak_causal_overlaps(peak_info, effects_scores)
+
+  # Step 4: Build assessment union
+  build_assessment_union(effects_scores, overlap_df, mapping_params)
+}
+
+
+# =============================================================================
 # Output Formatting
 # =============================================================================
 
 #' Format assessment dataframe for TSV output
 #'
-#' Selects and orders columns to match the output format of Assess_Sims.R.
-#' Note: Simulated.QTL.VarExp and var.exp are NA in DB-path assessments
-#' since the genotype matrix is not available.
+#' Selects and orders columns to match the standardized output schema shared
+#' between DB-path and legacy-path assessments.
 #'
 #' @param assessment_df Dataframe from compile_full_assessment()
-#' @return Dataframe with columns ordered to match existing output
+#' @return Dataframe with standardized column ordering
 format_assessment_tsv <- function(assessment_df) {
   if (nrow(assessment_df) == 0) return(assessment_df)
 
-  # Ensure all expected columns exist (add NAs for missing)
+  # Standardized schema: columns shared between DB-path and legacy-path
   expected_cols <- c(
-    "QTL", "Simulated", "Detected", "log10p", "significant",
+    "QTL", "Simulated", "Detected", "CHROM", "POS", "RefAllele", "Frequency", "Effect",
+    "Simulated.QTL.VarExp", "log10p", "significant", "BETA",
     "startPOS", "peakPOS", "endPOS", "detected.peak",
     "interval.log10p", "interval.var.exp", "interval.Frequency",
     "peak_id", "interval_size", "top.hit",
-    "nQTL", "simREP", "h2", "maf", "effect_distribution",
-    "strain_set_id", "algorithm_id"
+    "nQTL", "simREP", "h2", "maf", "effect_distribution", "strain_set_id",
+    "mode", "type", "threshold", "algorithm_id", "alpha", "ci_size", "snp_grouping"
   )
 
   for (col in expected_cols) {
@@ -353,7 +351,6 @@ format_assessment_tsv <- function(assessment_df) {
     }
   }
 
-  # Select and order columns
   assessment_df %>%
     dplyr::select(dplyr::all_of(expected_cols))
 }
