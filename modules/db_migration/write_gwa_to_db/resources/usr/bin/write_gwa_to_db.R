@@ -45,6 +45,16 @@ source(file.path(r_source_dir, "database.R"))
 log_msg(paste("Reading GWA file:", opt$gwa_file))
 gwa_df <- read_raw_gwa_file(opt$gwa_file)
 
+# Deduplicate by marker (CHROM:POS) — LOCO .mlma files may contain duplicate rows
+# Matches dedup pattern in write_mapping_to_db() (database.R)
+n_before <- nrow(gwa_df)
+gwa_df <- gwa_df %>% dplyr::distinct(marker, .keep_all = TRUE)
+n_after <- nrow(gwa_df)
+if (n_before != n_after) {
+  log_msg(paste("Deduplicated:", n_before, "->", n_after, "unique markers (removed",
+                n_before - n_after, "duplicates)"))
+}
+
 # Construct mapping params from Nextflow channel metadata
 # Maps GWA mode/type to database algorithm/pca fields:
 #   mode "inbred" → algorithm "LMM-EXACT-INBRED"
