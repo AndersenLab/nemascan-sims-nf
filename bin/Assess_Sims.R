@@ -15,13 +15,16 @@ args <- commandArgs(trailingOnly = TRUE)
 # 2. path to genotype_matrix
 # 3. path to variant effect file sims.par
 # 4. path to the phenotype file sims.phen
-# 5. nQTL 
+# 5. nQTL
 # 6. simREP
 # 7. h2
 # 8. maf
 # 9. effect_distribution
 # 10. strain_set_id
-# 11. algorithm_id
+# 11. algorithm_id (mode_type_threshold, e.g. "inbred_pca_BF")
+# 12. alpha (significance level, default 0.05)
+# 13. ci_size (CI size in markers, default 150)
+# 14. snp_grouping (SNP grouping distance, default 1000)
 
 effects <- data.table::fread(
     args[3],
@@ -108,7 +111,7 @@ peak.info <- map_obj %>%
 simulated.mapping.results.scores <- map_obj %>%
     dplyr::rename(QTL = marker) %>%
     dplyr::filter(QTL %in% effects$QTL) %>%
-    dplyr::select(QTL, log10p, aboveBF)
+    dplyr::select(QTL, log10p, significant = aboveBF)
 
 
 effects.scores <- effects  %>%
@@ -148,6 +151,17 @@ overlap <- IRanges::findOverlapPairs(
                     interval.Frequency = AF1) %>%
         dplyr::select(-c(CHROM, marker, POS))
 
+# Parse mode, type, threshold from algorithm_id argument (e.g. "inbred_pca_BF")
+algorithm_id_parts <- strsplit(args[11], "_")[[1]]
+mode_val <- algorithm_id_parts[1]
+type_val <- algorithm_id_parts[2]
+threshold_val <- algorithm_id_parts[3]
+
+# Parse optional new arguments with defaults
+alpha_val <- if (length(args) >= 12) as.numeric(args[12]) else 0.05
+ci_size_val <- if (length(args) >= 13) as.integer(args[13]) else 150L
+snp_grouping_val <- if (length(args) >= 14) as.integer(args[14]) else 1000L
+
 all.QTL <- data.frame(c(effects.scores$QTL, overlap$QTL)) %>%
             `colnames<-`(c("QTL")) %>%
             dplyr::filter(!duplicated(QTL)) %>%
@@ -158,7 +172,6 @@ all.QTL <- data.frame(c(effects.scores$QTL, overlap$QTL)) %>%
             dplyr::full_join(.,effects.scores, by = "QTL") %>%
             dplyr::full_join(.,overlap, by = "QTL") %>%
             dplyr::mutate(
-                        #algorithm = algorithm_id ,
                         top.hit = QTL == detected.peak,
                         nQTL = args[5],
                         simREP = args[6],
@@ -166,8 +179,13 @@ all.QTL <- data.frame(c(effects.scores$QTL, overlap$QTL)) %>%
                         maf = args[8],
                         effect_distribution = args[9],
                         strain_set_id = args[10],
-                        algorithm_id = args[11]
-                        #sim = x)
+                        mode = mode_val,
+                        type = type_val,
+                        threshold = threshold_val,
+                        algorithm_id = args[11],
+                        alpha = alpha_val,
+                        ci_size = ci_size_val,
+                        snp_grouping = snp_grouping_val
             )
          
 all.QTL$Simulated <- factor(all.QTL$Simulated, levels = c("TRUE","FALSE"))
