@@ -35,10 +35,19 @@ test_that("load_causal_variants stops on missing file", {
 
 
 # =============================================================================
-# assess_qtl_detection()
+# score_causal_markers()
 # =============================================================================
 
-test_that("assess_qtl_detection finds overlapping causal variants", {
+test_that("score_causal_markers joins causal variants with mapping scores", {
+  mapping_data <- data.frame(
+    marker = c("2:100", "3:500", "4:200"),
+    CHROM = c("2", "3", "4"),
+    POS = c(100L, 500L, 200L),
+    P = c(0.0001, 0.5, 0.5),
+    significant = c(1L, 0L, 0L),
+    stringsAsFactors = FALSE
+  )
+
   causal <- data.frame(
     QTL = c("2:100", "3:500"),
     CHROM = c("2", "3"),
@@ -49,82 +58,124 @@ test_that("assess_qtl_detection finds overlapping causal variants", {
     stringsAsFactors = FALSE
   )
 
-  regions <- data.frame(
-    peak_id = c(1L, 2L),
-    CHROM = c("2", "4"),
-    startPOS = c(50L, 400L),
-    peakPOS = c(100L, 450L),
-    endPOS = c(150L, 600L),
-    peak_marker = c("2:100", "4:450"),
-    max_log10p = c(5.0, 3.0),
-    n_sig_markers = c(10L, 5L),
-    interval_size = c(100L, 200L),
-    sig_threshold_value = c(4.0, 4.0),
-    sig_threshold_method = c("EIGEN", "EIGEN"),
-    stringsAsFactors = FALSE
-  )
-
-  result <- assess_qtl_detection(regions, causal)
+  result <- score_causal_markers(mapping_data, causal)
 
   expect_s3_class(result, "data.frame")
-  # 2:100 is in region on CHROM 2 (50-150), 3:500 is NOT in region on CHROM 4
   expect_equal(nrow(result), 2)
-
-  detected <- result %>% dplyr::filter(!is.na(detected_peak_id))
-  undetected <- result %>% dplyr::filter(is.na(detected_peak_id))
-
-  expect_equal(nrow(detected), 1)
-  expect_equal(detected$QTL, "2:100")
-  expect_equal(nrow(undetected), 1)
-  expect_equal(undetected$QTL, "3:500")
+  expect_true(all(c("QTL", "CHROM", "POS", "log10p", "significant") %in% names(result)))
+  expect_equal(result$QTL, c("2:100", "3:500"))
+  expect_equal(result$significant, c(1L, 0L))
 })
 
-test_that("assess_qtl_detection handles no QTL regions", {
-  causal <- data.frame(
-    QTL = c("2:100"),
+test_that("score_causal_markers filters out causal variants not in mapping", {
+  mapping_data <- data.frame(
+    marker = c("2:100"),
     CHROM = c("2"),
     POS = c(100L),
-    RefAllele = c("A"),
-    Frequency = c(0.1),
-    Effect = c(1.0),
+    P = c(0.0001),
+    significant = c(1L),
     stringsAsFactors = FALSE
   )
 
-  empty_regions <- data.frame(
-    peak_id = integer(),
-    CHROM = character(),
-    startPOS = integer(),
-    peakPOS = integer(),
-    endPOS = integer(),
-    peak_marker = character(),
+  causal <- data.frame(
+    QTL = c("2:100", "5:999"),
+    CHROM = c("2", "5"),
+    POS = c(100L, 999L),
+    RefAllele = c("A", "T"),
+    Frequency = c(0.1, 0.3),
+    Effect = c(1.0, 0.5),
     stringsAsFactors = FALSE
   )
 
-  result <- assess_qtl_detection(empty_regions, causal)
-
+  result <- score_causal_markers(mapping_data, causal)
+  # Only 2:100 should be present (5:999 not in mapping → NA log10p → filtered)
   expect_equal(nrow(result), 1)
-  expect_true(is.na(result$detected_peak_id[1]))
+  expect_equal(result$QTL, "2:100")
 })
 
-test_that("assess_qtl_detection handles empty causal variants", {
-  regions <- data.frame(
-    peak_id = 1L,
+
+# =============================================================================
+# find_peak_causal_overlaps()
+# =============================================================================
+
+test_that("find_peak_causal_overlaps finds overlapping causal variants", {
+  peak_info <- data.frame(
+    CHROM = "2", marker = "2:100", POS = 100L,
+    AF1 = 0.1, BETA = 1.0, log10p = 5.0,
+    startPOS = 50L, peakPOS = 100L, endPOS = 150L,
+    peak_id = 1L, interval_size = 100L,
+    detected.peak = "2:100",
+    stringsAsFactors = FALSE
+  )
+
+  effects_scores <- data.frame(
+    QTL = c("2:100", "3:500"),
+    CHROM = c("2", "3"),
+    POS = c(100L, 500L),
+    RefAllele = c("A", "G"),
+    Frequency = c(0.1, 0.2),
+    Effect = c(1.0, -0.5),
+    log10p = c(5.0, 0.3),
+    significant = c(1L, 0L),
+    stringsAsFactors = FALSE
+  )
+
+  result <- find_peak_causal_overlaps(peak_info, effects_scores)
+
+  expect_s3_class(result, "data.frame")
+  # 2:100 is in peak (50-150), 3:500 is not → only 2:100 matched
+  expect_equal(nrow(result), 1)
+  expect_equal(result$QTL, "2:100")
+  expect_equal(result$detected.peak, "2:100")
+})
+
+test_that("find_peak_causal_overlaps returns false positive for unmatched peak", {
+  peak_info <- data.frame(
+    CHROM = "4", marker = "4:250", POS = 250L,
+    AF1 = 0.3, BETA = 1.0, log10p = 5.0,
+    startPOS = 200L, peakPOS = 250L, endPOS = 300L,
+    peak_id = 1L, interval_size = 100L,
+    detected.peak = "4:250",
+    stringsAsFactors = FALSE
+  )
+
+  effects_scores <- data.frame(
+    QTL = "2:100",
     CHROM = "2",
-    startPOS = 50L,
-    peakPOS = 100L,
-    endPOS = 150L,
-    peak_marker = "2:100",
+    POS = 100L,
+    RefAllele = "A",
+    Frequency = 0.1,
+    Effect = 1.0,
+    log10p = 3.0,
+    significant = 0L,
     stringsAsFactors = FALSE
   )
 
-  empty_causal <- data.frame(
-    QTL = character(),
-    CHROM = character(),
-    POS = integer(),
+  result <- find_peak_causal_overlaps(peak_info, effects_scores)
+
+  # Peak on CHROM 4 doesn't overlap causal on CHROM 2 → false positive
+  expect_equal(nrow(result), 1)
+  expect_equal(result$QTL, "4:250")
+  expect_true(is.na(result$RefAllele))
+})
+
+test_that("find_peak_causal_overlaps handles empty inputs", {
+  empty_peaks <- data.frame(
+    CHROM = character(), marker = character(), POS = integer(),
+    AF1 = numeric(), BETA = numeric(), log10p = numeric(),
+    startPOS = integer(), peakPOS = integer(), endPOS = integer(),
+    peak_id = integer(), interval_size = integer(),
+    detected.peak = character(), stringsAsFactors = FALSE
+  )
+
+  effects <- data.frame(
+    QTL = "2:100", CHROM = "2", POS = 100L,
+    RefAllele = "A", Frequency = 0.1, Effect = 1.0,
+    log10p = 3.0, significant = 0L,
     stringsAsFactors = FALSE
   )
 
-  result <- assess_qtl_detection(regions, empty_causal)
+  result <- find_peak_causal_overlaps(empty_peaks, effects)
   expect_equal(nrow(result), 0)
 })
 
@@ -180,7 +231,9 @@ test_that("compile_full_assessment produces correct structure", {
     nqtl = 2, rep = 1, h2 = 0.5, maf = 0.05,
     effect = "gamma", population = "testpop",
     algorithm = "LMM-EXACT-INBRED", pca = TRUE,
-    threshold_method = "EIGEN"
+    threshold_method = "EIGEN",
+    mode = "inbred", type = "pca",
+    alpha = 0.05, ci_size = 150, snp_grouping = 1000
   )
 
   result <- compile_full_assessment(mapping_data, qtl_regions, causal, params)
@@ -189,9 +242,10 @@ test_that("compile_full_assessment produces correct structure", {
   expect_true(nrow(result) > 0)
 
   # Check required columns exist
-  expected_cols <- c("QTL", "Simulated", "Detected", "nQTL", "simREP",
-                     "h2", "maf", "effect_distribution", "strain_set_id",
-                     "algorithm_id")
+  expected_cols <- c("QTL", "Simulated", "Detected", "CHROM", "POS",
+                     "nQTL", "simREP", "h2", "maf", "effect_distribution",
+                     "strain_set_id", "algorithm_id", "mode", "type",
+                     "threshold", "alpha", "ci_size", "snp_grouping")
   for (col in expected_cols) {
     expect_true(col %in% names(result), label = paste("Column", col, "exists"))
   }
@@ -209,6 +263,9 @@ test_that("compile_full_assessment produces correct structure", {
   # Simulation metadata columns
   expect_equal(unique(as.character(result$nQTL)), "2")
   expect_equal(unique(as.character(result$strain_set_id)), "testpop")
+  expect_equal(unique(result$mode), "inbred")
+  expect_equal(unique(result$type), "pca")
+  expect_equal(unique(result$threshold), "EIGEN")
 })
 
 test_that("compile_full_assessment handles no detected QTLs", {
@@ -259,9 +316,6 @@ test_that("compile_full_assessment handles no detected QTLs", {
 })
 
 test_that("compile_full_assessment identifies false positives", {
-  # Mapping with detected peak on CHROM 4 that does NOT contain the causal variant
-  # Causal variant 2:100 IS in the mapping data (as it would be in a real marker set)
-  # but the detected peak is on CHROM 4
   mapping_data <- data.frame(
     marker = c("2:100", "4:200", "4:250", "4:300"),
     CHROM = c("2", "4", "4", "4"),
@@ -293,7 +347,6 @@ test_that("compile_full_assessment identifies false positives", {
     stringsAsFactors = FALSE
   )
 
-  # Causal variant on CHROM 2 — not within the CHROM 4 detected interval
   causal <- data.frame(
     QTL = c("2:100"),
     CHROM = c("2"),
@@ -313,8 +366,6 @@ test_that("compile_full_assessment identifies false positives", {
 
   result <- compile_full_assessment(mapping_data, qtl_regions, causal, params)
 
-  # Should have the causal variant (simulated, not detected) and
-  # the false positive peak (detected, not simulated)
   expect_true(nrow(result) >= 2)
 
   fp <- result %>% dplyr::filter(Detected == "TRUE", Simulated == "FALSE")
@@ -324,6 +375,10 @@ test_that("compile_full_assessment identifies false positives", {
   expect_equal(fp$QTL, "4:250")
   expect_equal(nrow(fn), 1, label = "one false negative (undetected causal)")
   expect_equal(fn$QTL, "2:100")
+
+  # False positive should have CHROM/POS from the peak
+  expect_equal(fp$CHROM, "4")
+  expect_equal(fp$POS, 250L)
 })
 
 
@@ -336,8 +391,15 @@ test_that("format_assessment_tsv produces correct column set", {
     QTL = "2:100",
     Simulated = factor("TRUE", levels = c("TRUE", "FALSE")),
     Detected = factor("TRUE", levels = c("TRUE", "FALSE")),
+    CHROM = "2",
+    POS = 100L,
+    RefAllele = "A",
+    Frequency = 0.1,
+    Effect = 1.0,
+    Simulated.QTL.VarExp = NA_real_,
     log10p = 5.0,
     significant = 1L,
+    BETA = 1.0,
     startPOS = 50L,
     peakPOS = 100L,
     endPOS = 150L,
@@ -354,19 +416,26 @@ test_that("format_assessment_tsv produces correct column set", {
     maf = "0.05",
     effect_distribution = "gamma",
     strain_set_id = "testpop",
+    mode = "inbred",
+    type = "pca",
+    threshold = "EIGEN",
     algorithm_id = "LMM-EXACT-INBRED_PCA_EIGEN",
+    alpha = 0.05,
+    ci_size = 150L,
+    snp_grouping = 1000L,
     stringsAsFactors = FALSE
   )
 
   result <- format_assessment_tsv(input)
 
   expected_cols <- c(
-    "QTL", "Simulated", "Detected", "log10p", "significant",
+    "QTL", "Simulated", "Detected", "CHROM", "POS", "RefAllele", "Frequency", "Effect",
+    "Simulated.QTL.VarExp", "log10p", "significant", "BETA",
     "startPOS", "peakPOS", "endPOS", "detected.peak",
     "interval.log10p", "interval.var.exp", "interval.Frequency",
     "peak_id", "interval_size", "top.hit",
-    "nQTL", "simREP", "h2", "maf", "effect_distribution",
-    "strain_set_id", "algorithm_id"
+    "nQTL", "simREP", "h2", "maf", "effect_distribution", "strain_set_id",
+    "mode", "type", "threshold", "algorithm_id", "alpha", "ci_size", "snp_grouping"
   )
 
   expect_equal(names(result), expected_cols)
@@ -388,4 +457,6 @@ test_that("format_assessment_tsv adds missing columns as NA", {
   result <- format_assessment_tsv(input)
   expect_true("startPOS" %in% names(result))
   expect_true(is.na(result$startPOS[1]))
+  expect_true("mode" %in% names(result))
+  expect_true(is.na(result$mode[1]))
 })
