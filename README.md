@@ -398,3 +398,46 @@ This final process outputs a `simulation_assessment_results.tsv` to the analysis
 - `effect_distribution`: Effect size range used in simulation
 - `strain_set_id`: Name of the strain set used in simulation
 - `algorithm_id`: Mapping method (Inbred, Loco, Inbred + PCA, LOCO + PCA) and significance threshold (e.g. `inbred_pca_EIGEN`, or `inbred_pca_BF`)
+
+## Test Data
+
+### Generating Integration Test Data
+
+The script `tests/collect_test_data.sh` runs the pipeline with the `test` profile and collects outputs needed by integration tests. It runs the actual pipeline (not a separate reimplementation), so the test data is always consistent with the current code.
+
+**Requirements:** Docker, Nextflow (NXF_VER=24.10.4 or any 24.10.x)
+
+```bash
+# Run pipeline and collect outputs (~20-45 min on first run)
+bash tests/collect_test_data.sh
+
+# Collect outputs from a previous pipeline run without rerunning
+bash tests/collect_test_data.sh --collect-only
+
+# Remove previous results before running
+bash tests/collect_test_data.sh --clean
+```
+
+The script runs `nextflow run main.nf -profile test,docker --legacy_assess`, which produces both DB-path and legacy assessment outputs. It then copies the results into `tests/integration_data/`.
+
+After collection, the script prints the exact command to run integration tests:
+
+```bash
+TEST_DB_DIR=tests/integration_data/db \
+TEST_WORK_DIR=tests/.nf-work \
+TEST_EXISTING_ASSESSMENT=tests/integration_data/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+Subsequent runs benefit from Nextflow's `-resume` behavior — only processes affected by code changes are rerun.
+
+### Unit Tests
+
+Unit tests do not require pipeline output. They use static fixtures in `tests/fixtures/` and run with:
+
+```bash
+Rscript tests/run_tests.R
+```
+
+Integration test files skip automatically when the required environment variables are not set.
