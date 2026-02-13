@@ -1,18 +1,19 @@
 #!/usr/bin/env Rscript
-# analyze_and_assess.R - Query DB, detect QTL intervals, assess against simulated truth
+# analyze_qtl.R - Query DB and detect QTL intervals
 #
-# Implements the DB-path equivalent of R_GET_GCTA_INTERVALS + R_ASSESS_SIMS:
+# Step 1 of the split DB-path analysis (formerly part of analyze_and_assess.R):
 #   1. Query mapping data from Parquet database
 #   2. Calculate significance threshold (BF or EIGEN)
 #   3. Detect QTL intervals via analyze_mapping()
-#   4. Load causal variants from .par file
-#   5. Assess detection (simulated vs detected)
-#   6. Write assessment TSV (column-compatible with existing output)
+#   4. Write QTL regions TSV
 #
-# Usage: analyze_and_assess.R --group <group> --maf <maf> --nqtl <nqtl>
+# Does NOT use the .par file — it is staged as a pass-through for ASSESS_SIMS.
+#
+# Usage: analyze_qtl.R --group <group> --maf <maf> --nqtl <nqtl>
 #            --effect <effect> --rep <rep> --h2 <h2> --mode <mode>
-#            --type <type> --threshold <BF|EIGEN> --par_file <file>
+#            --type <type> --threshold <BF|EIGEN>
 #            --base_dir <db_dir> --ci_size <int> --snp_grouping <int>
+#            --alpha <num>
 
 library(optparse)
 
@@ -26,17 +27,19 @@ option_list <- list(
   make_option("--mode", type = "character", help = "GWA mode (inbred/loco)"),
   make_option("--type", type = "character", help = "PCA type (pca/nopca)"),
   make_option("--threshold", type = "character", help = "Threshold method (BF/EIGEN)"),
-  make_option("--par_file", type = "character", help = "Path to .par file with causal variants"),
   make_option("--base_dir", type = "character", help = "Database output directory"),
   make_option("--ci_size", type = "integer", default = 150, help = "CI size in markers"),
-  make_option("--snp_grouping", type = "integer", default = 1000, help = "SNP grouping distance")
+  make_option("--snp_grouping", type = "integer", default = 1000, help = "SNP grouping distance"),
+  make_option("--alpha", type = "double", default = 0.05, help = "Significance level")
 )
 
 opt <- parse_args(OptionParser(option_list = option_list))
 
 # Validate required args
-required <- c("group", "maf", "nqtl", "effect", "rep", "h2", "mode", "type",
-               "threshold", "par_file", "base_dir")
+required <- c(
+  "group", "maf", "nqtl", "effect", "rep", "h2", "mode", "type",
+  "threshold", "base_dir"
+)
 missing <- required[!required %in% names(opt) | sapply(opt[required], is.null)]
 if (length(missing) > 0) {
   stop(paste("Missing required arguments:", paste(missing, collapse = ", ")))
@@ -52,10 +55,11 @@ source(file.path(r_source_dir, "io.R"))
 source(file.path(r_source_dir, "database.R"))
 source(file.path(r_source_dir, "queries.R"))
 source(file.path(r_source_dir, "analysis.R"))
-source(file.path(r_source_dir, "assessment.R"))
 
-# Construct mapping params (same as write_gwa_to_db.R)
+# Construct mapping params
 algorithm <- if (opt$mode == "inbred") "LMM-EXACT-INBRED" else "LMM-EXACT-LOCO"
+
+# set log pca flag based on type (pca/nopca)
 pca <- opt$type == "pca"
 
 params <- list(
@@ -84,16 +88,16 @@ if (nrow(mapping_data) == 0) {
 log_msg(paste("Queried", nrow(mapping_data), "markers from database"))
 
 # Step 2: Get threshold parameters
-threshold_params <- get_threshold_params(opt$group, as.numeric(opt$maf), 0.05, opt$base_dir)
+threshold_params <- get_threshold_params(opt$group, as.numeric(opt$maf), opt$alpha, opt$base_dir)
 
 # Step 3: Calculate threshold
 threshold_method <- toupper(opt$threshold)
 if (threshold_method == "BF") {
-  threshold <- calculate_threshold("BF", n_markers = threshold_params$n_markers)
+  threshold <- calculate_threshold("BF", n_markers = threshold_params$n_markers, alpha = opt$alpha)
 } else if (threshold_method == "EIGEN") {
-  threshold <- calculate_threshold("EIGEN", n_independent = threshold_params$n_independent_tests)
+  threshold <- calculate_threshold("EIGEN", n_independent = threshold_params$n_independent_tests, alpha = opt$alpha)
 } else {
-  threshold <- calculate_threshold(as.numeric(opt$threshold))
+  threshold <- calculate_threshold(as.numeric(opt$threshold), alpha = opt$alpha)
 }
 
 # Step 4: Run analysis pipeline (flag significant, group intervals, define CIs)
@@ -108,35 +112,17 @@ processed <- analyze_mapping(
 # Step 5: Extract QTL regions
 qtl_regions <- extract_qtl_regions(processed)
 
-# Step 6: Load causal variants from .par file
-causal_variants <- load_causal_variants(opt$par_file)
-
-# Step 7: Compile full assessment
-assessment <- compile_full_assessment(
-  mapping_data = processed,
-  qtl_regions = qtl_regions,
-  causal_variants = causal_variants,
-  mapping_params = params
-)
-
-# Step 8: Format and write output
-if (nrow(assessment) > 0) {
-  formatted <- format_assessment_tsv(assessment)
-} else {
-  # Even with no QTLs, write an empty file with correct structure
-  formatted <- assessment
-}
-
+# Step 6: Write QTL regions TSV
 output_file <- paste0(
   opt$nqtl, "_", opt$rep, "_", opt$h2, "_", opt$maf, "_",
   opt$effect, "_", opt$group, "_", opt$mode, "_", opt$type, "_",
-  opt$threshold, "_db_assessment.tsv"
+  opt$threshold, "_qtl_regions.tsv"
 )
 
 write.table(
-  formatted,
+  qtl_regions,
   file = output_file,
-  sep = "\t", row.names = FALSE, quote = FALSE, col.names = FALSE
+  sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE
 )
 
-log_msg(paste("Assessment written:", output_file, "(", nrow(formatted), "rows)"))
+log_msg(paste("QTL regions written:", output_file, "(", nrow(qtl_regions), "regions)"))
