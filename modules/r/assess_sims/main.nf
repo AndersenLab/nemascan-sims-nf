@@ -10,6 +10,9 @@ process R_ASSESS_SIMS {
     tuple path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"), path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par")
     tuple path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_processed_LMM-EXACT_${mode}_${type}_mapping.tsv"), path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_LMM-EXACT_${mode}_${type}_qtl_region.tsv")
     path assess_sims
+    val alpha
+    val ci_size
+    val snp_grouping
 
     output:
     path "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_${mode}_${type}_${threshold}_mapping.tsv", emit: assessment
@@ -23,8 +26,9 @@ process R_ASSESS_SIMS {
     """
     Rscript --vanilla ${assess_sims} ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_processed_LMM-EXACT_${mode}_${type}_mapping.tsv \\
         ${gm} ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno \\
-        ${nqtl} ${rep} ${h2} ${maf} ${effect} ${group} ${mode}_${type}_${threshold} 
-    
+        ${nqtl} ${rep} ${h2} ${maf} ${effect} ${group} ${mode}_${type}_${threshold} \\
+        ${alpha} ${ci_size} ${snp_grouping}
+
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         R: \$( Rscript --version |& cut -f 4 )
