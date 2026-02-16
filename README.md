@@ -401,6 +401,27 @@ This final process outputs a `simulation_assessment_results.tsv` to the analysis
 
 ## Test Data
 
+### Generating the Test VCF
+
+The test VCF (`data/test/test.vcf.gz`) is not committed to the repository due to its size (~71 MB). The script `data/test/generate_test_vcf.sh` creates it by subsetting the full CaeNDR isotype reference VCF to the 13 strains in `data/test/test_strains.txt` across chromosomes I, II, and V.
+
+**Requirements:** bcftools (>= 1.16), tabix, and the source VCF
+
+```bash
+# Download the source VCF from CaeNDR (~7.8 GB)
+# https://elegansvariation.org/data/release/latest
+# File: WI.20220216.hard-filter.isotype.vcf.gz
+
+# Generate the test VCF (takes 5-10 minutes)
+./data/test/generate_test_vcf.sh /path/to/WI.20220216.hard-filter.isotype.vcf.gz
+```
+
+This produces:
+- `data/test/test.vcf.gz` — BGZF-compressed VCF (13 samples, chromosomes I/II/V, monomorphic sites removed)
+- `data/test/test.vcf.gz.tbi` — tabix index
+
+The script also strips `##contig` headers for absent chromosomes (III, IV, X). This is required because `LOCAL_GET_CONTIG_INFO` parses contig headers to build the chromosome mapping, and headers for chromosomes without data cause downstream failures in `R_FIND_GENOTYPE_MATRIX_EIGEN`.
+
 ### Generating Integration Test Data
 
 The script `tests/collect_test_data.sh` runs the pipeline with the `test` profile and collects outputs needed by integration tests. It runs the actual pipeline (not a separate reimplementation), so the test data is always consistent with the current code.
