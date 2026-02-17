@@ -115,13 +115,13 @@ message("DB directory:        ", db_dir)
 #| label: theme-and-helpers
 
 # ggplot2 theme for cross-validation plots
-theme_xval <- theme_bw(base_size = 12) +
-  theme(
-    panel.grid.minor = element_blank(),
-    strip.background = element_rect(fill = "grey95"),
+theme_xval <- ggplot2::theme_bw(base_size = 12) +
+  ggplot2::theme(
+    panel.grid.minor = ggplot2::element_blank(),
+    strip.background = ggplot2::element_rect(fill = "grey95"),
     legend.position = "bottom"
   )
-theme_set(theme_xval)
+ggplot2::theme_set(theme_xval)
 
 path_colors <- c("Legacy" = "#E69F00", "DB" = "#56B4E9")
 designation_colors <- c(
@@ -209,7 +209,7 @@ normalize_algorithm_id <- function(alg_id) {
 # Create a composite key for joining rows across both assessments
 make_join_key <- function(df) {
   df %>%
-    mutate(
+    dplyr::mutate(
       norm_alg = normalize_algorithm_id(algorithm_id),
       join_key = paste(nQTL, simREP, h2, maf, effect_distribution,
                        strain_set_id, norm_alg, QTL, sep = "|")
@@ -219,7 +219,7 @@ make_join_key <- function(df) {
 # Create method label from mode/type/threshold for stratified analysis
 parse_method_label <- function(df) {
   df %>%
-    mutate(
+    dplyr::mutate(
       norm_alg = normalize_algorithm_id(algorithm_id),
       method_label = paste(
         gsub("_", "/", sub("_[A-Z]+$", "", norm_alg)),  # mode/pca
@@ -252,8 +252,14 @@ message("DB assessment:       ", nrow(db_assess), " rows x ", ncol(db_assess), "
 ```{r}
 #| label: designate-and-label
 # Apply designate_qtl() from sim_performance.R to classify outcomes
-existing_d <- existing %>% designate_qtl() %>% parse_method_label() %>% mutate(path = "Legacy")
-db_d <- db_assess %>% designate_qtl() %>% parse_method_label() %>% mutate(path = "DB")
+existing_d <- existing %>%
+  designate_qtl() %>%
+  parse_method_label() %>%
+  dplyr::mutate(path = "Legacy")
+db_d <- db_assess %>%
+  designate_qtl() %>%
+  parse_method_label() %>%
+  dplyr::mutate(path = "DB")
 ```
 
 ```{r}
@@ -321,20 +327,22 @@ between the DB and legacy assessment paths.
 existing_keyed <- existing_d %>% make_join_key()
 db_keyed <- db_d %>% make_join_key()
 
-joined <- inner_join(
+joined <- dplyr::inner_join(
   existing_keyed %>%
-    select(join_key, method_label, norm_alg, threshold,
-           nQTL, simREP, h2, maf, strain_set_id,
-           designation_legacy = designation,
-           Detected_legacy = Detected, Simulated_legacy = Simulated,
-           log10p_legacy = log10p,
-           startPOS_legacy = startPOS, peakPOS_legacy = peakPOS, endPOS_legacy = endPOS),
+    dplyr::select(join_key, method_label, norm_alg, threshold,
+                  nQTL, simREP, h2, maf, strain_set_id,
+                  designation_legacy = designation,
+                  Detected_legacy = Detected, Simulated_legacy = Simulated,
+                  log10p_legacy = log10p,
+                  startPOS_legacy = startPOS, peakPOS_legacy = peakPOS,
+                  endPOS_legacy = endPOS),
   db_keyed %>%
-    select(join_key,
-           designation_db = designation,
-           Detected_db = Detected, Simulated_db = Simulated,
-           log10p_db = log10p,
-           startPOS_db = startPOS, peakPOS_db = peakPOS, endPOS_db = endPOS),
+    dplyr::select(join_key,
+                  designation_db = designation,
+                  Detected_db = Detected, Simulated_db = Simulated,
+                  log10p_db = log10p,
+                  startPOS_db = startPOS, peakPOS_db = peakPOS,
+                  endPOS_db = endPOS),
   by = "join_key"
 )
 
@@ -363,9 +371,9 @@ interval_jaccard <- function(start_a, end_a, start_b, end_b) {
 # --- Score 1: Detection Concordance ---
 # Fraction of QTL rows where Detected flag agrees
 detection_conc <- joined %>%
-  group_by(across(all_of(mapping_group))) %>%
-  summarise(
-    n_qtl = n(),
+  dplyr::group_by(dplyr::across(dplyr::all_of(mapping_group))) %>%
+  dplyr::summarise(
+    n_qtl = dplyr::n(),
     n_detect_agree = sum(Detected_legacy == Detected_db),
     detection_concordance = n_detect_agree / n_qtl,
     .groups = "drop"
@@ -374,10 +382,10 @@ detection_conc <- joined %>%
 # --- Score 2: Designation Concordance ---
 # Fraction of QTL rows where designation category agrees
 designation_conc <- joined %>%
-  filter(!is.na(designation_legacy), !is.na(designation_db)) %>%
-  group_by(across(all_of(mapping_group))) %>%
-  summarise(
-    n_designated = n(),
+  dplyr::filter(!is.na(designation_legacy), !is.na(designation_db)) %>%
+  dplyr::group_by(dplyr::across(dplyr::all_of(mapping_group))) %>%
+  dplyr::summarise(
+    n_designated = dplyr::n(),
     n_desig_agree = sum(designation_legacy == designation_db),
     designation_concordance = n_desig_agree / n_designated,
     .groups = "drop"
@@ -387,19 +395,21 @@ designation_conc <- joined %>%
 # For QTLs detected by both paths, Jaccard overlap of [startPOS, endPOS].
 # Per-QTL scores are averaged to a per-mapping score.
 interval_conc_per_qtl <- joined %>%
-  filter(Detected_legacy == "TRUE", Detected_db == "TRUE",
-         !is.na(startPOS_legacy), !is.na(startPOS_db),
-         !is.na(endPOS_legacy), !is.na(endPOS_db)) %>%
-  mutate(
+  dplyr::filter(
+    Detected_legacy == "TRUE", Detected_db == "TRUE",
+    !is.na(startPOS_legacy), !is.na(startPOS_db),
+    !is.na(endPOS_legacy), !is.na(endPOS_db)
+  ) %>%
+  dplyr::mutate(
     qtl_interval_jaccard = interval_jaccard(
       startPOS_legacy, endPOS_legacy, startPOS_db, endPOS_db
     )
   )
 
 interval_conc <- interval_conc_per_qtl %>%
-  group_by(across(all_of(mapping_group))) %>%
-  summarise(
-    n_intervals = n(),
+  dplyr::group_by(dplyr::across(dplyr::all_of(mapping_group))) %>%
+  dplyr::summarise(
+    n_intervals = dplyr::n(),
     n_perfect = sum(qtl_interval_jaccard == 1),
     interval_concordance = mean(qtl_interval_jaccard),
     .groups = "drop"
@@ -407,13 +417,16 @@ interval_conc <- interval_conc_per_qtl %>%
 
 # --- Combine all three scores into one table ---
 concordance <- detection_conc %>%
-  select(all_of(mapping_group), n_qtl, detection_concordance) %>%
-  left_join(
-    designation_conc %>% select(all_of(mapping_group), designation_concordance),
+  dplyr::select(dplyr::all_of(mapping_group), n_qtl, detection_concordance) %>%
+  dplyr::left_join(
+    designation_conc %>%
+      dplyr::select(dplyr::all_of(mapping_group), designation_concordance),
     by = mapping_group
   ) %>%
-  left_join(
-    interval_conc %>% select(all_of(mapping_group), n_intervals, n_perfect, interval_concordance),
+  dplyr::left_join(
+    interval_conc %>%
+      dplyr::select(dplyr::all_of(mapping_group), n_intervals, n_perfect,
+                    interval_concordance),
     by = mapping_group
   )
 
@@ -432,8 +445,8 @@ display_cols <- c(mapping_group, "n_qtl",
                   "detection_concordance", "designation_concordance",
                   "n_intervals", "interval_concordance")
 concordance_display <- concordance %>%
-  select(any_of(display_cols)) %>%
-  mutate(
+  dplyr::select(dplyr::any_of(display_cols)) %>%
+  dplyr::mutate(
     detection_concordance = sprintf("%.3f", detection_concordance),
     designation_concordance = ifelse(is.na(designation_concordance), "-",
                                      sprintf("%.3f", designation_concordance)),
@@ -458,16 +471,16 @@ score_long <- concordance %>%
     names_to = "score_type",
     values_to = "score"
   ) %>%
-  filter(!is.na(score)) %>%
-  mutate(score_type = gsub("_concordance", "", score_type) %>%
-           gsub("^(.)", "\\U\\1", ., perl = TRUE))
+  dplyr::filter(!is.na(score)) %>%
+  dplyr::mutate(score_type = gsub("_concordance", "", score_type) %>%
+                  gsub("^(.)", "\\U\\1", ., perl = TRUE))
 
-ggplot(score_long, aes(x = score, fill = score_type)) +
-  geom_histogram(binwidth = 0.05, boundary = 0, color = "white") +
-  facet_wrap(~ score_type, scales = "free_y") +
-  scale_x_continuous(limits = c(-0.05, 1.05), breaks = seq(0, 1, 0.25)) +
-  labs(x = "Concordance Score", y = "Count", fill = "Score") +
-  guides(fill = "none")
+ggplot2::ggplot(score_long, ggplot2::aes(x = score, fill = score_type)) +
+  ggplot2::geom_histogram(binwidth = 0.05, boundary = 0, color = "white") +
+  ggplot2::facet_wrap(~ score_type, scales = "free_y") +
+  ggplot2::scale_x_continuous(limits = c(-0.05, 1.05), breaks = seq(0, 1, 0.25)) +
+  ggplot2::labs(x = "Concordance Score", y = "Count", fill = "Score") +
+  ggplot2::guides(fill = "none")
 ```
 
 ### Average Concordance by Method and Threshold
@@ -478,15 +491,15 @@ Concordance scores averaged across all replicates within each method and thresho
 #| label: avg-concordance-by-method
 #| results: asis
 avg_concordance <- concordance %>%
-  group_by(method_label, threshold) %>%
-  summarise(
-    n_replicates = n(),
+  dplyr::group_by(method_label, threshold) %>%
+  dplyr::summarise(
+    n_replicates = dplyr::n(),
     mean_detection = mean(detection_concordance, na.rm = TRUE),
     mean_designation = mean(designation_concordance, na.rm = TRUE),
     mean_interval = mean(interval_concordance, na.rm = TRUE),
     .groups = "drop"
   ) %>%
-  mutate(
+  dplyr::mutate(
     mean_detection = sprintf("%.4f", mean_detection),
     mean_designation = ifelse(is.nan(as.numeric(mean_designation)), "-",
                                sprintf("%.4f", as.numeric(mean_designation))),
@@ -506,8 +519,8 @@ knitr::kable(avg_concordance,
 #| fig-height: 5
 
 avg_long <- concordance %>%
-  group_by(method_label, threshold) %>%
-  summarise(
+  dplyr::group_by(method_label, threshold) %>%
+  dplyr::summarise(
     Detection = mean(detection_concordance, na.rm = TRUE),
     Designation = mean(designation_concordance, na.rm = TRUE),
     Interval = mean(interval_concordance, na.rm = TRUE),
@@ -518,14 +531,16 @@ avg_long <- concordance %>%
     names_to = "score_type",
     values_to = "mean_score"
   ) %>%
-  filter(!is.nan(mean_score))
+  dplyr::filter(!is.nan(mean_score))
 
-ggplot(avg_long, aes(x = score_type, y = paste(method_label, threshold, sep = " / "),
-                     fill = mean_score)) +
-  geom_tile(color = "white", linewidth = 0.5) +
-  geom_text(aes(label = sprintf("%.3f", mean_score)), size = 4) +
-  scale_fill_gradient(low = "#fee0d2", high = "#2ca02c", limits = c(0, 1)) +
-  labs(x = "Concordance Score", y = "Method / Threshold", fill = "Mean Score")
+ggplot2::ggplot(avg_long,
+                ggplot2::aes(x = score_type,
+                             y = paste(method_label, threshold, sep = " / "),
+                             fill = mean_score)) +
+  ggplot2::geom_tile(color = "white", linewidth = 0.5) +
+  ggplot2::geom_text(ggplot2::aes(label = sprintf("%.3f", mean_score)), size = 4) +
+  ggplot2::scale_fill_gradient(low = "#fee0d2", high = "#2ca02c", limits = c(0, 1)) +
+  ggplot2::labs(x = "Concordance Score", y = "Method / Threshold", fill = "Mean Score")
 ```
 
 ### Per-QTL Interval Concordance Detail
@@ -539,16 +554,17 @@ overlap.
 #| fig-cap: "Per-QTL interval Jaccard scores, faceted by method"
 #| eval: !expr nrow(interval_conc_per_qtl) > 0
 
-ggplot(interval_conc_per_qtl,
-       aes(x = reorder(join_key, qtl_interval_jaccard),
-           y = qtl_interval_jaccard,
-           color = threshold)) +
-  geom_point(size = 3, alpha = 0.7) +
-  geom_hline(yintercept = 1, linetype = "dashed", color = "grey50") +
-  facet_wrap(~ method_label, scales = "free_x") +
-  scale_y_continuous(limits = c(0, 1.05)) +
-  labs(x = NULL, y = "Interval Jaccard Score", color = "Threshold") +
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+ggplot2::ggplot(interval_conc_per_qtl,
+                ggplot2::aes(x = reorder(join_key, qtl_interval_jaccard),
+                             y = qtl_interval_jaccard,
+                             color = threshold)) +
+  ggplot2::geom_point(size = 3, alpha = 0.7) +
+  ggplot2::geom_hline(yintercept = 1, linetype = "dashed", color = "grey50") +
+  ggplot2::facet_wrap(~ method_label, scales = "free_x") +
+  ggplot2::scale_y_continuous(limits = c(0, 1.05)) +
+  ggplot2::labs(x = NULL, y = "Interval Jaccard Score", color = "Threshold") +
+  ggplot2::theme(axis.text.x = ggplot2::element_blank(),
+                 axis.ticks.x = ggplot2::element_blank())
 ```
 
 ```{r}
@@ -561,15 +577,18 @@ if (nrow(interval_conc_per_qtl) > 0) {
   n_partial <- n_total - n_perfect
 
   if (n_partial == 0) {
-    cat(make_badge(TRUE), sprintf(" All %d detected QTL intervals match perfectly (Jaccard = 1.0).\n",
-                                  n_total))
+    cat(make_badge(TRUE),
+        sprintf(" All %d detected QTL intervals match perfectly (Jaccard = 1.0).\n",
+                n_total))
   } else {
-    cat(make_badge(FALSE), sprintf(" %d of %d intervals have imperfect overlap.\n\n", n_partial, n_total))
+    cat(make_badge(FALSE),
+        sprintf(" %d of %d intervals have imperfect overlap.\n\n",
+                n_partial, n_total))
     imperfect <- interval_conc_per_qtl %>%
-      filter(qtl_interval_jaccard < 1) %>%
-      select(all_of(mapping_group), join_key, qtl_interval_jaccard,
-             startPOS_legacy, endPOS_legacy, startPOS_db, endPOS_db) %>%
-      mutate(qtl_interval_jaccard = sprintf("%.4f", qtl_interval_jaccard))
+      dplyr::filter(qtl_interval_jaccard < 1) %>%
+      dplyr::select(dplyr::all_of(mapping_group), join_key, qtl_interval_jaccard,
+                    startPOS_legacy, endPOS_legacy, startPOS_db, endPOS_db) %>%
+      dplyr::mutate(qtl_interval_jaccard = sprintf("%.4f", qtl_interval_jaccard))
     print(knitr::kable(imperfect, caption = "QTL Intervals with Imperfect Overlap"))
   }
 } else {
