@@ -1,0 +1,16 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "nemascan-sims-nf"
+  navbar:
+    left:
+      - text: "Cross-Validation"
+        href: cross-validation.qmd
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3

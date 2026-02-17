@@ -462,3 +462,16 @@ Rscript tests/run_tests.R
 ```
 
 Integration test files skip automatically when the required environment variables are not set.
+
+## Development Notes
+
+### Rendering Documentation
+
+The `docs/` directory contains a [Quarto](https://quarto.org/) website project with static documentation describing the cross-validation framework, concordance scores, and how to run the analysis. No pipeline output is required to render.
+
+```bash
+quarto render docs/
+```
+
+The rendered site is output to `docs/_site/`. To deploy as a GitHub Page, configure the repository to serve from that directory.
+
