@@ -475,3 +475,98 @@ quarto render docs/
 
 The rendered site is output to `docs/_site/`. To deploy as a GitHub Page, configure the repository to serve from that directory.
 
+## HPC Testing Guide (Rockfihs)
+
+### 1. Environment Setup
+
+```bash
+git clone https://github.com/AndersenLab/nemascan-sims-nf .
+cd nemascan-sims-nf
+```
+
+### 2. Generate Test Data
+
+Request an interactive session on RF - equivlent to SRUN command on other SLURM managed HPCs
+
+```bash
+interact -n 1 -c 1 -a eande106 -m 64G -p queue-name -t “30”
+```
+Load `bcftools` and `tabix` versions that are pre-installed for simple strain and marker filtering operations to get test data. The defaults on rockfish are listed in the sample command below
+
+```bash
+$ module load bcftools
+$ bcftools --version
+>bcftools 1.15.1
+>Using htslib 1.15.1-15-ge51f72f
+>Copyright (C) 2022 Genome Research Ltd.
+```
+
+```bash
+$ module load tabix
+$ tabix --version
+> tabix (htslib) 1.13+ds
+> Copyright (C) 2021 Genome Research Ltd.
+```
+
+Set the path to the source VCF. In this example we will point to the C. elegans WI-hard-filter.isotype.vcf from the 20220216 CaeNDR release.
+```bash
+SOURCE_VCF=/vast/eande106/data/c_elegans/WI/variation/20220216/vcf/WI.20220216.hard-filter.isotype.vcf.gz
+```
+
+Run the script to generate the test data from the source VCF
+
+[ ] - Currently an error when sourcing bcftools with `module load` command on RF
+
+```bash
+./data/test/generate_test_vcf.sh $SOURCE_VCF
+```
+
+Verify output:
+
+```bash
+ls -lh data/test/test.vcf.gz       # expect ~825MB
+ls -lh data/test/test.vcf.gz.tbi   # expect ~37KB
+```
+
+### 3. Stub-Run Validation (Quick Wiring Check)
+
+Stub-runs verify process wiring without executing real computations. These run in seconds on the login node.
+
+Prior to running any form of the pipeline prepare the env
+
+```bash
+# soruce NF settings from bash profile
+source ~/.bash_profile
+
+# load the nextflow conda 
+conda activate /data/eande106/software/conda_envs/nf24_env
+```
+
+#### 3.1 Fixed architecture (test profile)
+Simulations with one mapping panel and one trait architecture 
+
+```bash
+nextflow run main.nf -profile test -stub-run
+```
+
+#### 3.2 Variable architecture (test_variable profile)
+Simulations with one mapping panel and multipe trait architectures 
+
+```bash
+nextflow run main.nf -profile test_variable -stub-run
+```
+
+#### 3.3 With `--legacy_assess` flag 
+Test parallel analysis to enable legacy post-processing modules for comparisons
+
+```bash
+nextflow run main.nf -profile test --analyze_db -stub-run
+```
+
+### 4. End-to-End Test Run
+
+Uses SLURM + Singularity on real test data.
+
+```bash
+nextflow run main.nf -profile test,rockfish
+```
