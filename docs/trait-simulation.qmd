@@ -1,0 +1,264 @@
+---
+title: "Phase 2: Trait Simulation"
+subtitle: "Selecting causal variants and simulating quantitative phenotypes"
+date: last-modified
+format:
+  html:
+    embed-resources: true
+---
+
+## Overview
+
+The second phase of the pipeline transforms the LD-pruned PLINK binary filesets
+(from Phase 1) into simulated phenotype data with known causal variants. These
+outputs feed into GWAS mapping (Phase 3).
+
+The processing flow is:
+
+```
+PLINK binaries (from Phase 1)
+ ├─ PYTHON_SIMULATE_EFFECTS_GLOBAL ──► causal_variants.txt
+ │                                        │
+ ▼                                        ▼
+ GCTA_SIMULATE_PHENOTYPES ──────────► .phen + .par files
+ │
+ ▼
+ PLINK_UPDATE_BY_H2 ──────────► Phenotype-annotated PLINK binaries
+                                 (to Phase 3: GWAS Mapping)
+```
+
+Each process is described below with the exact commands run, key parameters,
+and links to external tool documentation.
+
+**Cartesian product expansion:** The `each` qualifiers on `rep`, `nqtl`,
+`effect`, and `h2` in the Nextflow process definitions create all parameter
+combinations. Every PLINK fileset from Phase 1 is crossed with every
+combination of replicate number, number of QTL, effect size distribution, and
+heritability value, so downstream processes run independently for each point in
+the parameter grid.
+
+
+## 1. PYTHON_SIMULATE_EFFECTS_GLOBAL
+
+**Source:** `modules/python/simulate_effects_global/main.nf`
+
+Selects random causal variants from the LD-pruned marker set and assigns effect
+sizes. This process executes the `bin/create_causal_vars.py` script.
+
+**Command:**
+
+```bash
+python create_causal_vars.py TO_SIMS.bim ${nqtl} ${effect}
+mv causal_vars.txt causal.variants.sim.${nqtl}.${rep}.txt
+```
+
+### Script functions
+
+| Function | Description |
+|----------|-------------|
+| `load_strain_set_variants()` | Reads marker IDs from column 2 of the `.bim` file |
+| `select_variants()` | Random sample of `nQTL` markers without replacement via `np.random.choice` |
+| `simulate_effect_gamma()` | Gamma(shape=0.4, scale=1.66) distribution with random sign (+1 or -1) |
+| `simulate_effect_uniform()` | Uniform(low, high) distribution with random sign (+1 or -1) |
+
+### Effect type selection
+
+The third command-line argument determines which effect size distribution is
+used:
+
+- **`gamma`** keyword &mdash; calls `simulate_effect_gamma()` with default
+  shape=0.4 and scale=1.66
+- **`low-high`** range string (e.g. `0.4-0.9`) &mdash; calls
+  `simulate_effect_uniform()` with the parsed low and high bounds
+
+### Inputs / Outputs
+
+| Direction | File | Description |
+|-----------|------|-------------|
+| Input | `TO_SIMS.bim` | PLINK marker information file from Phase 1 (variant IDs in column 2) |
+| Input | `nqtl` (val) | Number of causal variants to select |
+| Input | `effect` (val) | Effect size specification: `gamma` or `low-high` range |
+| Input | `rep` (val) | Replicate number (used only in output filename) |
+| Output | `causal.variants.sim.${nqtl}.${rep}.txt` | Space-separated file: marker ID (col 1) and effect size (col 2), one row per causal variant |
+
+### Example output
+
+From test data (`data/test_data/.../PYTHON_SIMULATE_EFFECTS_GLOBAL/causal.variants.sim.5.1.txt`)
+with nQTL=5 and effect=gamma:
+
+```
+2:14378543 0.38901223435837223
+2:7459092 -4.532985639400811
+3:1537674 -0.0063686130105886415
+4:16212978 0.47805937866664927
+2:13733845 -0.03046281285149475
+```
+
+Each line contains a marker ID in `CHROM:POS` format and its assigned effect
+size (sign indicates direction).
+
+
+## 2. GCTA_SIMULATE_PHENOTYPES
+
+**Source:** `modules/gcta/simulate_phenotypes/main.nf`
+
+Uses [GCTA's GWAS Simulation](https://yanglab.westlake.edu.cn/software/gcta/#GWASSimulation)
+functionality to simulate quantitative phenotypes from the causal variants
+selected in step 1.
+
+**Command:**
+
+```bash
+gcta64 --bfile TO_SIMS \
+     --simu-qt \
+     --simu-causal-loci ${causal_variants} \
+     --simu-hsq ${h2} \
+     --simu-rep 1 \
+     --autosome-num 6 \
+     --thread-num ${task.cpus} \
+     --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims
+```
+
+| Flag | Purpose |
+|------|---------|
+| `--simu-qt` | Simulate quantitative traits |
+| `--simu-causal-loci` | Causal variants file from step 1 (marker IDs and effect sizes) |
+| `--simu-hsq` | Target heritability (h^2^); from the `--h2` pipeline parameter, crossed in via `each h2` |
+| `--simu-rep 1` | Single replicate per GCTA call (pipeline-level `--reps` parameter controls repetition via Nextflow `each`) |
+| `--autosome-num 6` | *C. elegans* has 6 chromosomes (5 autosomes + X) |
+| `--thread-num` | Number of threads |
+
+### Inputs / Outputs
+
+| Direction | File | Description |
+|-----------|------|-------------|
+| Input | `TO_SIMS.bed/.bim/.fam` | PLINK binary fileset from Phase 1 |
+| Input | `causal.variants.sim.${nqtl}.${rep}.txt` | Causal variants file from step 1 |
+| Input | `h2` (val) | Target heritability (crossed in via `each h2`) |
+| Output | `*_sims.phen` | Simulated phenotype values (FID, IID, phenotype) |
+| Output | `*_sims.par` | Simulation parameters (QTL, RefAllele, Frequency, Effect) |
+
+### Example `.par` output
+
+From test data (`data/test_data/.../GCTA_SIMULATE_PHENOTYPES/5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.par`):
+
+```
+QTL	RefAllele	Frequency	Effect
+2:7459092	A	0.0520833	-4.53299
+2:13733845	A	0.125	-0.0304628
+2:14378543	A	0.104167	0.389012
+3:1537674	G	0.125	-0.00636861
+4:16212978	T	0.0625	0.478059
+```
+
+The `.par` file has a header and four columns:
+
+- **QTL** &mdash; marker ID in `CHROM:POS` format
+- **RefAllele** &mdash; reference allele at the causal locus
+- **Frequency** &mdash; allele frequency in the strain set
+- **Effect** &mdash; effect size used in the simulation
+
+### Example `.phen` output
+
+First 10 lines from `5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.phen`:
+
+```
+MY2713 MY2713 -6.04369
+JU323 JU323 11.1615
+XZ1734 XZ1734 4.15316
+QG4080 QG4080 9.589
+DL226 DL226 -4.79251
+ECA2533 ECA2533 8.34439
+XZ1672 XZ1672 5.00596
+ED3046 ED3046 -2.37417
+NIC1786 NIC1786 11.8277
+NIC274 NIC274 -22.5104
+```
+
+The `.phen` file has no header and three space-separated columns:
+
+- **Column 1** &mdash; Family ID (FID)
+- **Column 2** &mdash; Individual ID (IID)
+- **Column 3** &mdash; Simulated phenotype value
+
+
+## 3. PLINK_UPDATE_BY_H2
+
+**Source:** `modules/plink/update_by_h2/main.nf`
+
+Integrates the simulated phenotype values into the PLINK binary fileset and
+renames the output files to include all simulation parameters. This produces
+the phenotype-annotated PLINK files used by Phase 3 (GWAS Mapping).
+
+**Command:**
+
+```bash
+plink --bfile TO_SIMS \
+    --make-bed \
+    --snps-only \
+    --biallelic-only \
+    --maf ${maf} \
+    --set-missing-var-ids @:# \
+    --geno \
+    --recode \
+    --out TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group} \
+    --allow-extra-chr \
+    --allow-no-sex \
+    --pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno
+```
+
+| Flag | Purpose | Docs |
+|------|---------|------|
+| `--make-bed` | Create PLINK binary fileset (`.bed`, `.bim`, `.fam`) | [plink data](https://www.cog-genomics.org/plink/1.9/data#make_bed) |
+| `--snps-only` | Exclude indels, retain only SNPs | [plink filter](https://www.cog-genomics.org/plink/1.9/filter#snps_only) |
+| `--biallelic-only` | Exclude multiallelic sites | [plink filter](https://www.cog-genomics.org/plink/1.9/filter#biallelic) |
+| `--maf` | Remove variants below the minor allele frequency threshold | [plink filter](https://www.cog-genomics.org/plink/1.9/filter#maf) |
+| `--set-missing-var-ids @:#` | Assign IDs to variants missing an rsID, using `CHROM:POS` format | [plink data](https://www.cog-genomics.org/plink/1.9/data#set_missing_var_ids) |
+| `--geno` | Exclude variants with missing genotype rates above the default threshold (0.1) | [plink filter](https://www.cog-genomics.org/plink/1.9/filter#missing) |
+| `--recode` | Also produce text-format `.ped`/`.map` files | [plink data](https://www.cog-genomics.org/plink/1.9/data#recode) |
+| `--allow-extra-chr` | Permit non-standard chromosome codes | [plink filter](https://www.cog-genomics.org/plink/1.9/filter#chr) |
+| `--allow-no-sex` | Handle samples with missing sex information | [plink filter](https://www.cog-genomics.org/plink/1.9/filter#missing) |
+| `--pheno` | Embed simulated phenotype values into the `.fam` file | [plink assoc](https://www.cog-genomics.org/plink/1.9/assoc#linear) |
+
+::: {.callout-note}
+## `.phen` to `.pheno` file rename
+
+The GCTA simulation step outputs a `.phen` file, but the PLINK process input
+declaration expects a `.pheno` extension:
+`${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno`. Nextflow's file
+staging handles this rename automatically when the output from
+`GCTA_SIMULATE_PHENOTYPES` is wired into `PLINK_UPDATE_BY_H2`.
+:::
+
+::: {.callout-note}
+## Re-applied filtering flags
+
+The filtering flags (`--snps-only`, `--biallelic-only`, `--maf`,
+`--set-missing-var-ids`, `--geno`) are the same as those used in Phase 1's
+`PLINK_RECODE_VCF`. They are re-applied here for consistency across all PLINK
+commands in the pipeline, even though the input data has already been filtered.
+:::
+
+### Inputs / Outputs
+
+| Direction | File | Description |
+|-----------|------|-------------|
+| Input | `TO_SIMS.bed/.bim/.fam` | PLINK binary fileset from Phase 1 |
+| Input | `*_sims.pheno` | Simulated phenotype file (renamed from `.phen`) |
+| Input | `*_sims.par` | Simulation parameter file (passed through) |
+| Output | `TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bed/.bim/.fam` | Phenotype-annotated PLINK binary fileset |
+| Output | `TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.map/.ped` | PLINK text-format fileset |
+| Output | `TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.nosex/.log` | PLINK auxiliary outputs |
+| Output | `*_sims.pheno` + `*_sims.par` | Phenotype and parameter files (passed through) |
+
+### Output naming convention
+
+Output files follow the pattern `TO_SIMS_{nqtl}_{rep}_{h2}_{maf}_{effect}_{group}`,
+encoding all simulation parameters in the filename:
+
+- **nqtl** &mdash; number of simulated QTL
+- **rep** &mdash; replicate number
+- **h2** &mdash; target heritability
+- **maf** &mdash; minor allele frequency threshold
+- **effect** &mdash; effect size distribution (`gamma` or range)
+- **group** &mdash; strain set name
