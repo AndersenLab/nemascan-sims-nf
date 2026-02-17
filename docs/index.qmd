@@ -8,6 +8,15 @@ and precision of different mapping algorithms.
 
 ## Reports
 
+- [Marker Set Generation](marker-set-generation.qmd) — Phase 1 process
+  documentation covering VCF subsetting, chromosome renaming, LD pruning, and
+  genotype matrix creation.
+- [Trait Simulation](trait-simulation.qmd) — Phase 2 process documentation
+  covering causal variant selection, GCTA phenotype simulation, and PLINK
+  fileset preparation.
+- [GWAS Mapping](gwas-mapping.qmd) — Phase 3 process documentation covering
+  GRM construction, phenotypic variance checking, and association mapping under
+  four mode/type conditions.
 - [Assessment Cross-Validation](cross-validation.qmd) — How to run and
   interpret the cross-validation analysis comparing DB-path and legacy-path
   assessment outputs.

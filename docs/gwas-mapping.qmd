@@ -1,0 +1,371 @@
+---
+title: "Phase 3: GWAS Mapping"
+subtitle: "GRM construction, variance checking, and association mapping"
+date: last-modified
+format:
+  html:
+    embed-resources: true
+---
+
+## Overview
+
+The third phase of the pipeline maps simulated phenotypes
+using GCTA to evaluate GWA power and precision. It takes the
+PLINK filesets from Phase 2 and produces per-marker association statistics under four mapping conditions.
+
+The processing flow is:
+
+```
+PLINK binaries (from Phase 2)
+ │
+ ├─ GCTA_MAKE_GRM ──────────► GRM binaries + check_vp.hsq
+ │                                   │
+ ▼                                   ▼
+ PYTHON_CHECK_VP ────────────► variance-checked .pheno file
+ │
+ ▼
+ GCTA_PERFORM_GWA ───────────► .fastGWA or .mlma association results
+                                (to Phase 4: QTL Detection & Assessment)
+```
+
+Each process is described below with the exact commands run, key parameters,
+and links to external tool documentation.
+
+**Mode and type parameterization:** The mapping phase is parameterized by two
+variables defined in `main.nf`:
+
+- **mode**: `"inbred"` or `"loco"` &mdash; determines the type of GRM and the
+  GWA algorithm
+- **type**: `"pca"` or `"nopca"` &mdash; determines whether the first
+  principal component eigenvector is included as a covariate
+
+```nextflow
+ch_mode = Channel.of(
+    ["inbred", "fastGWA"],
+    ["loco", "mlma"]
+)
+
+ch_type = Channel.of(
+    "pca",
+    "nopca"
+)
+```
+
+Each simulation replicate is mapped under all four combinations
+(`inbred x pca`, `inbred x nopca`, `loco x pca`, `loco x nopca`), driven by
+Nextflow channel `combine` operations. The `mode` crossing happens at
+`GCTA_MAKE_GRM` and the `type` crossing happens at `GCTA_PERFORM_GWA`.
+
+
+## 1. GCTA_MAKE_GRM
+
+**Source:** `modules/gcta/make_grm/main.nf`
+
+Builds a genetic relatedness matrix (GRM) and estimates phenotypic variance via
+REML. This process runs two sequential GCTA commands.
+
+### Step 1: Build the GRM
+
+The GRM construction method depends on the `mode` parameter:
+
+```bash
+if [[ ${mode} == "inbred" ]]; then
+    GRM_OPTION="--make-grm-inbred"
+else
+    GRM_OPTION="--make-grm"
+fi
+
+gcta64 --bfile TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group} \
+        --autosome --maf ${maf} ${GRM_OPTION} \
+        --out TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \
+        --thread-num ${task.cpus}
+```
+
+| Flag | Purpose | Docs |
+|------|---------|------|
+| `--make-grm-inbred` | Construct a kinship matrix for inbred organisms, adjusting for reduced heterozygosity | [GCTA GRM](https://yanglab.westlake.edu.cn/software/gcta/#MakingaGRM) |
+| `--make-grm` | Construct a standard genome-wide relatedness matrix | [GCTA GRM](https://yanglab.westlake.edu.cn/software/gcta/#MakingaGRM) |
+| `--autosome` | Use only autosomal markers | [GCTA GRM](https://yanglab.westlake.edu.cn/software/gcta/#MakingaGRM) |
+| `--maf` | Filter markers below the minor allele frequency threshold | [GCTA GRM](https://yanglab.westlake.edu.cn/software/gcta/#MakingaGRM) |
+
+- **`mode == "inbred"`**: Uses `--make-grm-inbred`, which constructs a kinship
+  matrix tailored for populations of inbred organisms. The inbred GRM adjusts
+  relatedness estimates to account for the reduced heterozygosity characteristic
+  of inbred lines.
+- **`mode == "loco"`**: Uses `--make-grm`, which constructs a standard
+  genome-wide relatedness matrix using all autosomal markers.
+
+Because `main.nf` defines `ch_mode` with both `["inbred", "fastGWA"]` and
+`["loco", "mlma"]`, each simulation replicate produces two GRMs &mdash; one
+inbred and one standard.
+
+### Step 2: REML variance estimation
+
+```bash
+gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \
+        --pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen \
+        --reml --out check_vp \
+        --thread-num ${task.cpus}
+```
+
+This estimates the phenotypic variance (Vp) from the simulated phenotype data
+using restricted maximum likelihood (REML). See
+[GCTA GREML analysis documentation](https://yanglab.westlake.edu.cn/software/gcta/#GREMLanalysis).
+
+| Flag | Purpose |
+|------|---------|
+| `--grm` | Input GRM prefix from step 1 |
+| `--pheno` | Simulated phenotype file |
+| `--reml` | Perform REML analysis to estimate variance components |
+
+### Example `check_vp.hsq` output
+
+From test data (`data/test_data/.../GCTA_MAKE_GRM/check_vp.hsq`):
+
+```
+Source	Variance	SE
+V(G)	46.564277	40.308593
+V(e)	158.873235	39.887704
+Vp	205.437512	30.661982
+V(G)/Vp	0.226659	0.185504
+logL	-301.643
+logL0	-302.603
+LRT	1.920
+df	1
+Pval	8.2935e-02
+n	96
+```
+
+The key value is **Vp** (total phenotypic variance), which is checked in the
+next process.
+
+### Inputs / Outputs
+
+| Direction | File | Description |
+|-----------|------|-------------|
+| Input | `TO_SIMS_*.bed/.bim/.fam` | Phenotype-annotated PLINK binary fileset from Phase 2 |
+| Input | `*_sims.phen` + `*_sims.par` | Phenotype and parameter files from Phase 2 |
+| Input | `mode` (val) | `"inbred"` or `"loco"` |
+| Output | `*_gcta_grm_${mode}.grm.bin/.grm.N.bin/.grm.id` | GRM binary files |
+| Output | `check_vp.hsq` | REML variance component estimates |
+| Output | PLINK files + phenotype files | Passed through for downstream use |
+
+
+## 2. PYTHON_CHECK_VP
+
+**Source:** `modules/python/check_vp.nf`
+
+Inspects the estimated phenotypic variance (Vp) from the `check_vp.hsq` file
+produced by GCTA REML. This step ensures that simulated phenotypes exhibit
+sufficient variance, preventing near-zero variance from causing numerical
+issues in the association mapping step.
+
+**Command:**
+
+```bash
+python3 check_vp.py --check_vp ${hsq_in} --simulated_phenos tmp.pheno
+mv new_phenos.temp ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno
+```
+
+### Script: `bin/check_vp.py`
+
+| Function | Description |
+|----------|-------------|
+| `get_vp()` | Reads the `check_vp.hsq` file and extracts the Vp value from the row where Source == "Vp" |
+| `increase_pheno_var()` | Multiplies all phenotype values (column 3) by 1000 |
+| `read_original_phenos()` | Reads the phenotype file unchanged |
+| `write_phenos_to_temp()` | Writes output to `new_phenos.temp` |
+
+### Variance check logic
+
+1. Parse `check_vp.hsq` to extract the `Vp` value
+2. If `Vp < 0.000001`: multiply all phenotype values by 1000 to increase
+   variance
+3. If `Vp >= 0.000001`: retain original phenotype values without modification
+4. Write output to `new_phenos.temp`, then rename to the final
+   `*_sims.pheno` filename
+
+If the `.hsq` file is missing or Vp cannot be parsed, the script falls back to
+using the original phenotype values.
+
+### Example `.pheno` output
+
+From test data (`data/test_data/.../PYTHON_CHECK_VP/5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.pheno`):
+
+```
+MY2713 MY2713 -6.04369
+JU323 JU323 11.1615
+XZ1734 XZ1734 4.15316
+QG4080 QG4080 9.589
+```
+
+In this case Vp was well above the threshold, so phenotype values are
+unchanged from the GCTA simulation output.
+
+### Inputs / Outputs
+
+| Direction | File | Description |
+|-----------|------|-------------|
+| Input | `tmp.pheno` | Phenotype file (staged from `*_sims.phen`) |
+| Input | `check_vp.hsq` | REML variance estimates from `GCTA_MAKE_GRM` |
+| Input | `*_sims.par` | Simulation parameter file (passed through) |
+| Input | `bin/check_vp.py` | Python script |
+| Output | `*_sims.pheno` | Variance-checked phenotype file |
+| Output | `*_sims.par` | Simulation parameter file (passed through) |
+| Output | GRM + PLINK files | Passed through for downstream use |
+
+
+## 3. GCTA_PERFORM_GWA
+
+**Source:** `modules/gcta/perform_gwa/main.nf`
+
+Performs genome-wide association mapping. This process receives the GRM and
+variance-checked phenotype data, then executes three sub-steps controlled by
+the `mode` and `type` parameters.
+
+### Step 1: Create sparse GRM
+
+This step always runs regardless of mode or type:
+
+```bash
+gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \
+    --make-bK-sparse ${sparse_cut} \
+    --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \
+    --thread-num ${task.cpus}
+```
+
+| Flag | Purpose | Docs |
+|------|---------|------|
+| `--make-bK-sparse` | Set all off-diagonal GRM values with absolute value &le; `sparse_cut` (default: 0.05) to zero | [GCTA GRM](https://yanglab.westlake.edu.cn/software/gcta/#MakingaGRM) |
+
+This produces a sparse representation of the GRM, reducing memory usage for
+the association mapping step.
+
+### Step 2: Conditional PCA
+
+The `type` parameter controls whether PCA eigenvectors are extracted as
+covariates:
+
+```bash
+if [[ ${type} == "pca" ]]; then
+    gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \
+        --pca 1 \
+        --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \
+        --thread-num ${task.cpus}
+
+    COVAR="--qcovar ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode}.eigenvec"
+else
+    COVAR=""
+fi
+```
+
+- **`type == "pca"`**: Extracts the first principal component from the GRM
+  (`--pca 1`), producing an `.eigenvec` file. This eigenvector is passed as a
+  quantitative covariate (`--qcovar`) to the mapping command to control for
+  population structure.
+- **`type == "nopca"`**: No PCA is performed. The `COVAR` variable is set to
+  an empty string, so no covariate is included in the mapping command.
+
+### Step 3: Association mapping
+
+The `mode` parameter determines both the GCTA mapping algorithm and the GRM
+input flag:
+
+```bash
+if [[ ${mode} == "inbred" ]]; then
+    GRM_OPTION='--grm-sparse'
+    COMMAND='--fastGWA-mlm-exact'
+else
+    GRM_OPTION="--grm"
+    COMMAND="--mlma-loco"
+fi
+
+gcta64 ${COMMAND} \
+    --bfile TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group} \
+    ${GRM_OPTION} ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \
+    ${COVAR} \
+    --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_lmm-exact_${mode}_${type} \
+    --pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno \
+    --maf ${maf} \
+    --thread-num ${task.cpus}
+```
+
+**Inbred mode (`mode == "inbred"`):**
+
+- Uses `--fastGWA-mlm-exact` to perform an exact mixed linear model (MLM)
+  association analysis
+  ([GCTA fastGWA docs](https://yanglab.westlake.edu.cn/software/gcta/#fastGWA))
+- Uses `--grm-sparse` to input the sparse GRM created from the inbred
+  relatedness matrix
+- Output format: `.fastGWA` (columns: CHR, SNP, POS, A1, A2, N, AF1, BETA,
+  SE, P)
+
+**LOCO mode (`mode == "loco"`):**
+
+- Uses `--mlma-loco` to perform MLM-based association using a
+  leave-one-chromosome-out approach, where the GRM excludes the chromosome of
+  the tested variant
+  ([GCTA MLMA docs](https://yanglab.westlake.edu.cn/software/gcta/#MLMA))
+- Uses `--grm` to input the sparse GRM created from the standard relatedness
+  matrix
+- Output format: `.loco.mlma` (columns: Chr, SNP, bp, A1, A2, Freq, b, se, p),
+  renamed to `.mlma` after completion
+
+```bash
+if [[ ${mode} == "loco" ]]; then
+    mv "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_lmm-exact_${mode}_${type}.loco.mlma" \
+       "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_lmm-exact_${mode}_${type}.mlma"
+fi
+```
+
+### Summary of the four mapping conditions
+
+| Mode | Type | GRM Construction | GWA Command | GRM Flag | Covariate | Output Format |
+|------|------|------------------|-------------|----------|-----------|---------------|
+| inbred | pca | `--make-grm-inbred` | `--fastGWA-mlm-exact` | `--grm-sparse` | `--qcovar .eigenvec` | `.fastGWA` |
+| inbred | nopca | `--make-grm-inbred` | `--fastGWA-mlm-exact` | `--grm-sparse` | none | `.fastGWA` |
+| loco | pca | `--make-grm` | `--mlma-loco` | `--grm` | `--qcovar .eigenvec` | `.mlma` |
+| loco | nopca | `--make-grm` | `--mlma-loco` | `--grm` | none | `.mlma` |
+
+### Example `.fastGWA` output
+
+First 10 lines from test data (`data/test_data/.../GCTA_PERFORM_GWA/*_lmm-exact_inbred_pca.fastGWA`):
+
+```
+CHR	SNP	POS	A1	A2	N	AF1	BETA	SE	P
+1	1:4559	4559	A	G	96	0.229167	1.00868	1.84192	0.583949
+1	1:6313	6313	G	T	96	0.197917	1.98669	1.9353	0.304629
+1	1:6580	6580	T	A	96	0.260417	4.48856	1.70508	0.00847695
+1	1:6689	6689	G	A	96	0.489583	-4.33545	1.48526	0.0035117
+1	1:9328	9328	G	A	96	0.28125	0.0688625	1.72457	0.968149
+1	1:13117	13117	A	C	96	0.135417	-8.29242	2.0985	7.76314e-05
+1	1:15024	15024	A	G	96	0.15625	0.399956	2.13512	0.851407
+1	1:15858	15858	G	C	96	0.104167	0.271408	2.53814	0.914843
+1	1:18223	18223	C	T	96	0.0625	-0.675012	3.20252	0.833063
+```
+
+| Column | Description |
+|--------|-------------|
+| CHR | Chromosome |
+| SNP | Marker ID (`CHROM:POS` format) |
+| POS | Base pair position |
+| A1 | Effect allele |
+| A2 | Other allele |
+| N | Sample size |
+| AF1 | Frequency of the effect allele |
+| BETA | Effect size estimate |
+| SE | Standard error of BETA |
+| P | P-value for the association test |
+
+### Inputs / Outputs
+
+| Direction | File | Description |
+|-----------|------|-------------|
+| Input | `*_gcta_grm_${mode}.grm.bin/.grm.N.bin/.grm.id` | GRM files from `GCTA_MAKE_GRM` |
+| Input | `TO_SIMS_*.bed/.bim/.fam` | Phenotype-annotated PLINK binary fileset |
+| Input | `*_sims.pheno` + `*_sims.par` | Variance-checked phenotype and parameter files from `PYTHON_CHECK_VP` |
+| Input | `sparse_cut` (val) | Sparse GRM threshold (default: 0.05) |
+| Input | `mode` (val) | `"inbred"` or `"loco"` |
+| Input | `type` (val) | `"pca"` or `"nopca"` |
+| Output | `*_lmm-exact_${mode}_${type}.${suffix}` | Association results (`.fastGWA` for inbred, `.mlma` for loco) |
+| Output | GRM + PLINK + phenotype files | Passed through for downstream use |
