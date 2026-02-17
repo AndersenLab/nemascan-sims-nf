@@ -309,6 +309,12 @@ query_for_threshold_analysis <- function(mapping_id, base_dir = "data/db", con =
     con <- get_db_connection(base_dir, use_cache = TRUE)
   }
 
+  # Check if var.exp column exists in mappings (absent in inline-path databases)
+  mapping_cols <- DBI::dbGetQuery(con, "SELECT column_name FROM information_schema.columns WHERE table_name = 'mappings'")
+  has_var_exp <- "var.exp" %in% mapping_cols$column_name
+
+  var_exp_col <- if (has_var_exp) 'm."var.exp"' else 'NULL AS "var.exp"'
+
   result <- DBI::dbGetQuery(con, glue::glue("
     SELECT
       m.marker,
@@ -316,7 +322,7 @@ query_for_threshold_analysis <- function(mapping_id, base_dir = "data/db", con =
       m.P,
       m.BETA,
       m.SE,
-      m.\"var.exp\",
+      {var_exp_col},
       mk.CHROM,
       mk.POS,
       COALESCE(m.AF1, mk.AF1) AS AF1,
@@ -328,8 +334,22 @@ query_for_threshold_analysis <- function(mapping_id, base_dir = "data/db", con =
       AND m.population = mk.population
       AND m.maf = mk.maf
     WHERE m.mapping_id = '{mapping_id}'
-    ORDER BY mk.CHROM, mk.POS
+    ORDER BY mk.CHROM, mk.POS, m.marker
   "))
+
+  # Verify CHROM:POS uniqueness (LOCO files may have duplicates if not deduped at write time)
+  if (nrow(result) > 0) {
+    dup_check <- result %>% dplyr::group_by(CHROM, POS) %>% dplyr::filter(dplyr::n() > 1)
+    if (nrow(dup_check) > 0) {
+      n_dups <- nrow(dup_check)
+      example <- paste0(dup_check$CHROM[1], ":", dup_check$POS[1])
+      stop(glue::glue(
+        "CHROM:POS uniqueness violation in mapping {mapping_id}: ",
+        "{n_dups} duplicate rows (e.g. {example}). ",
+        "Check for LOCO deduplication in write_gwa_to_db.R"
+      ))
+    }
+  }
 
   result
 }
@@ -354,6 +374,12 @@ query_bulk_for_threshold_analysis <- function(mapping_ids, base_dir = "data/db",
     con <- get_db_connection(base_dir, use_cache = TRUE)
   }
 
+  # Check if var.exp column exists in mappings (absent in inline-path databases)
+  mapping_cols <- DBI::dbGetQuery(con, "SELECT column_name FROM information_schema.columns WHERE table_name = 'mappings'")
+  has_var_exp <- "var.exp" %in% mapping_cols$column_name
+
+  var_exp_col <- if (has_var_exp) 'm."var.exp"' else 'NULL AS "var.exp"'
+
   # Build IN clause with proper quoting
   ids_quoted <- paste0("'", mapping_ids, "'", collapse = ", ")
 
@@ -364,7 +390,7 @@ query_bulk_for_threshold_analysis <- function(mapping_ids, base_dir = "data/db",
       m.P,
       m.BETA,
       m.SE,
-      m.\"var.exp\",
+      {var_exp_col},
       mk.CHROM,
       mk.POS,
       COALESCE(m.AF1, mk.AF1) AS AF1,
@@ -376,8 +402,25 @@ query_bulk_for_threshold_analysis <- function(mapping_ids, base_dir = "data/db",
       AND m.population = mk.population
       AND m.maf = mk.maf
     WHERE m.mapping_id IN ({ids_quoted})
-    ORDER BY m.mapping_id, mk.CHROM, mk.POS
+    ORDER BY m.mapping_id, mk.CHROM, mk.POS, m.marker
   "))
+
+  # Verify CHROM:POS uniqueness per mapping_id
+  if (nrow(result) > 0) {
+    dup_check <- result %>%
+      dplyr::group_by(mapping_id, CHROM, POS) %>%
+      dplyr::filter(dplyr::n() > 1)
+    if (nrow(dup_check) > 0) {
+      n_dups <- nrow(dup_check)
+      example_id <- dup_check$mapping_id[1]
+      example_pos <- paste0(dup_check$CHROM[1], ":", dup_check$POS[1])
+      stop(glue::glue(
+        "CHROM:POS uniqueness violation in bulk query: ",
+        "{n_dups} duplicate rows (e.g. {example_id} at {example_pos}). ",
+        "Check for LOCO deduplication in write_gwa_to_db.R"
+      ))
+    }
+  }
 
   result
 }

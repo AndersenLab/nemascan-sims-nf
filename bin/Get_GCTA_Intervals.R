@@ -26,9 +26,13 @@ library(ggbeeswarm)
 # 12 - minor allele frequency (numeric)
 # 13 - effect size range (character)
 # 14 - mode
+# 15 - alpha (significance level, default 0.05)
 
 # load arguments
 args <- commandArgs(trailingOnly = TRUE)
+
+# Parse alpha from arg 15 (with backward-compatible default)
+alpha <- if (length(args) >= 15) as.numeric(args[15]) else 0.05
 # args <- c("complete_0.05_Genotype_Matrix.tsv",  ## TESTING
 #           "5_49_0.2_0.05_gamma_complete_sims.phen",
 #           "5_49_0.2_0.05_gamma_complete_lmm-exact_inbred.fastGWA",
@@ -157,7 +161,7 @@ process_mapping_df <- function(mapping_df,
       dplyr::mutate(trait = colnames(phenotype_df)[2]) %>%
       dplyr::group_by(trait) %>%
       dplyr::filter(log10p != 0) %>%
-      dplyr::mutate(BF = -log10(0.05 / sum(log10p > 0, na.rm = T))) %>%
+      dplyr::mutate(BF = -log10(alpha / sum(log10p > 0, na.rm = T))) %>%
       dplyr::mutate(aboveBF = ifelse(log10p >= BF, 1, 0))
   } else if (is.numeric(QTL_cutoff) & thresh == "EIGEN") {
     print(
@@ -167,7 +171,7 @@ process_mapping_df <- function(mapping_df,
       dplyr::mutate(trait = colnames(phenotype_df)[2]) %>%
       dplyr::group_by(trait) %>%
       dplyr::filter(log10p != 0) %>%
-      dplyr::mutate(BF = -log10(0.05 / BF)) %>%
+      dplyr::mutate(BF = -log10(alpha / BF)) %>%
       dplyr::mutate(aboveBF = ifelse(log10p >= BF, 1, 0))
   } else {
     print(
@@ -664,7 +668,7 @@ print("Extracting interval information...")
 qtl_region <- processed_mapping %>%
   na.omit() %>%
   dplyr::distinct(CHROM, marker, trait, startPOS, peakPOS, endPOS, peak_id) %>%
-  dplyr::mutate(algorithm = args[15])
+  dplyr::mutate(algorithm = label)
 
 print(
   glue::glue("Extracted interval information with {nrow(qtl_region)} rows.")

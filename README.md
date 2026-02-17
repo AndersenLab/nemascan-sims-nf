@@ -398,3 +398,80 @@ This final process outputs a `simulation_assessment_results.tsv` to the analysis
 - `effect_distribution`: Effect size range used in simulation
 - `strain_set_id`: Name of the strain set used in simulation
 - `algorithm_id`: Mapping method (Inbred, Loco, Inbred + PCA, LOCO + PCA) and significance threshold (e.g. `inbred_pca_EIGEN`, or `inbred_pca_BF`)
+
+## Test Data
+
+### Generating the Test VCF
+
+The test VCF (`data/test/test.vcf.gz`) is not committed to the repository due to its size (~71 MB). The script `data/test/generate_test_vcf.sh` creates it by subsetting the full CaeNDR isotype reference VCF to the 13 strains in `data/test/test_strains.txt` across chromosomes I, II, and V.
+
+**Requirements:** bcftools (>= 1.16), tabix, and the source VCF
+
+```bash
+# Download the source VCF from CaeNDR (~7.8 GB)
+# https://elegansvariation.org/data/release/latest
+# File: WI.20220216.hard-filter.isotype.vcf.gz
+
+# Generate the test VCF (takes 5-10 minutes)
+./data/test/generate_test_vcf.sh /path/to/WI.20220216.hard-filter.isotype.vcf.gz
+```
+
+This produces:
+- `data/test/test.vcf.gz` — BGZF-compressed VCF (13 samples, chromosomes I/II/V, monomorphic sites removed)
+- `data/test/test.vcf.gz.tbi` — tabix index
+
+The script also strips `##contig` headers for absent chromosomes (III, IV, X). This is required because `LOCAL_GET_CONTIG_INFO` parses contig headers to build the chromosome mapping, and headers for chromosomes without data cause downstream failures in `R_FIND_GENOTYPE_MATRIX_EIGEN`.
+
+### Generating Integration Test Data
+
+The script `tests/collect_test_data.sh` runs the pipeline with the `test` profile and collects outputs needed by integration tests. It runs the actual pipeline (not a separate reimplementation), so the test data is always consistent with the current code.
+
+**Requirements:** Docker, Nextflow (NXF_VER=24.10.4 or any 24.10.x)
+
+```bash
+# Run pipeline and collect outputs (~20-45 min on first run)
+bash tests/collect_test_data.sh
+
+# Collect outputs from a previous pipeline run without rerunning
+bash tests/collect_test_data.sh --collect-only
+
+# Remove previous results before running
+bash tests/collect_test_data.sh --clean
+```
+
+The script runs `nextflow run main.nf -profile test,docker --legacy_assess`, which produces both DB-path and legacy assessment outputs. It then copies the results into `tests/integration_data/`.
+
+After collection, the script prints the exact command to run integration tests:
+
+```bash
+TEST_DB_DIR=tests/integration_data/db \
+TEST_WORK_DIR=tests/.nf-work \
+TEST_EXISTING_ASSESSMENT=tests/integration_data/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+Subsequent runs benefit from Nextflow's `-resume` behavior — only processes affected by code changes are rerun.
+
+### Unit Tests
+
+Unit tests do not require pipeline output. They use static fixtures in `tests/fixtures/` and run with:
+
+```bash
+Rscript tests/run_tests.R
+```
+
+Integration test files skip automatically when the required environment variables are not set.
+
+## Development Notes
+
+### Rendering Documentation
+
+The `docs/` directory contains a [Quarto](https://quarto.org/) website project with static documentation describing the cross-validation framework, concordance scores, and how to run the analysis. No pipeline output is required to render.
+
+```bash
+quarto render docs/
+```
+
+The rendered site is output to `docs/_site/`. To deploy as a GitHub Page, configure the repository to serve from that directory.
+

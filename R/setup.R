@@ -45,4 +45,5 @@ if (!exists("write_marker_set", mode = "function") ||
   source(file.path(r_lib_dir, "queries.R"))
   source(file.path(r_lib_dir, "analysis.R"))
   source(file.path(r_lib_dir, "qtl_database.R"))
+  source(file.path(r_lib_dir, "sim_performance.R"))
 }
