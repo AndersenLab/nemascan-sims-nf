@@ -1,0 +1,13 @@
+---
+title: "nemascan-sims-nf"
+---
+
+Pipeline documentation for `nemascan-sims-nf` — a Nextflow pipeline that
+simulates GWAS for *C. elegans* and related nematodes, evaluating the power
+and precision of different mapping algorithms.
+
+## Reports
+
+- [Assessment Cross-Validation](cross-validation.qmd) — How to run and
+  interpret the cross-validation analysis comparing DB-path and legacy-path
+  assessment outputs.

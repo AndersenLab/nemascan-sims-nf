@@ -24,6 +24,8 @@ include { PYTHON_CHECK_VP               } from './modules/python/check_vp.nf'
 include { DB_MIGRATION_WRITE_MARKER_SET  } from './modules/db_migration/write_marker_set/main'
 include { DB_MIGRATION_WRITE_GWA_TO_DB   } from './modules/db_migration/write_gwa_to_db/main'
 include { DB_MIGRATION_AGGREGATE_METADATA } from './modules/db_migration/aggregate_metadata/main'
+include { DB_MIGRATION_ANALYZE_QTL       } from './modules/db_migration/analyze_qtl/main'
+include { DB_MIGRATION_ASSESS_SIMS       } from './modules/db_migration/assess_sims/main'
 
 workflow {
     main:
@@ -395,41 +397,99 @@ workflow {
         db_output_dir
     )
 
-    // Find GCTA intervals
-    ch_intervals_sthresh = Channel.of("BF", "EIGEN")
-    ch_intervals_params = GCTA_PERFORM_GWA.out.params.combine(ch_intervals_sthresh)
-    ch_intervals_grm = GCTA_PERFORM_GWA.out.grm.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
-    ch_intervals_plink = GCTA_PERFORM_GWA.out.plink.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
-    ch_intervals_pheno = GCTA_PERFORM_GWA.out.pheno.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
-    ch_intervals_gwa = GCTA_PERFORM_GWA.out.gwa.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
+    // ── DB-PATH QTL ANALYSIS (default) ─────────────────────────────────
+    // Queries the populated database, detects QTL intervals with flexible
+    // thresholds, and assesses against simulated truth. Produces
+    // db_simulation_assessment_results.tsv as the primary output.
 
-    R_GET_GCTA_INTERVALS(
-        ch_intervals_params,
-        ch_intervals_grm,
-        ch_intervals_plink,
-        ch_intervals_pheno,
-        ch_intervals_gwa,
-        Channel.fromPath("${workflow.projectDir}/bin/Get_GCTA_Intervals.R").first(),
+    // Barrier: wait for DB to be fully populated before querying
+    ch_db_analysis_barrier = DB_MIGRATION_AGGREGATE_METADATA.out.summary
+
+    // Expand GCTA_PERFORM_GWA params by threshold (BF × EIGEN)
+    ch_db_sthresh = Channel.of("BF", "EIGEN")
+    ch_db_analysis_params = GCTA_PERFORM_GWA.out.params
+        .combine(ch_db_sthresh)
+        .combine(ch_db_analysis_barrier)
+        .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold, _barrier ->
+            tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold)
+        }
+
+    // Expand pheno (contains .par file) by threshold — same pattern
+    ch_db_analysis_pheno = GCTA_PERFORM_GWA.out.pheno
+        .map { it -> [it] }
+        .combine(ch_db_sthresh)
+        .combine(ch_db_analysis_barrier)
+        .map { it -> it[0] }
+
+    // Step 1: Analyze QTL (pheno is pass-through for Step 2)
+    DB_MIGRATION_ANALYZE_QTL(
+        ch_db_analysis_params,
+        ch_db_analysis_pheno,
+        db_output_dir,
+        params.ci_size,
         params.group_qtl,
-        params.ci_size
-        )
-        
-    ch_versions = ch_versions.mix(R_GET_GCTA_INTERVALS.out.versions)
-
-    // Compile results
-    R_ASSESS_SIMS(
-        R_GET_GCTA_INTERVALS.out.params,
-        R_GET_GCTA_INTERVALS.out.grm,
-        R_GET_GCTA_INTERVALS.out.plink,
-        R_GET_GCTA_INTERVALS.out.pheno,
-        R_GET_GCTA_INTERVALS.out.interval,
-        Channel.fromPath("${workflow.projectDir}/bin/Assess_Sims.R").first()
-        )
-    ch_versions = ch_versions.mix(R_ASSESS_SIMS.out.versions)
-
-    ch_mapping_pub = R_ASSESS_SIMS.out.assessment.collectFile(
-        name:"simulation_assessment_results.tsv", sort:false
+        params.alpha
     )
+
+    // Step 2: Assess Sims (consumes ANALYZE_QTL outputs — correctly paired via pass-through)
+    DB_MIGRATION_ASSESS_SIMS(
+        DB_MIGRATION_ANALYZE_QTL.out.params,
+        DB_MIGRATION_ANALYZE_QTL.out.regions,
+        DB_MIGRATION_ANALYZE_QTL.out.pheno,
+        db_output_dir,
+        params.ci_size,
+        params.group_qtl,
+        params.alpha
+    )
+
+    ch_db_assessment_pub = DB_MIGRATION_ASSESS_SIMS.out.assessment.collectFile(
+        name: "db_simulation_assessment_results.tsv", sort: false
+    )
+
+    // ── LEGACY ASSESSMENT PATH (optional, --legacy_assess) ────────────
+    // Runs the original R_GET_GCTA_INTERVALS + R_ASSESS_SIMS chain for
+    // cross-validation against the DB path. Produces
+    // simulation_assessment_results.tsv alongside the DB output.
+    if (params.legacy_assess) {
+        ch_intervals_sthresh = Channel.of("BF", "EIGEN")
+        ch_intervals_params = GCTA_PERFORM_GWA.out.params.combine(ch_intervals_sthresh)
+        ch_intervals_grm = GCTA_PERFORM_GWA.out.grm.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
+        ch_intervals_plink = GCTA_PERFORM_GWA.out.plink.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
+        ch_intervals_pheno = GCTA_PERFORM_GWA.out.pheno.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
+        ch_intervals_gwa = GCTA_PERFORM_GWA.out.gwa.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
+
+        R_GET_GCTA_INTERVALS(
+            ch_intervals_params,
+            ch_intervals_grm,
+            ch_intervals_plink,
+            ch_intervals_pheno,
+            ch_intervals_gwa,
+            Channel.fromPath("${workflow.projectDir}/bin/Get_GCTA_Intervals.R").first(),
+            params.group_qtl,
+            params.ci_size,
+            params.alpha
+        )
+        ch_versions = ch_versions.mix(R_GET_GCTA_INTERVALS.out.versions)
+
+        R_ASSESS_SIMS(
+            R_GET_GCTA_INTERVALS.out.params,
+            R_GET_GCTA_INTERVALS.out.grm,
+            R_GET_GCTA_INTERVALS.out.plink,
+            R_GET_GCTA_INTERVALS.out.pheno,
+            R_GET_GCTA_INTERVALS.out.interval,
+            Channel.fromPath("${workflow.projectDir}/bin/Assess_Sims.R").first(),
+            params.alpha,
+            params.ci_size,
+            params.group_qtl
+        )
+        ch_versions = ch_versions.mix(R_ASSESS_SIMS.out.versions)
+
+        ch_mapping_pub = R_ASSESS_SIMS.out.assessment.collectFile(
+            name: "simulation_assessment_results.tsv", sort: false
+        )
+    } else {
+        ch_mapping_pub = Channel.empty()
+    }
 
     // // Split results by algorithm and compile into summary file
     // R_ASSESS_SIMS.out.assessment.branch{ v ->
@@ -443,6 +503,7 @@ workflow {
 
     publish:
         ch_mapping_pub >> "."
+        ch_db_assessment_pub >> "."
 }
 
 
