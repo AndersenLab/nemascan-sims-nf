@@ -5,8 +5,6 @@ format:
   html:
     toc: true
     toc-depth: 3
-    code-fold: true
-    code-summary: "Show code"
     embed-resources: true
     fig-width: 9
     fig-height: 6
@@ -20,7 +18,7 @@ execute:
   message: true
 ---
 
-## 1. Executive Summary
+## Summary
 
 This report compares the **DB-path** QTL assessment against the **legacy R file-based** assessment
 to verify that both pipelines produce identical analytical results. The DB-path queries a
@@ -28,9 +26,10 @@ Parquet/DuckDB database populated during the pipeline run, while the legacy path
 operating on intermediate files. Both paths analyze the same GWA output and should produce
 matching QTL detection, interval boundaries, and significance calls.
 
-The report runs 7 validation checks (mirroring `test-assessment_cross_validation.R`), then uses
-the `designate_qtl()` / `count_outcomes()` / `calculate_simrep_performance()` pipeline to compute
-Power and FDR by method, with visualizations comparing both paths.
+The report runs 5 validation checks, then compares results at the **per-replicate** level —
+each unique `(nQTL, simREP, h2, maf, strain_set_id)` combination — across all mapping methods
+and thresholds, using the `designate_qtl()` / `count_outcomes()` / `calculate_simrep_performance()`
+pipeline to compute Power and FDR.
 
 :::{.callout-note}
 ## Known Design Differences
@@ -44,7 +43,7 @@ Both encode the same information; the `normalize_algorithm_id()` helper strips t
 uppercases for joining.
 :::
 
-## 2. Setup
+## Setup
 
 ```{r}
 #| label: setup
@@ -66,9 +65,9 @@ source(here::here("R", "setup.R"))
 # db_assessment_path       <- "/full/path/to/db_simulation_assessment_results.tsv"
 # db_dir                   <- "/full/path/to/db"
 
-existing_assessment_path <- ""
-db_assessment_path       <- ""
-db_dir                   <- ""
+existing_assessment_path <- "/Users/ryanmckeown/Desktop/nemascan-sims-nf/Analysis_Results-20260213/simulation_assessment_results.tsv"
+db_assessment_path       <- "/Users/ryanmckeown/Desktop/nemascan-sims-nf/Analysis_Results-20260213/db_simulation_assessment_results.tsv"
+db_dir                   <- "/Users/ryanmckeown/Desktop/nemascan-sims-nf/Analysis_Results-20260213/db"
 
 # Read from Quarto params, fall back to env vars, then interactive vars above
 if (!exists("existing_assessment_path") || existing_assessment_path == "") {
@@ -236,7 +235,7 @@ make_badge <- function(passed, label = NULL) {
 }
 ```
 
-## 3. Data Loading & Overview
+## Data Loading & Overview
 
 ```{r}
 #| label: load-data
@@ -300,10 +299,10 @@ knitr::kable(head(db_assess, 5))
 
 :::
 
-## 4. Validation Summary
+## Validation Summary
 
 ```{r}
-#| label: run-checks
+#| label: define-checks
 
 # Check 1: Output files exist and are non-empty
 run_file_check <- function() {
@@ -370,49 +369,7 @@ run_detection_check <- function() {
   )
 }
 
-# Check 4: Threshold values match
-run_threshold_check <- function() {
-  marker_sets <- list_marker_sets(db_dir)
-  if (nrow(marker_sets) == 0) return(list(passed = NA, summary = "No marker sets in DB", details = NULL))
-
-  results <- list()
-  all_pass <- TRUE
-  for (i in seq_len(nrow(marker_sets))) {
-    pop <- marker_sets$population[i]
-    maf_val <- marker_sets$maf[i]
-    thresh_params <- get_threshold_params(pop, maf_val, 0.05, db_dir)
-
-    expected_bf <- -log10(0.05 / thresh_params$n_markers)
-    bf_ok <- isTRUE(all.equal(thresh_params$bf_threshold, expected_bf))
-
-    if (!is.na(thresh_params$n_independent_tests)) {
-      expected_eigen <- -log10(0.05 / thresh_params$n_independent_tests)
-      eigen_ok <- isTRUE(all.equal(thresh_params$eigen_threshold, expected_eigen))
-    } else {
-      expected_eigen <- NA
-      eigen_ok <- TRUE
-    }
-
-    if (!bf_ok || !eigen_ok) all_pass <- FALSE
-    results[[i]] <- data.frame(
-      population = pop, maf = maf_val,
-      bf_actual = round(thresh_params$bf_threshold, 4),
-      bf_expected = round(expected_bf, 4), bf_ok = bf_ok,
-      eigen_actual = ifelse(is.na(thresh_params$eigen_threshold), NA, round(thresh_params$eigen_threshold, 4)),
-      eigen_expected = ifelse(is.na(expected_eigen), NA, round(expected_eigen, 4)),
-      eigen_ok = eigen_ok
-    )
-  }
-  list(
-    passed = all_pass,
-    summary = ifelse(all_pass,
-                     sprintf("All thresholds match for %d marker sets", nrow(marker_sets)),
-                     "One or more thresholds do not match"),
-    details = do.call(rbind, results)
-  )
-}
-
-# Check 5: QTL interval boundaries match
+# Check 4: QTL interval boundaries match
 run_interval_check <- function() {
   existing_detected <- existing %>% filter(Detected == "TRUE", !is.na(startPOS)) %>% make_join_key()
   db_detected <- db_assess %>% filter(Detected == "TRUE", !is.na(startPOS)) %>% make_join_key()
@@ -443,7 +400,7 @@ run_interval_check <- function() {
   )
 }
 
-# Check 6: Detected/simulated counts per mapping match
+# Check 5: Detected/simulated counts per mapping match
 run_count_check <- function() {
   count_by_mapping <- function(df) {
     df %>%
@@ -474,36 +431,18 @@ run_count_check <- function() {
   )
 }
 
-# Check 7: var.exp is NA in DB path
-run_varexp_check <- function() {
-  if (!"interval.var.exp" %in% names(db_assess)) {
-    return(list(passed = NA, summary = "interval.var.exp column not present", details = NULL))
-  }
-  non_na <- sum(!is.na(db_assess$interval.var.exp))
-  passed <- non_na == 0
-  list(
-    passed = passed,
-    summary = ifelse(passed,
-                     sprintf("interval.var.exp is all NA in DB path (%d rows)", nrow(db_assess)),
-                     sprintf("%d rows have non-NA interval.var.exp", non_na)),
-    details = NULL
-  )
-}
-
 # Run all checks
 checks <- list(
   "1. Output Files" = run_file_check(),
   "2. Row Counts" = run_row_count_check(),
   "3. Detection Outcomes" = run_detection_check(),
-  "4. Threshold Values" = run_threshold_check(),
-  "5. Interval Boundaries" = run_interval_check(),
-  "6. Detected/Simulated Counts" = run_count_check(),
-  "7. var.exp NA in DB" = run_varexp_check()
+  "4. Interval Boundaries" = run_interval_check(),
+  "5. Detected/Simulated Counts" = run_count_check()
 )
 ```
 
 ```{r}
-#| label: validation-summary-table
+#| label: validation-overview
 #| results: asis
 summary_rows <- lapply(names(checks), function(nm) {
   chk <- checks[[nm]]
@@ -515,58 +454,128 @@ summary_df <- do.call(rbind, summary_rows)
 knitr::kable(summary_df, escape = FALSE, caption = "Validation Summary")
 ```
 
+### Output Files
+
+Both the legacy and DB assessment files must exist and be non-empty.
+
 ```{r}
-#| label: check-details
+#| label: check-1-output-files
 #| results: asis
-# Show details for any failed checks
-for (nm in names(checks)) {
-  chk <- checks[[nm]]
-  if (!is.null(chk$details) && !isTRUE(chk$passed)) {
-    cat(sprintf("\n### %s - Details\n\n", nm))
-    print(knitr::kable(chk$details))
-    cat("\n")
-  }
+chk <- checks[["1. Output Files"]]
+cat(make_badge(chk$passed), "\n\n")
+cat(chk$summary, "\n")
+```
+
+### Row Counts
+
+Per-mapping row counts must match between the two paths. Each mapping is identified by the
+combination of `(nQTL, simREP, h2, maf, strain_set_id, algorithm_id)`.
+
+```{r}
+#| label: check-2-row-counts
+#| results: asis
+chk <- checks[["2. Row Counts"]]
+cat(make_badge(chk$passed), "\n\n")
+cat(chk$summary, "\n")
+if (!is.null(chk$details) && !isTRUE(chk$passed)) {
+  cat("\n")
+  print(knitr::kable(chk$details, caption = "Mismatched Row Counts"))
 }
 ```
 
-## 5. Method-Level Cross-Path Comparison
+### Detection Outcomes
 
-### 5.1 Detection Designations by Method
+For every simulated QTL, the `Detected` column must agree between paths.
 
 ```{r}
-#| label: designation-by-method
-# Combine both paths for comparison
-combined <- bind_rows(existing_d, db_d)
-
-# Count designations per method and path
-desig_counts <- combined %>%
-  filter(!is.na(designation)) %>%
-  group_by(method_label, path, designation) %>%
-  summarise(n = n(), .groups = "drop")
+#| label: check-3-detection
+#| results: asis
+chk <- checks[["3. Detection Outcomes"]]
+badge <- if (is.na(chk$passed)) make_badge(TRUE, "SKIP") else make_badge(chk$passed)
+cat(badge, "\n\n")
+cat(chk$summary, "\n")
+if (!is.null(chk$details) && !isTRUE(chk$passed)) {
+  cat("\n")
+  print(knitr::kable(chk$details, caption = "Detection Mismatches"))
+}
 ```
 
+### Interval Boundaries
+
+For detected QTLs, the `startPOS`, `peakPOS`, and `endPOS` must match between paths.
+
 ```{r}
-#| label: viz-1-designation-bars
-#| fig-cap: "Detection designations by method — DB vs Legacy"
-ggplot(desig_counts,
-       aes(x = designation, y = n, fill = path)) +
-  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
-  scale_fill_manual(values = path_colors) +
-  facet_wrap(~ method_label, scales = "free_y") +
-  labs(x = "Designation", y = "Count", fill = "Path") +
-  theme(axis.text.x = element_text(angle = 35, hjust = 1, size = 8))
+#| label: check-4-intervals
+#| results: asis
+chk <- checks[["4. Interval Boundaries"]]
+badge <- if (is.na(chk$passed)) make_badge(TRUE, "SKIP") else make_badge(chk$passed)
+cat(badge, "\n\n")
+cat(chk$summary, "\n")
+if (!is.null(chk$details) && !isTRUE(chk$passed)) {
+  cat("\n")
+  print(knitr::kable(chk$details, caption = "Interval Boundary Mismatches"))
+}
 ```
 
+### Detected/Simulated Counts
+
+Per-mapping counts of detected and simulated QTLs must match between paths.
+
 ```{r}
-#| label: viz-2-agreement-heatmap
-#| fig-cap: "Per-QTL designation agreement between paths"
-#| eval: !expr nrow(existing_d) <= 200
+#| label: check-5-counts
+#| results: asis
+chk <- checks[["5. Detected/Simulated Counts"]]
+cat(make_badge(chk$passed), "\n\n")
+cat(chk$summary, "\n")
+if (!is.null(chk$details) && !isTRUE(chk$passed)) {
+  cat("\n")
+  print(knitr::kable(chk$details, caption = "Count Mismatches"))
+}
+```
 
-# Join designations by QTL key
-existing_desig <- existing_d %>% make_join_key() %>% select(join_key, method_label, designation_legacy = designation)
-db_desig <- db_d %>% make_join_key() %>% select(join_key, designation_db = designation)
+## Per-Replicate Concordance
 
-agreement <- inner_join(existing_desig, db_desig, by = "join_key") %>%
+This section compares DB and legacy assessment results at the **per-replicate** level. A
+simulation replicate is identified by `(nQTL, simREP, h2, maf, strain_set_id)`. For each
+replicate, both paths produce assessment rows for each mapping method and threshold combination.
+
+```{r}
+#| label: replicate-join
+# Join the two paths on the full composite key (includes QTL identity)
+existing_keyed <- existing_d %>% make_join_key()
+db_keyed <- db_d %>% make_join_key()
+
+joined <- inner_join(
+  existing_keyed %>%
+    select(join_key, method_label, norm_alg, threshold,
+           nQTL, simREP, h2, maf, strain_set_id,
+           designation_legacy = designation,
+           Detected_legacy = Detected, Simulated_legacy = Simulated,
+           log10p_legacy = log10p,
+           startPOS_legacy = startPOS, peakPOS_legacy = peakPOS, endPOS_legacy = endPOS),
+  db_keyed %>%
+    select(join_key,
+           designation_db = designation,
+           Detected_db = Detected, Simulated_db = Simulated,
+           log10p_db = log10p,
+           startPOS_db = startPOS, peakPOS_db = peakPOS, endPOS_db = endPOS),
+  by = "join_key"
+)
+
+message("Joined rows: ", nrow(joined))
+```
+
+### Designation Concordance
+
+Each QTL row is classified into one of four designation categories by `designate_qtl()`. This
+heatmap shows how designations from the legacy path (x-axis) map to designations from the DB
+path (y-axis). Perfect concordance means all counts fall on the diagonal.
+
+```{r}
+#| label: viz-designation-heatmap
+#| fig-cap: "Designation agreement: Legacy (x) vs DB (y)"
+
+agreement <- joined %>%
   filter(!is.na(designation_legacy), !is.na(designation_db))
 
 if (nrow(agreement) > 0) {
@@ -574,104 +583,142 @@ if (nrow(agreement) > 0) {
     count(designation_legacy, designation_db) %>%
     tidyr::complete(designation_legacy, designation_db, fill = list(n = 0))
 
+  total <- sum(agree_matrix$n)
+  on_diag <- agree_matrix %>% filter(designation_legacy == designation_db) %>% pull(n) %>% sum()
+  agreement_rate <- on_diag / total
+
   ggplot(agree_matrix, aes(x = designation_legacy, y = designation_db, fill = n)) +
     geom_tile(color = "white") +
     geom_text(aes(label = n), size = 5) +
     scale_fill_gradient(low = "white", high = "#2ca02c") +
-    labs(x = "Legacy Designation", y = "DB Designation", fill = "Count") +
+    labs(x = "Legacy Designation", y = "DB Designation", fill = "Count",
+         subtitle = sprintf("Overall agreement: %d / %d (%.1f%%)", on_diag, total, agreement_rate * 100)) +
     theme(axis.text.x = element_text(angle = 35, hjust = 1))
-}
-```
-
-### 5.2 Power & FDR Comparison by Method
-
-```{r}
-#| label: power-fdr-by-method
-# Compute performance per method and path using sim_performance pipeline
-perf_by_method <- combined %>%
-  filter(!is.na(designation)) %>%
-  group_by(method_label, path) %>%
-  group_modify(~ count_outcomes(.x)) %>%
-  ungroup() %>%
-  calculate_simrep_performance(stringent = FALSE)
-
-perf_by_method_stringent <- combined %>%
-  filter(!is.na(designation)) %>%
-  group_by(method_label, path) %>%
-  group_modify(~ count_outcomes(.x)) %>%
-  ungroup() %>%
-  calculate_simrep_performance(stringent = TRUE) %>%
-  rename(Power_stringent = Power, FDR_stringent = FDR)
-```
-
-```{r}
-#| label: viz-3-power-comparison
-#| fig-cap: "Power by method — Legacy vs DB"
-ggplot(perf_by_method, aes(x = method_label, y = Power, fill = path)) +
-  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
-  scale_fill_manual(values = path_colors) +
-  scale_y_continuous(limits = c(0, 1), labels = percent_format()) +
-  geom_hline(yintercept = 0.8, linetype = "dashed", alpha = 0.4) +
-  labs(x = "Method", y = "Power", fill = "Path") +
-  theme(axis.text.x = element_text(angle = 35, hjust = 1))
-```
-
-```{r}
-#| label: viz-4-fdr-comparison
-#| fig-cap: "False Discovery Rate by method — Legacy vs DB"
-ggplot(perf_by_method, aes(x = method_label, y = FDR, fill = path)) +
-  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
-  scale_fill_manual(values = path_colors) +
-  scale_y_continuous(limits = c(0, NA), labels = percent_format()) +
-  labs(x = "Method", y = "FDR", fill = "Path") +
-  theme(axis.text.x = element_text(angle = 35, hjust = 1))
-```
-
-```{r}
-#| label: power-fdr-table
-#| results: asis
-perf_table <- perf_by_method %>%
-  select(method_label, path, Detected.CV, Missed.CV, CV.Not.Significant.In.Interval,
-         False.Discovery, Power, FDR) %>%
-  mutate(Power = sprintf("%.1f%%", Power * 100), FDR = sprintf("%.1f%%", FDR * 100))
-knitr::kable(perf_table, caption = "Power & FDR by Method and Path")
-```
-
-### 5.3 Interval Boundaries by Method
-
-```{r}
-#| label: interval-boundary-data
-existing_detected <- existing_d %>%
-  filter(Detected == "TRUE", !is.na(startPOS)) %>%
-  make_join_key()
-
-db_detected <- db_d %>%
-  filter(Detected == "TRUE", !is.na(startPOS)) %>%
-  make_join_key()
-
-interval_merged <- if (nrow(existing_detected) > 0 && nrow(db_detected) > 0) {
-  inner_join(
-    existing_detected %>%
-      select(join_key, method_label,
-             startPOS_legacy = startPOS, peakPOS_legacy = peakPOS, endPOS_legacy = endPOS,
-             interval_size_legacy = interval_size),
-    db_detected %>%
-      select(join_key,
-             startPOS_db = startPOS, peakPOS_db = peakPOS, endPOS_db = endPOS,
-             interval_size_db = interval_size),
-    by = "join_key"
-  )
 } else {
-  data.frame()
+  message("No designations to compare.")
+}
+```
+
+### Per-Replicate Power & FDR
+
+For each replicate, method, and threshold, Power and FDR are computed independently for both
+paths. Each point represents one replicate under a specific method+threshold combination. Points
+on the diagonal indicate perfect agreement between paths.
+
+```{r}
+#| label: per-replicate-performance
+# Define replicate grouping columns
+rep_group <- c("nQTL", "simREP", "h2", "maf", "strain_set_id")
+
+# Compute per-replicate performance for each path
+compute_replicate_perf <- function(df, path_label) {
+  df %>%
+    filter(!is.na(designation)) %>%
+    group_by(across(all_of(c(rep_group, "method_label", "threshold")))) %>%
+    group_modify(~ count_outcomes(.x)) %>%
+    ungroup() %>%
+    calculate_simrep_performance(stringent = FALSE) %>%
+    mutate(path = path_label)
+}
+
+legacy_perf <- compute_replicate_perf(existing_d, "Legacy")
+db_perf <- compute_replicate_perf(db_d, "DB")
+
+# Join on replicate + method + threshold
+perf_join_cols <- c(rep_group, "method_label", "threshold")
+perf_joined <- inner_join(
+  legacy_perf %>% select(all_of(perf_join_cols), Power_legacy = Power, FDR_legacy = FDR),
+  db_perf %>% select(all_of(perf_join_cols), Power_db = Power, FDR_db = FDR),
+  by = perf_join_cols
+)
+
+message("Per-replicate performance rows: ", nrow(perf_joined))
+```
+
+```{r}
+#| label: viz-power-scatter
+#| fig-cap: "Per-replicate Power: Legacy (x) vs DB (y), faceted by method"
+if (nrow(perf_joined) > 0) {
+  ggplot(perf_joined, aes(x = Power_legacy, y = Power_db, shape = threshold, color = threshold)) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+    geom_point(size = 3, alpha = 0.7) +
+    facet_wrap(~ method_label) +
+    scale_x_continuous(limits = c(0, 1), labels = percent_format()) +
+    scale_y_continuous(limits = c(0, 1), labels = percent_format()) +
+    labs(x = "Legacy Power", y = "DB Power", shape = "Threshold", color = "Threshold")
+} else {
+  message("No per-replicate performance data to plot.")
 }
 ```
 
 ```{r}
-#| label: viz-5-boundary-scatter
-#| fig-cap: "Interval boundary positions — Legacy vs DB (diagonal = perfect match)"
-#| eval: !expr nrow(interval_merged) > 0
+#| label: viz-fdr-scatter
+#| fig-cap: "Per-replicate FDR: Legacy (x) vs DB (y), faceted by method"
+if (nrow(perf_joined) > 0) {
+  ggplot(perf_joined, aes(x = FDR_legacy, y = FDR_db, shape = threshold, color = threshold)) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+    geom_point(size = 3, alpha = 0.7) +
+    facet_wrap(~ method_label) +
+    scale_x_continuous(limits = c(0, NA), labels = percent_format()) +
+    scale_y_continuous(limits = c(0, NA), labels = percent_format()) +
+    labs(x = "Legacy FDR", y = "DB FDR", shape = "Threshold", color = "Threshold")
+} else {
+  message("No per-replicate FDR data to plot.")
+}
+```
 
-boundary_long <- interval_merged %>%
+### Detection Agreement Summary
+
+For each replicate and method, this table shows how many QTLs agree on their `Detected` status
+between paths and flags any disagreements.
+
+```{r}
+#| label: detection-agreement-table
+#| results: asis
+detection_agreement <- joined %>%
+  group_by(across(all_of(c(rep_group, "method_label", "threshold")))) %>%
+  summarise(
+    n_qtl = n(),
+    n_agree = sum(Detected_legacy == Detected_db),
+    n_disagree = sum(Detected_legacy != Detected_db),
+    .groups = "drop"
+  )
+
+n_disagree_total <- sum(detection_agreement$n_disagree)
+
+if (n_disagree_total == 0) {
+  cat(make_badge(TRUE), sprintf(" All %d replicate-method combinations agree on detection status.\n",
+                                nrow(detection_agreement)))
+} else {
+  cat(make_badge(FALSE), sprintf(" %d replicate-method combinations have detection disagreements.\n\n",
+                                 sum(detection_agreement$n_disagree > 0)))
+  disagreements <- detection_agreement %>% filter(n_disagree > 0)
+  print(knitr::kable(disagreements, caption = "Replicates with Detection Disagreements"))
+}
+```
+
+### Interval Concordance
+
+For QTLs detected by both paths, interval boundaries (`startPOS`, `peakPOS`, `endPOS`) should
+match exactly. Each point represents one detected QTL; points on the diagonal indicate perfect
+boundary agreement.
+
+```{r}
+#| label: interval-concordance-data
+# Filter to QTLs detected by both paths with non-NA boundaries
+interval_joined <- joined %>%
+  filter(Detected_legacy == "TRUE", Detected_db == "TRUE",
+         !is.na(startPOS_legacy), !is.na(startPOS_db))
+
+message("Detected QTLs with boundaries in both paths: ", nrow(interval_joined))
+```
+
+```{r}
+#| label: viz-interval-scatter
+#| fig-cap: "Interval boundary positions: Legacy (x) vs DB (y), faceted by boundary type"
+#| eval: !expr nrow(interval_joined) > 0
+
+boundary_long <- interval_joined %>%
   tidyr::pivot_longer(
     cols = c(startPOS_legacy, peakPOS_legacy, endPOS_legacy),
     names_to = "boundary_type_legacy",
@@ -686,242 +733,49 @@ boundary_long <- interval_merged %>%
     )
   )
 
-ggplot(boundary_long, aes(x = pos_legacy, y = pos_db, color = method_label)) +
+ggplot(boundary_long, aes(x = pos_legacy, y = pos_db, shape = threshold, color = threshold)) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
   geom_point(size = 3, alpha = 0.7) +
   facet_wrap(~ boundary_type, scales = "free") +
   scale_x_continuous(labels = label_comma()) +
   scale_y_continuous(labels = label_comma()) +
-  labs(x = "Legacy Position (bp)", y = "DB Position (bp)", color = "Method")
+  labs(x = "Legacy Position (bp)", y = "DB Position (bp)",
+       shape = "Threshold", color = "Threshold")
 ```
 
 ```{r}
-#| label: viz-6-interval-sizes
-#| fig-cap: "Interval sizes — Legacy vs DB per detected QTL"
-#| eval: !expr nrow(interval_merged) > 0
-
-n_detected <- nrow(interval_merged)
-
-if (n_detected <= 50) {
-  # Dumbbell chart for small N
-  interval_dumbbell <- interval_merged %>%
-    mutate(qtl_id = row_number()) %>%
-    tidyr::pivot_longer(
-      cols = c(interval_size_legacy, interval_size_db),
-      names_to = "path_raw",
-      values_to = "interval_size"
-    ) %>%
-    mutate(path = ifelse(grepl("legacy", path_raw), "Legacy", "DB"))
-
-  ggplot(interval_dumbbell, aes(x = interval_size / 1e3, y = reorder(as.factor(qtl_id), interval_size), color = path)) +
-    geom_line(aes(group = qtl_id), color = "grey60") +
-    geom_point(size = 3) +
-    scale_color_manual(values = path_colors) +
-    labs(x = "Interval Size (kb)", y = "Detected QTL", color = "Path")
-} else {
-  # Boxplot for large N
-  interval_box <- interval_merged %>%
-    tidyr::pivot_longer(
-      cols = c(interval_size_legacy, interval_size_db),
-      names_to = "path_raw",
-      values_to = "interval_size"
-    ) %>%
-    mutate(path = ifelse(grepl("legacy", path_raw), "Legacy", "DB"))
-
-  ggplot(interval_box, aes(x = path, y = interval_size / 1e3, fill = path)) +
-    geom_boxplot(outlier.alpha = 0.3) +
-    scale_fill_manual(values = path_colors) +
-    facet_wrap(~ method_label) +
-    labs(x = "Path", y = "Interval Size (kb)", fill = "Path")
-}
-```
-
-### 5.4 Log10p Comparison by Method
-
-```{r}
-#| label: viz-7-log10p-scatter
-#| fig-cap: "Log10p for simulated QTLs — Legacy vs DB"
-
-existing_log10p <- existing_d %>%
-  filter(Simulated == "TRUE") %>%
-  make_join_key() %>%
-  select(join_key, method_label, log10p_legacy = log10p, Detected_legacy = Detected)
-
-db_log10p <- db_d %>%
-  filter(Simulated == "TRUE") %>%
-  make_join_key() %>%
-  select(join_key, log10p_db = log10p, Detected_db = Detected)
-
-log10p_merged <- inner_join(existing_log10p, db_log10p, by = "join_key")
-
-if (nrow(log10p_merged) > 0) {
-  log10p_merged <- log10p_merged %>%
-    mutate(agreement = case_when(
-      Detected_legacy == Detected_db ~ "Agree",
-      TRUE ~ "Disagree"
-    ))
-
-  ggplot(log10p_merged, aes(x = log10p_legacy, y = log10p_db, color = method_label, shape = agreement)) +
-    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
-    geom_point(size = 3, alpha = 0.6) +
-    scale_shape_manual(values = c("Agree" = 16, "Disagree" = 4)) +
-    labs(x = "Legacy log10p", y = "DB log10p", color = "Method", shape = "Detection")
-} else {
-  message("No simulated QTLs could be joined between paths.")
-}
-```
-
-## 6. Cross-Method Comparison
-
-This section uses the **DB-path** data as reference (since both paths should be identical, either can serve as the reference).
-
-### 6.1 Detection Power Across Methods
-
-```{r}
-#| label: cross-method-performance
-# Performance per method using DB path
-db_perf <- db_d %>%
-  filter(!is.na(designation)) %>%
-  group_by(method_label) %>%
-  group_modify(~ count_outcomes(.x)) %>%
-  ungroup()
-
-db_power <- db_perf %>% calculate_simrep_performance(stringent = FALSE) %>%
-  mutate(type = "Non-stringent")
-db_power_strict <- db_perf %>% calculate_simrep_performance(stringent = TRUE) %>%
-  mutate(type = "Stringent") %>%
-  rename(Power_s = Power) %>%
-  select(method_label, Power_s)
-
-db_power_combined <- db_power %>%
-  left_join(db_power_strict, by = "method_label")
-```
-
-```{r}
-#| label: viz-8-power-by-method
-#| fig-cap: "Power by method (DB path) — stringent vs non-stringent"
-power_long <- db_power_combined %>%
-  tidyr::pivot_longer(
-    cols = c(Power, Power_s),
-    names_to = "power_type",
-    values_to = "power_value"
-  ) %>%
-  mutate(power_type = ifelse(power_type == "Power", "Non-stringent", "Stringent"))
-
-ggplot(power_long, aes(x = power_value, y = reorder(method_label, power_value), fill = power_type)) +
-  geom_col(position = position_dodge(width = 0.7), width = 0.6) +
-  scale_x_continuous(limits = c(0, 1), labels = percent_format()) +
-  geom_vline(xintercept = 0.8, linetype = "dashed", alpha = 0.4) +
-  scale_fill_manual(values = c("Non-stringent" = "#56B4E9", "Stringent" = "#0072B2")) +
-  labs(x = "Power", y = "Method", fill = "Definition")
-```
-
-```{r}
-#| label: viz-9-fdr-by-method
-#| fig-cap: "False Discovery Rate by method (DB path)"
-ggplot(db_power, aes(x = FDR, y = reorder(method_label, FDR))) +
-  geom_col(fill = "#d62728", width = 0.6) +
-  scale_x_continuous(limits = c(0, NA), labels = percent_format()) +
-  labs(x = "FDR", y = "Method")
-```
-
-### 6.2 Interval Precision Across Methods
-
-```{r}
-#| label: viz-10-interval-precision
-#| fig-cap: "Interval size distribution by threshold type"
-db_detected_all <- db_d %>%
-  filter(Detected == "TRUE", !is.na(interval_size))
-
-if (nrow(db_detected_all) > 0) {
-  ggplot(db_detected_all, aes(x = threshold, y = as.numeric(interval_size) / 1e3, fill = threshold)) +
-    geom_boxplot(outlier.alpha = 0.3) +
-    facet_wrap(~ paste(mode, type, sep = "/"), scales = "free_y") +
-    labs(x = "Threshold Type", y = "Interval Size (kb)", fill = "Threshold")
-} else {
-  message("No detected QTLs with interval sizes to plot.")
-}
-```
-
-### 6.3 Summary Table
-
-```{r}
-#| label: cross-method-summary
+#| label: interval-mismatch-summary
 #| results: asis
-if (nrow(db_power_combined) > 0) {
-  # Get interval sizes per method
-  interval_summary <- db_d %>%
-    filter(Detected == "TRUE", !is.na(interval_size)) %>%
-    group_by(method_label) %>%
-    summarise(mean_interval_mb = mean(as.numeric(interval_size), na.rm = TRUE) / 1e6, .groups = "drop")
 
-  summary_table <- db_power_combined %>%
-    left_join(interval_summary, by = "method_label") %>%
+if (nrow(interval_joined) > 0) {
+  boundary_mismatches <- interval_joined %>%
     mutate(
-      Power_pct = sprintf("%.1f%%", Power * 100),
-      Power_s_pct = sprintf("%.1f%%", Power_s * 100),
-      FDR_pct = sprintf("%.1f%%", FDR * 100),
-      mean_interval_mb = ifelse(is.na(mean_interval_mb), "-", sprintf("%.3f", mean_interval_mb))
-    ) %>%
-    select(
-      Method = method_label,
-      `N Simulated` = Simulated,
-      Detected.CV, Missed.CV, CV.Not.Significant.In.Interval, False.Discovery,
-      Power = Power_pct, `Power (stringent)` = Power_s_pct,
-      FDR = FDR_pct, `Mean Interval (Mb)` = mean_interval_mb
+      start_match = startPOS_legacy == startPOS_db,
+      peak_match = peakPOS_legacy == peakPOS_db,
+      end_match = endPOS_legacy == endPOS_db,
+      all_match = start_match & peak_match & end_match
     )
 
-  knitr::kable(summary_table, caption = "Cross-Method Performance Summary (DB Path)")
+  n_mismatch <- sum(!boundary_mismatches$all_match)
+  if (n_mismatch == 0) {
+    cat(make_badge(TRUE), sprintf(" All %d detected QTL boundaries match exactly.\n",
+                                  nrow(boundary_mismatches)))
+  } else {
+    cat(make_badge(FALSE), sprintf(" %d of %d detected QTLs have boundary mismatches.\n\n",
+                                   n_mismatch, nrow(boundary_mismatches)))
+    mismatch_detail <- boundary_mismatches %>%
+      filter(!all_match) %>%
+      group_by(across(all_of(c(rep_group, "method_label", "threshold")))) %>%
+      summarise(
+        n_mismatched = n(),
+        start_mismatches = sum(!start_match),
+        peak_mismatches = sum(!peak_match),
+        end_mismatches = sum(!end_match),
+        .groups = "drop"
+      )
+    print(knitr::kable(mismatch_detail, caption = "Boundary Mismatches by Replicate"))
+  }
+} else {
+  cat("No detected QTLs with boundaries to compare.\n")
 }
 ```
-
-## 7. Threshold Validation
-
-```{r}
-#| label: threshold-detail
-#| results: asis
-thresh_check <- checks[["4. Threshold Values"]]
-if (!is.null(thresh_check$details)) {
-  knitr::kable(thresh_check$details, caption = "Threshold Validation Details")
-}
-```
-
-## 8. Appendix
-
-::: {.panel-tabset}
-
-### Full Joined Comparison
-
-```{r}
-#| label: appendix-full-join
-existing_keyed <- existing_d %>% make_join_key()
-db_keyed <- db_d %>% make_join_key()
-
-full_comparison <- inner_join(
-  existing_keyed %>%
-    select(join_key, method_label, designation_legacy = designation,
-           log10p_legacy = log10p, Detected_legacy = Detected,
-           startPOS_legacy = startPOS, peakPOS_legacy = peakPOS, endPOS_legacy = endPOS),
-  db_keyed %>%
-    select(join_key, designation_db = designation,
-           log10p_db = log10p, Detected_db = Detected,
-           startPOS_db = startPOS, peakPOS_db = peakPOS, endPOS_db = endPOS),
-  by = "join_key"
-)
-
-knitr::kable(head(full_comparison, 50), caption = "Joined comparison (first 50 rows)")
-```
-
-### Column Schema
-
-```{r}
-#| label: appendix-columns
-data.frame(
-  col_index = seq_along(names(existing)),
-  existing = names(existing),
-  db = names(db_assess),
-  same = names(existing) == names(db_assess)
-) %>% knitr::kable(caption = "Column name comparison")
-```
-
-:::
