@@ -560,7 +560,7 @@ nextflow run main.nf -profile test_variable -stub-run
 Test parallel analysis to enable legacy post-processing modules for comparisons
 
 ```bash
-nextflow run main.nf -profile test --analyze_db -stub-run
+nextflow run main.nf -profile test --legacy_assess -stub-run
 ```
 
 ### 4. End-to-End Test Run
@@ -569,4 +569,10 @@ Uses SLURM + Singularity on real test data.
 
 ```bash
 nextflow run main.nf -profile test,rockfish
+```
+
+#### 4.1 End-to-End Test Run with `--legacy_assess` flag
+
+```bash
+nextflow run main.nf -profile test,rockfish --legacy_assess
 ```
