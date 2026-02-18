@@ -1,0 +1,296 @@
+---
+title: "Phase 1: Marker Set Generation"
+subtitle: "VCF to LD-pruned PLINK files and genotype matrix"
+date: last-modified
+format:
+  html:
+    embed-resources: true
+---
+
+## Overview
+
+The first phase of the pipeline transforms a multi-sample VCF into LD-pruned
+PLINK binary filesets and a numeric genotype matrix. These outputs feed into
+phenotype simulation (Phase 2) and GWAS mapping (Phase 3).
+
+The processing flow is:
+
+```
+VCF
+ ├─ LOCAL_GET_CONTIG_INFO ──► contig_mapping.tsv, contigs.txt
+ │                                    │
+ ▼                                    │
+ BCFTOOLS_EXTRACT_STRAINS             │
+ ▼                                    │
+ BCFTOOLS_RENAME_CHROMS ◄─────────────┘
+ ▼
+ PLINK_RECODE_VCF ──────────► PLINK binaries (.bed/.bim/.fam), markers.txt
+ │                                    │
+ ▼                                    ▼
+ (to Phase 2/3)          BCFTOOLS_CREATE_GENOTYPE_MATRIX ──► genotype matrix TSV
+```
+
+Each process is described below with the exact commands run, key parameters,
+and links to external tool documentation.
+
+
+## LOCAL_GET_CONTIG_INFO (upstream helper)
+
+**Source:** `modules/local/get_contig_info/main.nf`
+
+Parses `##contig` header lines from the VCF to build a name-to-numeric mapping
+(e.g. `I` &rarr; `1`, `II` &rarr; `2`, `MtDNA` &rarr; `7`). This mapping is
+required because PLINK and GCTA expect numeric chromosome identifiers.
+
+**Commands:**
+
+```bash
+# Extract ##contig headers and build tab-separated mapping (name → number)
+zcat input.vcf.gz | head -n 200 | grep "##contig" | \
+    awk 'BEGIN{COUNT=1}{split($1,A,"="); split(A[3],B,","); CHROM=B[1];
+         printf "%s\t%i\n", CHROM, COUNT; COUNT=COUNT+1}' > contig_mapping.tsv
+
+# Extract just the chromosome names
+cut -f 1 contig_mapping.tsv > contigs.txt
+```
+
+**Outputs:**
+
+| File                 | Description |
+|----------------------|-------------|
+| `contig_mapping.tsv` | Tab-separated file: chromosome name (col 1) and numeric ID (col 2) |
+| `contigs.txt`        | One chromosome name per line (used by main.nf for mito filtering and chromosome list) |
+
+**Used by:**
+
+- `BCFTOOLS_RENAME_CHROMS` &mdash; consumes `contig_mapping.tsv` as the rename mapping file
+- `main.nf` workflow logic &mdash; reads `contigs.txt` to identify the mitochondrial
+  chromosome name and generate the list of autosomal chromosomes
+
+
+## 1. BCFTOOLS_EXTRACT_STRAINS
+
+**Source:** `modules/bcftools/extract_strains/main.nf`
+
+Subsets the VCF to only the strains in the current strain set and removes any
+sites with missing genotypes. This produces a clean, strain-specific VCF for
+downstream processing.
+
+**Commands:**
+
+```bash
+# Subset samples and filter missing sites, then index
+bcftools view --threads ${task.cpus} -s ${strains} -O u ${vcf} | \
+bcftools filter -i N_MISSING=0 -O z -o ${group}.vcf.gz
+bcftools index --tbi ${group}.vcf.gz
+```
+
+| Command | Purpose | Docs |
+|---------|---------|------|
+| [`bcftools view -s`](https://samtools.github.io/bcftools/bcftools.html#view) | Subset to specified sample names | bcftools view |
+| [`bcftools filter -i N_MISSING=0`](https://samtools.github.io/bcftools/bcftools.html#filter) | Keep only sites where no sample has a missing genotype | bcftools filter |
+| [`bcftools index --tbi`](https://samtools.github.io/bcftools/bcftools.html#index) | Create a tabix (`.tbi`) index for the output VCF | bcftools index |
+
+**Key flags:**
+
+- `-O u` &mdash; pipe as uncompressed BCF (faster for piping between bcftools commands)
+- `-O z` &mdash; write bgzf-compressed VCF output
+
+**Inputs / Outputs:**
+
+| Direction | File | Description |
+|-----------|------|-------------|
+| Input | `*.vcf.gz` + `.tbi` | Chromosome-renamed VCF from `BCFTOOLS_RENAME_CHROMS` |
+| Input | `strains` (val) | Comma-separated list of strain names |
+| Output | `${group}.vcf.gz` + `.tbi` | Strain-subset, no-missing-site VCF with tabix index |
+
+
+## 2. BCFTOOLS_RENAME_CHROMS
+
+**Source:** `modules/bcftools/rename_chroms/main.nf`
+
+Renames chromosome identifiers from text (I, II, III, ...) to numeric (1, 2,
+3, ...) using the mapping file produced by `LOCAL_GET_CONTIG_INFO`. Numeric
+chromosome names are required by PLINK and GCTA.
+
+**Commands:**
+
+```bash
+# Stream VCF, rename chromosomes, compress and index
+bcftools view --threads ${task.cpus} -O u ${vcf} | \
+bcftools annotate --rename-chrs chr_mapping.tsv -O z -o ${id}_renamed.vcf.gz
+bcftools index --tbi ${id}_renamed.vcf.gz
+```
+
+| Command | Purpose | Docs |
+|---------|---------|------|
+| [`bcftools view`](https://samtools.github.io/bcftools/bcftools.html#view) | Stream VCF as uncompressed BCF for piping | bcftools view |
+| [`bcftools annotate --rename-chrs`](https://samtools.github.io/bcftools/bcftools.html#annotate) | Rename chromosomes using a tab-separated mapping file | bcftools annotate |
+| [`bcftools index --tbi`](https://samtools.github.io/bcftools/bcftools.html#index) | Create tabix index | bcftools index |
+
+**Mapping file format:** Tab-separated, one line per chromosome &mdash;
+old name in column 1, new name in column 2:
+
+```
+I       1
+II      2
+III     3
+IV      4
+V       5
+X       6
+MtDNA   7
+```
+
+**Inputs / Outputs:**
+
+| Direction | File | Description |
+|-----------|------|-------------|
+| Input | `*.vcf.gz` + `.tbi` | Source VCF (from input channel or `BCFTOOLS_EXTRACT_STRAINS`) |
+| Input | `chr_mapping.tsv` | Chromosome name mapping from `LOCAL_GET_CONTIG_INFO` |
+| Output | `*_renamed.vcf.gz` + `.tbi` | VCF with numeric chromosome names |
+
+
+## 3. PLINK_RECODE_VCF
+
+**Source:** `modules/plink/recode_vcf/main.nf`
+
+Performs LD pruning and produces PLINK binary filesets for downstream GCTA
+analysis. This process runs two sequential PLINK commands: first to identify
+LD-pruned variants, then to create the binary files using only those variants.
+
+### Command 1: LD pruning
+
+```bash
+plink --vcf recoded.vcf.gz \
+    --snps-only \
+    --biallelic-only \
+    --maf ${maf} \
+    --set-missing-var-ids @:# \
+    --indep-pairwise 50 10 0.8 \
+    --geno \
+    --not-chr ${mito_name} \
+    --allow-extra-chr
+```
+
+This command computes pairwise LD and produces `plink.prune.in` (variant IDs to
+retain) and `plink.prune.out` (variant IDs to remove).
+
+| Flag | Purpose | Docs |
+|------|---------|------|
+| `--snps-only` | Exclude indels, retain only SNPs | [plink filter](https://www.cog-genomics.org/plink/1.9/filter#snps_only) |
+| `--biallelic-only` | Exclude multiallelic sites | [plink filter](https://www.cog-genomics.org/plink/1.9/filter#biallelic) |
+| `--maf ${maf}` | Remove variants below the minor allele frequency threshold | [plink filter](https://www.cog-genomics.org/plink/1.9/filter#maf) |
+| `--set-missing-var-ids @:#` | Assign IDs to variants missing an rsID, using `CHROM:POS` format | [plink data](https://www.cog-genomics.org/plink/1.9/data#set_missing_var_ids) |
+| `--indep-pairwise 50 10 0.8` | Sliding-window LD pruning: window=50 variants, step=10, r^2^ threshold=0.8 | [plink LD](https://www.cog-genomics.org/plink/1.9/ld#indep) |
+| `--geno` | Exclude variants with missing genotype rates above the default threshold (0.1) | [plink filter](https://www.cog-genomics.org/plink/1.9/filter#missing) |
+| `--not-chr ${mito_name}` | Exclude the mitochondrial chromosome | [plink filter](https://www.cog-genomics.org/plink/1.9/filter#chr) |
+| `--allow-extra-chr` | Permit non-standard chromosome codes | [plink filter](https://www.cog-genomics.org/plink/1.9/filter#chr) |
+
+### Command 2: Binary fileset creation
+
+```bash
+plink --vcf recoded.vcf.gz \
+    --make-bed \
+    --snps-only \
+    --biallelic-only \
+    --maf ${maf} \
+    --set-missing-var-ids @:# \
+    --extract plink.prune.in \
+    --geno \
+    --recode \
+    --out TO_SIMS \
+    --allow-extra-chr
+```
+
+Re-applies the same filtering flags for consistency and additionally:
+
+| Flag | Purpose | Docs |
+|------|---------|------|
+| `--make-bed` | Create PLINK binary fileset (`.bed`, `.bim`, `.fam`) | [plink data](https://www.cog-genomics.org/plink/1.9/data#make_bed) |
+| `--extract plink.prune.in` | Retain only variants that passed LD pruning | [plink data](https://www.cog-genomics.org/plink/1.9/data#extract) |
+| `--recode` | Also produce text-format `.ped`/`.map` files | [plink data](https://www.cog-genomics.org/plink/1.9/data#recode) |
+| `--out TO_SIMS` | Set output file prefix | &mdash; |
+
+### Post-processing: markers.txt
+
+```bash
+awk -F":" '$1=$1' OFS="\t" plink.prune.in | \
+    sort -k1,1d -k2,2n > markers.txt
+```
+
+Converts the `CHROM:POS` variant IDs from `plink.prune.in` into a
+tab-separated `CHROM  POS` file, sorted by chromosome then position. This
+marker list is used by `BCFTOOLS_CREATE_GENOTYPE_MATRIX` to subset the VCF.
+
+### Inputs / Outputs
+
+| Direction | File | Description |
+|-----------|------|-------------|
+| Input | `recoded.vcf.gz` + `.tbi` | Chromosome-renamed, strain-subset VCF |
+| Input | `mito_name` (val) | Mitochondrial chromosome name to exclude (from `LOCAL_GET_CONTIG_INFO`) |
+| Input | `maf` (val) | Minor allele frequency threshold |
+| Output | `TO_SIMS.bed/.bim/.fam` | PLINK binary fileset (used by GCTA for GRM and GWAS) |
+| Output | `TO_SIMS.map/.ped` | PLINK text-format fileset |
+| Output | `TO_SIMS.nosex/.log` | PLINK auxiliary outputs |
+| Output | `recoded.vcf.gz` + `.tbi` | Copy of the input VCF (passed through for downstream use) |
+| Output | `markers.txt` | Tab-separated list of retained markers (CHROM, POS) |
+
+
+## 4. BCFTOOLS_CREATE_GENOTYPE_MATRIX
+
+**Source:** `modules/bcftools/create_genotype_matrix/main.nf`
+
+Creates a numeric genotype matrix (markers &times; strains) from the VCF,
+restricted to the LD-pruned marker set. Genotypes are encoded numerically for
+use in eigenvalue decomposition and downstream R analysis.
+
+**Commands:**
+
+```bash
+# List and sort sample names
+bcftools query -l ${vcf} | sort > sorted_samples.txt
+
+# Extract genotypes for pruned markers, recode to numeric
+bcftools view -v snps -S sorted_samples.txt -R ${markers} ${vcf} | \
+    bcftools query --print-header -f '%CHROM\t%POS\t%REF\t%ALT[\t%GT]\n' | \
+    sed 's/[[# 0-9]*]//g' | \   # clean header annotations
+    sed 's/:GT//g' | \           # remove :GT suffix from sample names
+    sed 's/0|0/-1/g' | \         # REF/REF homozygous → -1
+    sed 's/1|1/1/g' | \          # ALT/ALT homozygous →  1
+    sed 's/0|1/NA/g' | \         # heterozygous → NA
+    sed 's/1|0/NA/g' | \         # heterozygous → NA
+    sed 's/.|./NA/g' | \         # missing → NA
+    sed 's/0\/0/-1/g' | \        # (unphased) REF/REF → -1
+    sed 's/1\/1/1/g' | \         # (unphased) ALT/ALT →  1
+    sed 's/0\/1/NA/g' | \        # (unphased) het → NA
+    sed 's/1\/0/NA/g' | \        # (unphased) het → NA
+    sed 's/.\/./NA/g' \          # (unphased) missing → NA
+    > ${group}_${maf}_Genotype_Matrix.tsv
+```
+
+| Command | Purpose | Docs |
+|---------|---------|------|
+| [`bcftools query -l`](https://samtools.github.io/bcftools/bcftools.html#query) | List sample names from the VCF header | bcftools query |
+| [`bcftools view -v snps -S ... -R ...`](https://samtools.github.io/bcftools/bcftools.html#view) | Subset to SNPs, reorder samples, restrict to marker regions | bcftools view |
+| [`bcftools query -f`](https://samtools.github.io/bcftools/bcftools.html#query) | Extract fields in a custom tab-separated format | bcftools query |
+
+### Genotype encoding
+
+| Genotype | Encoding | Meaning |
+|----------|----------|---------|
+| `0\|0` or `0/0` | `-1` | Homozygous reference |
+| `1\|1` or `1/1` | `1` | Homozygous alternate |
+| `0\|1`, `1\|0`, `0/1`, `1/0` | `NA` | Heterozygous |
+| `.\|.`, `./.` | `NA` | Missing |
+
+**Design note:** The encoding assumes inbred diploid organisms. *C. elegans*
+strains are expected to be homozygous, so heterozygous calls are treated as
+missing data (`NA`) rather than given an intermediate value.
+
+### Inputs / Outputs
+
+| Direction | File | Description |
+|-----------|------|-------------|
+| Input | `recoded.vcf.gz` + `.tbi` | Chromosome-renamed, strain-subset VCF |
+| Input | `markers.txt` | LD-pruned marker positions from `PLINK_RECODE_VCF` |
+| Output | `${group}_${maf}_Genotype_Matrix.tsv` | Tab-separated genotype matrix: rows are markers (CHROM, POS, REF, ALT), columns are strains |

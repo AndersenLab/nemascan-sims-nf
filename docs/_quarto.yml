@@ -6,8 +6,20 @@ website:
   title: "nemascan-sims-nf"
   navbar:
     left:
+      - text: "Marker Set Generation"
+        href: marker-set-generation.qmd
+      - text: "Trait Simulation"
+        href: trait-simulation.qmd
+      - text: "GWAS Mapping"
+        href: gwas-mapping.qmd
+      - text: "QTL Detection & Assessment"
+        href: qtl-detection-assessment.qmd
+      - text: "Database Structure"
+        href: database-structure.qmd
       - text: "Cross-Validation"
         href: cross-validation.qmd
+      - text: "Development"
+        href: development.qmd
 
 format:
   html:
