@@ -87,7 +87,7 @@ repository. There are two approaches depending on whether you want to commit the
 rendered HTML or build it in CI.
 
 
-### Option A: Publish from a Branch (No CI Required)
+### Publish from a Branch (No CI Required)
 
 This approach uses the `quarto publish` command to push rendered HTML to a
 dedicated `gh-pages` branch. No CI configuration is needed.
@@ -123,78 +123,6 @@ quarto publish gh-pages docs/
 ```
 
 This is a manual step &mdash; the site is not automatically rebuilt on push.
-
-
-### Option B: GitHub Actions (Automated Build on Push)
-
-This approach uses a GitHub Actions workflow to render the site on every push to
-`main` and deploy the output to GitHub Pages.
-
-**One-time setup:**
-
-1. In the GitHub repository settings, go to **Settings > Pages** and configure:
-    - **Source:** GitHub Actions
-
-2. Create `.github/workflows/publish-docs.yml`:
-
-    ```yaml
-    name: Publish Docs
-
-    on:
-      push:
-        branches: [main]
-        paths:
-          - 'docs/**'
-          - 'R/**'
-
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-
-    concurrency:
-      group: "pages"
-      cancel-in-progress: false
-
-    jobs:
-      build:
-        runs-on: ubuntu-latest
-        steps:
-          - uses: actions/checkout@v4
-
-          - uses: quarto-dev/quarto-actions/setup@v2
-
-          - name: Render site
-            run: quarto render docs/
-
-          - uses: actions/upload-pages-artifact@v3
-            with:
-              path: docs/_site
-
-      deploy:
-        needs: build
-        runs-on: ubuntu-latest
-        environment:
-          name: github-pages
-          url: ${{ steps.deployment.outputs.page_url }}
-        steps:
-          - id: deployment
-            uses: actions/deploy-pages@v4
-    ```
-
-This workflow triggers only when files in `docs/` or `R/` change, keeping
-unrelated pushes fast. The site is published to
-`https://andersenlab.github.io/nemascan-sims-nf/`.
-
-
-### Choosing an Approach
-
-| Consideration | Option A (`quarto publish`) | Option B (GitHub Actions) |
-|---------------|----------------------------|---------------------------|
-| Setup effort | Minimal | Requires workflow file |
-| Rebuild trigger | Manual command | Automatic on push to main |
-| CI dependency | None | GitHub Actions |
-| Best for | Infrequent doc updates | Docs that change with code |
 
 
 ## Running Tests
