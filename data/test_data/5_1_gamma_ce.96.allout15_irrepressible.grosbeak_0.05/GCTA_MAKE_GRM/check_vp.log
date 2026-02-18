@@ -1,0 +1,67 @@
+*******************************************************************
+* Genome-wide Complex Trait Analysis (GCTA)
+* version v1.94.1 Linux
+* Built at Nov 15 2022 21:14:25, by GCC 8.5
+* (C) 2010-present, Yang Lab, Westlake University
+* Please report bugs to Jian Yang <jian.yang@westlake.edu.cn>
+*******************************************************************
+Analysis started at 15:13:06 EDT on Tue May 20 2025.
+Hostname: c383
+
+Accepted options:
+--grm TO_SIMS_5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_gcta_grm_inbred
+--pheno 5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.phen
+--reml
+--out check_vp
+--thread-num 4
+
+Note: the program will be running on 4 threads.
+
+Reading IDs of the GRM from [TO_SIMS_5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_gcta_grm_inbred.grm.id].
+96 IDs are read from [TO_SIMS_5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_gcta_grm_inbred.grm.id].
+Reading the GRM from [TO_SIMS_5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_gcta_grm_inbred.grm.bin].
+GRM for 96 individuals are included from [TO_SIMS_5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_gcta_grm_inbred.grm.bin].
+Reading phenotypes from [5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.phen].
+Non-missing phenotypes of 96 individuals are included from [5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.phen].
+
+96 individuals are in common in these files.
+
+Performing  REML analysis ... (Note: may take hours depending on sample size).
+96 observations, 1 fixed effect(s), and 2 variance component(s)(including residual variance).
+Calculating prior values of variance components by EM-REML ...
+Updated prior values:  102.27 113.289
+logL: -302.898
+Running AI-REML algorithm ...
+Iter.	logL	V(G)	V(e)	
+1	-302.50	82.91947	126.82078	
+2	-302.04	44.30152	157.37691	
+3	-301.65	46.43490	158.91701	
+4	-301.64	46.55998	158.87670	
+5	-301.64	46.56428	158.87324	
+Log-likelihood ratio converged.
+
+Calculating the logLikelihood for the reduced model ...
+(variance component 1 is dropped from the model)
+Calculating prior values of variance components by EM-REML ...
+Updated prior values: 204.90498
+logL: -302.60313
+Running AI-REML algorithm ...
+Iter.	logL	V(e)	
+1	-302.60	204.90498	
+Log-likelihood ratio converged.
+
+Summary result of REML analysis:
+Source	Variance	SE
+V(G)	46.564277	40.308593
+V(e)	158.873235	39.887704
+Vp	205.437512	30.661982
+V(G)/Vp	0.226659	0.185504
+
+Sampling variance/covariance of the estimates of variance components:
+1.624783e+03	-1.137827e+03	
+-1.137827e+03	1.591029e+03	
+
+Summary result of REML analysis has been saved in the file [check_vp.hsq].
+
+Analysis finished at 15:13:06 EDT on Tue May 20 2025
+Overall computational time: 0.05 sec.
