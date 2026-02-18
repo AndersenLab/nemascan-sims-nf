@@ -17,6 +17,13 @@ and precision of different mapping algorithms.
 - [GWAS Mapping](gwas-mapping.qmd) — Phase 3 process documentation covering
   GRM construction, phenotypic variance checking, and association mapping under
   four mode/type conditions.
+- [QTL Detection & Assessment](qtl-detection-assessment.qmd) — Phase 4 process
+  documentation covering database ingestion, QTL interval detection, and
+  performance assessment through both the DB and legacy paths.
+- [Database Structure](database-structure.qmd) — Parquet database schema
+  reference for marker sets, simulated trait mappings, and metadata tables.
 - [Assessment Cross-Validation](cross-validation.qmd) — How to run and
   interpret the cross-validation analysis comparing DB-path and legacy-path
   assessment outputs.
+- [Development](development.qmd) — Contributing guide covering documentation
+  authoring, GitHub Pages publishing, testing, and project structure.
