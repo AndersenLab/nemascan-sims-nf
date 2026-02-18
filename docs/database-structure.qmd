@@ -1,0 +1,377 @@
+---
+title: "Database Structure"
+subtitle: "Parquet database schema for marker sets and simulated trait mappings"
+date: last-modified
+format:
+  html:
+    embed-resources: true
+---
+
+## Overview
+
+The DB path stores pipeline outputs in a Parquet database queried at analysis
+time via DuckDB. The database contains two primary data domains:
+
+1. **Marker sets** &mdash; static variant data from LD-pruned PLINK files, one
+   file per (population, MAF) combination
+2. **Mappings** &mdash; per-marker association statistics from GCTA GWAS output,
+   Hive-partitioned by population and mapping ID
+
+Two metadata tables provide summary lookups without scanning the full data files.
+
+```
+{outputDir}/db/
+ ├── marker_sets/
+ │   ├── {population}_{maf}_markers.parquet      ◄── marker data
+ │   └── marker_set_metadata.parquet              ◄── EIGEN + marker counts
+ ├── mappings/
+ │   └── population={pop}/
+ │       └── mapping_id={id}/
+ │           └── data.parquet                     ◄── GWA statistics
+ └── mappings_metadata.parquet                    ◄── mapping summary table
+```
+
+All Parquet files use Snappy compression. Schemas are defined as Arrow schema
+objects in `R/database.R`.
+
+
+## Marker Sets
+
+A marker set represents the LD-pruned variant panel for a given population and
+MAF threshold. Marker sets are written once during
+[database ingestion](qtl-detection-assessment.qmd#db_migration_write_marker_set)
+and queried repeatedly during QTL analysis.
+
+
+### Data Source
+
+Marker data originates from two upstream processes:
+
+| Source | Columns provided |
+|--------|-----------------|
+| PLINK `.bim` file (`PLINK_RECODE_VCF`) | `marker`, `CHROM`, `POS`, `A1`, `A2` |
+| EIGEN independent tests file (`LOCAL_COMPILE_EIGENS`) | `n_independent_tests` (metadata only) |
+
+The `.bim` file does not contain allele frequencies, so `AF1` is set to `NA` in
+the marker set. Allele frequencies are available per-mapping from the raw GWA
+output and are resolved at query time via `COALESCE(m.AF1, mk.AF1)`.
+
+**Source:** `R/io.R::read_bim_file()`
+
+
+### Markers Schema
+
+**File:** `{base_dir}/marker_sets/{population}_{maf}_markers.parquet`
+
+| Column | Arrow Type | Description |
+|--------|-----------|-------------|
+| `marker` | `utf8` | Variant identifier in `CHROM:POS` format (e.g. `1:157580`) |
+| `CHROM` | `utf8` | Chromosome (numeric string: `"1"`, `"2"`, ..., `"6"`) |
+| `POS` | `int32` | Genomic position (bp) |
+| `A1` | `utf8` | Allele 1 (minor allele from PLINK) |
+| `A2` | `utf8` | Allele 2 (major allele from PLINK) |
+| `AF1` | `float64` | Allele frequency of A1 (`NA` when sourced from `.bim`) |
+| `population` | `utf8` | Population/strain set identifier (e.g. `"complete"`) |
+| `maf` | `float64` | MAF threshold used to generate this marker set |
+
+**Key:** (`population`, `maf`) uniquely identifies a marker set.
+Within a marker set, `marker` (equivalently `CHROM` + `POS`) is unique.
+
+**Source:** `R/database.R::markers_schema()`, `R/database.R::write_marker_set()`
+
+
+### Marker Set Metadata Schema
+
+**File:** `{base_dir}/marker_sets/marker_set_metadata.parquet`
+
+| Column | Arrow Type | Description |
+|--------|-----------|-------------|
+| `population` | `utf8` | Population/strain set identifier |
+| `maf` | `float64` | MAF threshold |
+| `n_markers` | `int32` | Total number of markers in this set |
+| `n_independent_tests` | `float64` | Number of independent tests from EIGEN decomposition |
+| `eigen_source_file` | `utf8` | Filename of the EIGEN independent tests file |
+| `created_at` | `timestamp[us]` | Timestamp when this record was written |
+
+**Key:** (`population`, `maf`) uniquely identifies a record.
+
+This table is used by `get_threshold_params()` to retrieve marker counts and
+EIGEN values for significance threshold calculation without reading the full
+marker Parquet files.
+
+**Source:** `R/database.R::marker_set_metadata_schema()`,
+`R/database.R::write_marker_set_metadata()`
+
+
+### Example: Querying a Marker Set
+
+```r
+# Via R helper function
+markers <- read_marker_set("complete", 0.05, base_dir = "results/db")
+
+# Via DuckDB (used internally by open_mapping_db)
+con <- DBI::dbConnect(duckdb::duckdb(), ":memory:")
+DBI::dbExecute(con, "
+  CREATE VIEW markers AS
+  SELECT * FROM read_parquet('results/db/marker_sets/*_markers.parquet')
+")
+result <- DBI::dbGetQuery(con, "
+  SELECT COUNT(*) as n_markers, MIN(POS) as min_pos, MAX(POS) as max_pos
+  FROM markers
+  WHERE population = 'complete' AND maf = 0.05
+  GROUP BY CHROM
+  ORDER BY CHROM
+")
+```
+
+
+## Mappings
+
+A mapping stores the per-marker association statistics from a single GWAS run.
+Each mapping corresponds to one combination of simulation parameters and mapping
+method. Mappings are written during
+[database ingestion](qtl-detection-assessment.qmd#db_migration_write_gwa_to_db)
+and queried during QTL analysis and assessment.
+
+
+### Data Source
+
+Mapping data originates from GCTA GWA output files:
+
+| GWA Mode | File Format | Columns |
+|----------|-------------|---------|
+| `inbred` (fastGWA-mlm-exact) | `.fastGWA` | CHR, SNP, POS, A1, A2, N, AF1, BETA, SE, P |
+| `loco` (mlma-loco) | `.mlma` | Chr, SNP, bp, A1, A2, Freq, b, se, p |
+
+Both formats are normalized to a common schema by `read_raw_gwa_file()`. Key
+normalizations:
+
+- Column names standardized (e.g. `Chr` &rarr; `CHROM`, `bp` &rarr; `POS`,
+  `Freq` &rarr; `AF1`)
+- `marker` column created from `SNP` column (already in `CHROM:POS` format)
+- `N` column dropped (absent from `.mlma`, unused downstream)
+- `log10p` **not stored** &mdash; computed at query time via `safe_log10p(P)`
+  in `R/analysis.R`
+
+**LOCO deduplication:** `.mlma` files from LOCO mapping may contain duplicate
+marker rows. These are deduplicated by `distinct(marker, .keep_all = TRUE)`
+before writing.
+
+**Source:** `R/io.R::read_raw_gwa_file()`
+
+
+### Mappings Schema
+
+**File:** `{base_dir}/mappings/population={pop}/mapping_id={id}/data.parquet`
+
+| Column | Arrow Type | Description |
+|--------|-----------|-------------|
+| `marker` | `utf8` | Variant identifier in `CHROM:POS` format |
+| `mapping_id` | `utf8` | Unique mapping identifier (see format below) |
+| `AF1` | `float64` | Allele frequency from GWA output |
+| `BETA` | `float64` | Effect size estimate |
+| `SE` | `float64` | Standard error of effect estimate |
+| `P` | `float64` | P-value from association test |
+| `var.exp` | `float64` | Variance explained (`NA` for the inline DB path) |
+| `nqtl` | `int32` | Number of simulated causal QTLs |
+| `rep` | `int32` | Simulation replicate number |
+| `h2` | `float64` | Simulated heritability |
+| `effect` | `utf8` | Effect size distribution (e.g. `"gamma"`, `"0.2-0.3"`) |
+| `algorithm` | `utf8` | Mapping algorithm (see below) |
+| `pca` | `boolean` | Whether PCA covariate was included |
+| `population` | `utf8` | Population/strain set identifier |
+| `maf` | `float64` | MAF threshold |
+| `trait` | `utf8` | Trait identifier (`"{nqtl}_{rep}_{h2}"`) |
+
+**Source:** `R/database.R::mappings_schema()`,
+`R/database.R::write_mapping_partitioned()`
+
+
+### Mapping ID Format
+
+The `mapping_id` is a deterministic string constructed from simulation and
+mapping parameters:
+
+```
+{nqtl}_{rep}_{h2}_{maf}_{effect}_{population}_{algorithm}_{PCA|noPCA}
+```
+
+**Examples:**
+
+- `5_1_0.2_0.05_gamma_complete_LMM-EXACT-INBRED_PCA`
+- `2_3_0.8_0.05_0.2-0.3_complete_LMM-EXACT-LOCO_noPCA`
+
+**Source:** `R/database.R::generate_mapping_id()`
+
+
+### Algorithm Values
+
+The `algorithm` column encodes the GCTA mapping method:
+
+| Nextflow `mode` | Database `algorithm` | GCTA Method |
+|-----------------|---------------------|-------------|
+| `inbred` | `LMM-EXACT-INBRED` | `--fastGWA-mlm-exact` |
+| `loco` | `LMM-EXACT-LOCO` | `--mlma-loco` |
+
+The `pca` boolean tracks the Nextflow `type` parameter:
+
+| Nextflow `type` | Database `pca` |
+|-----------------|---------------|
+| `pca` | `TRUE` |
+| `nopca` | `FALSE` |
+
+
+### AF1 Dual Storage
+
+Allele frequency (`AF1`) is stored in both marker sets and mappings because:
+
+- **Marker sets** sourced from `.bim` files do **not** contain allele frequency
+  (`AF1 = NA`)
+- **Mappings** sourced from GWA output files **do** contain allele frequency
+
+At query time, the two are resolved with `COALESCE(m.AF1, mk.AF1)`, preferring
+the mapping-level value. This is implemented in
+`R/queries.R::query_for_threshold_analysis()`:
+
+```sql
+SELECT
+  m.marker, m.P, m.BETA, m.SE,
+  mk.CHROM, mk.POS,
+  COALESCE(m.AF1, mk.AF1) AS AF1
+FROM mappings m
+LEFT JOIN markers mk
+  ON m.marker = mk.marker
+  AND m.population = mk.population
+  AND m.maf = mk.maf
+WHERE m.mapping_id = '{mapping_id}'
+```
+
+
+### Hive Partitioning
+
+Mappings use Hive-style directory partitioning:
+
+```
+mappings/
+ └── population=complete/
+     ├── mapping_id=5_1_0.2_0.05_gamma_complete_LMM-EXACT-INBRED_PCA/
+     │   └── data.parquet
+     ├── mapping_id=5_1_0.2_0.05_gamma_complete_LMM-EXACT-INBRED_noPCA/
+     │   └── data.parquet
+     └── mapping_id=5_1_0.2_0.05_gamma_complete_LMM-EXACT-LOCO_PCA/
+         └── data.parquet
+```
+
+This structure enables:
+
+- **True parallel writes** &mdash; each Nextflow process writes to a unique
+  directory with no file-level coordination
+- **Partition pruning** &mdash; DuckDB reads only the partitions matching a
+  `WHERE` clause filter
+- **Incremental population** &mdash; new mappings can be added without
+  rewriting existing files
+
+DuckDB reads the partitioned structure with:
+
+```sql
+CREATE VIEW mappings AS
+SELECT * FROM read_parquet(
+  '{base_dir}/mappings/**/*.parquet',
+  hive_partitioning = true,
+  union_by_name = true
+)
+```
+
+**Source:** `R/database.R::write_mapping_partitioned()`,
+`R/queries.R::open_mapping_db()`
+
+
+## Mappings Metadata
+
+The mappings metadata table provides a lightweight summary of all mappings in
+the database. It is built by `DB_MIGRATION_AGGREGATE_METADATA` after all GWA
+writes complete, enabling fast lookups without scanning the full Parquet files.
+
+
+### Mappings Metadata Schema
+
+**File:** `{base_dir}/mappings_metadata.parquet`
+
+| Column | Arrow Type | Description |
+|--------|-----------|-------------|
+| `mapping_id` | `utf8` | Unique mapping identifier |
+| `population` | `utf8` | Population/strain set identifier |
+| `maf` | `float64` | MAF threshold |
+| `nqtl` | `int32` | Number of simulated causal QTLs |
+| `rep` | `int32` | Simulation replicate number |
+| `h2` | `float64` | Simulated heritability |
+| `effect` | `utf8` | Effect size distribution |
+| `algorithm` | `utf8` | Mapping algorithm |
+| `pca` | `boolean` | Whether PCA covariate was included |
+| `trait` | `utf8` | Trait identifier |
+| `n_markers` | `int32` | Number of markers in this mapping |
+| `source_file` | `utf8` | Original partition directory name |
+| `processed_at` | `timestamp[us]` | When the metadata was aggregated |
+| `processing_version` | `utf8` | Pipeline version string |
+
+**Key:** `mapping_id` uniquely identifies each record.
+
+**Source:** `R/database.R::metadata_schema()`,
+`modules/db_migration/aggregate_metadata/resources/usr/bin/aggregate_metadata.R`
+
+
+## Query Patterns
+
+The database is accessed through DuckDB via helper functions in `R/queries.R`.
+All queries are read-only; writes go through `R/database.R`.
+
+
+### Connection Setup
+
+`open_mapping_db()` creates an in-memory DuckDB connection and registers three
+views:
+
+| View | Source | Description |
+|------|--------|-------------|
+| `markers` | `marker_sets/*.parquet` | All marker set files |
+| `mappings` | `mappings/**/*.parquet` (Hive) | All mapping partitions |
+| `metadata` | `mappings_metadata.parquet` | Mapping summary table |
+| `marker_set_metadata` | `marker_sets/marker_set_metadata.parquet` | EIGEN values and marker counts |
+
+
+### Key Query Functions
+
+| Function | Source | Purpose |
+|----------|--------|---------|
+| `query_for_threshold_analysis()` | `R/queries.R` | Retrieve mapping data with marker coordinates joined &mdash; primary query for QTL detection |
+| `get_threshold_params()` | `R/database.R` | Look up marker count and EIGEN independent tests for threshold calculation |
+| `query_by_mapping_id()` | `R/queries.R` | Retrieve raw mapping data for a single mapping |
+| `query_mapping_data()` | `R/queries.R` | Full mapping + marker join with optional filters |
+| `get_metadata()` | `R/queries.R` | Read the mappings metadata summary table |
+| `list_populations()` | `R/queries.R` | List available populations from partition directories |
+| `db_stats()` | `R/queries.R` | Database-wide statistics (file counts, sizes, populations) |
+
+The `query_for_threshold_analysis()` function is the primary entry point used by
+`analyze_qtl.R` and `assess_sims.R`. It joins mappings with markers to resolve
+chromosome coordinates and allele frequencies, and validates `CHROM:POS`
+uniqueness per mapping.
+
+
+### Connection Caching
+
+For batch operations, `get_db_connection()` provides a cached DuckDB connection
+that persists across multiple queries. The cache is keyed by `base_dir` and
+automatically reconnects if the connection becomes stale.
+
+```r
+# Single query (creates and closes connection)
+data <- query_for_threshold_analysis(mapping_id, base_dir)
+
+# Batch operation (reuses cached connection)
+con <- get_db_connection(base_dir, use_cache = TRUE)
+for (id in mapping_ids) {
+  data <- query_for_threshold_analysis(id, base_dir, con = con)
+  # ... process data
+}
+close_cached_connection(base_dir)
+```

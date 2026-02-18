@@ -1,0 +1,214 @@
+---
+title: "Development"
+subtitle: "Contributing to the pipeline and documentation"
+date: last-modified
+format:
+  html:
+    embed-resources: true
+---
+
+## Documentation Site
+
+The `docs/` directory is a [Quarto](https://quarto.org/) website project. Pages
+are authored as `.qmd` files and rendered to static HTML in `docs/_site/`.
+
+
+### Rendering Locally
+
+```bash
+quarto render docs/
+```
+
+The output is written to `docs/_site/`. Open `docs/_site/index.html` in a
+browser to preview. No pipeline output or R packages are required to render.
+
+### Adding a New Page
+
+1. Create a `.qmd` file in `docs/` with YAML front matter matching the existing
+   pattern:
+
+    ```yaml
+    ---
+    title: "Page Title"
+    subtitle: "Short description"
+    date: last-modified
+    format:
+      html:
+        embed-resources: true
+    ---
+    ```
+
+2. Add a navbar entry in `docs/_quarto.yml`:
+
+    ```yaml
+    - text: "Page Title"
+      href: page-title.qmd
+    ```
+
+3. Add a bullet to the Reports list in `docs/index.qmd`.
+
+4. Render and verify:
+
+    ```bash
+    quarto render docs/
+    ```
+
+
+### Site Configuration
+
+Configuration lives in `docs/_quarto.yml`:
+
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| `project.type` | `website` | Multi-page site with shared navbar |
+| `project.output-dir` | `_site` | Render target (git-ignored) |
+| `website.title` | `nemascan-sims-nf` | Navbar brand text |
+| `format.html.theme` | `cosmo` | Bootstrap theme |
+| `format.html.toc` | `true` | Per-page table of contents |
+| `format.html.toc-depth` | `3` | TOC heading depth |
+
+Pages that set `embed-resources: true` produce self-contained HTML files with
+all CSS/JS inlined, which is useful for sharing individual pages outside the
+site context.
+
+
+### Git-Ignored Paths
+
+The rendered site and Quarto working files are git-ignored:
+
+- `docs/_site/` &mdash; rendered HTML output (in `.gitignore`)
+- `docs/.quarto/` &mdash; Quarto project cache (in `docs/.gitignore`)
+
+
+## Publishing to GitHub Pages
+
+The documentation site can be published as a GitHub Pages site for the
+repository. There are two approaches depending on whether you want to commit the
+rendered HTML or build it in CI.
+
+
+### Publish from a Branch (No CI Required)
+
+This approach uses the `quarto publish` command to push rendered HTML to a
+dedicated `gh-pages` branch. No CI configuration is needed.
+
+**One-time setup:**
+
+1. Run `quarto publish` from the project root, targeting GitHub Pages:
+
+    ```bash
+    quarto publish gh-pages docs/
+    ```
+
+    This renders the site, creates or updates a `gh-pages` branch containing
+    only the rendered output, and pushes it to the remote.
+
+2. In the GitHub repository settings, go to **Settings > Pages** and configure:
+    - **Source:** Deploy from a branch
+    - **Branch:** `gh-pages`, folder `/ (root)`
+
+The site will be available at
+`https://andersenlab.github.io/nemascan-sims-nf/`.
+
+**Branch note:** `quarto publish gh-pages` works from any branch. It renders
+the `.qmd` files in your current working tree and pushes the output to the
+`gh-pages` branch, regardless of which branch you are on. This means you can
+preview-publish docs from a feature branch (e.g. `doc-updates`) before merging
+to `main`.
+
+**To update the published site** after changing `.qmd` files:
+
+```bash
+quarto publish gh-pages docs/
+```
+
+This is a manual step &mdash; the site is not automatically rebuilt on push.
+
+
+## Running Tests
+
+### Unit Tests
+
+Unit tests use static fixtures and do not require pipeline output:
+
+```bash
+Rscript tests/run_tests.R
+```
+
+### Integration Tests
+
+Integration tests require pipeline output collected by `tests/collect_test_data.sh`:
+
+```bash
+# Run pipeline and collect outputs
+bash tests/collect_test_data.sh
+
+# Or collect from a previous run
+bash tests/collect_test_data.sh --collect-only
+
+# Run integration tests with collected data
+TEST_DB_DIR=tests/integration_data/db \
+TEST_WORK_DIR=tests/.nf-work \
+TEST_EXISTING_ASSESSMENT=tests/integration_data/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+Integration test files skip automatically when the required environment
+variables are not set.
+
+
+## Pipeline Stub Runs
+
+Stub runs verify process wiring without executing real computations:
+
+```bash
+# Fixed architecture
+nextflow run main.nf -profile test -stub-run
+
+# Variable architecture
+nextflow run main.nf -profile test_variable -stub-run
+
+# With legacy assessment path
+nextflow run main.nf -profile test --legacy_assess -stub-run
+```
+
+
+## Generating Test Data
+
+The test VCF is not committed to the repository due to its size. Regenerate it
+from a source CaeNDR VCF:
+
+```bash
+./data/test/generate_test_vcf.sh /path/to/WI.20220216.hard-filter.isotype.vcf.gz
+```
+
+This produces `data/test/test.vcf.gz` (~825 MB, 13 strains, chromosomes I/II/V)
+and its tabix index.
+
+
+## Project Structure
+
+```
+nemascan-sims-nf/
+ ├── main.nf                     Pipeline entrypoint
+ ├── nextflow.config             Parameters and profiles
+ ├── conf/                       Execution profiles (rockfish, docker)
+ ├── modules/                    Nextflow process definitions
+ │   ├── bcftools/               VCF manipulation processes
+ │   ├── plink/                  LD pruning, binary fileset creation
+ │   ├── gcta/                   GRM construction, GWAS mapping, simulation
+ │   ├── python/                 Causal variant selection, variance check
+ │   ├── r/                      Legacy QTL detection and assessment
+ │   ├── db_migration/           DB-path ingestion, analysis, assessment
+ │   └── local/                  Helper processes (contig info, eigens)
+ ├── bin/                        Pipeline scripts (available to all processes)
+ ├── R/                          Shared R library (sourced by db_migration + tests)
+ ├── data/test/                  Test VCF, parameter files, strain lists
+ ├── tests/                      R/testthat test suite
+ └── docs/                       Quarto documentation site
+```
+
+Each module directory contains a `main.nf` with the process definition and
+optionally a `resources/` directory with scripts added to `$PATH` via
+`nextflow.enable.moduleBinaries = true`.
