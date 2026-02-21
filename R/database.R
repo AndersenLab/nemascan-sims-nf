@@ -29,9 +29,15 @@ library(glue)
 .db_constants <- list(
   markers_dir = "markers",
   mappings_dir = "mappings",
+  traits_dir = "traits",
+  causal_variants_dir = "causal_variants",
+  phenotypes_dir = "phenotypes",
   markers_pattern = "{population}_{maf}_markers.parquet",
   genotypes_pattern = "{population}_{maf}_genotypes.parquet",
   mappings_pattern = "{population}_mappings.parquet",
+  traits_pattern = "{trait_id}.parquet",
+  causal_variants_pattern = "{trait_id}_causal.parquet",
+  phenotypes_pattern = "{trait_id}_phenotype.parquet",
   metadata_file = "mappings_metadata.parquet",
   marker_set_metadata_file = "marker_set_metadata.parquet",
   compression = "snappy"
@@ -329,6 +335,34 @@ genotype_matrix_schema <- function() {
 }
 
 
+#' Define Arrow schema for trait metadata
+#'
+#' @return Arrow schema object
+trait_metadata_schema <- function() {
+  arrow::schema(
+    trait_id   = arrow::utf8(),
+    nqtl       = arrow::int32(),
+    rep        = arrow::int32(),
+    h2         = arrow::float64(),
+    maf        = arrow::float64(),
+    effect     = arrow::utf8(),
+    population = arrow::utf8(),
+    created_at = arrow::utf8()
+  )
+}
+
+
+#' Define Arrow schema for phenotype data
+#'
+#' @return Arrow schema object
+phenotype_schema <- function() {
+  arrow::schema(
+    strain    = arrow::utf8(),
+    phenotype = arrow::float64()
+  )
+}
+
+
 # ==============================================================================
 # Database Initialization
 # ==============================================================================
@@ -341,10 +375,14 @@ init_database <- function(base_dir = "data/db") {
   config <- .make_db_config(base_dir)
   markers_dir <- file.path(base_dir, config$markers_dir)
   mappings_dir <- file.path(base_dir, config$mappings_dir)
+  traits_dir <- file.path(base_dir, config$traits_dir)
+  causal_variants_dir <- file.path(base_dir, config$causal_variants_dir)
+  phenotypes_dir <- file.path(base_dir, config$phenotypes_dir)
 
-  for (dir in c(base_dir, markers_dir, mappings_dir)) {
+  for (dir in c(base_dir, markers_dir, mappings_dir,
+                traits_dir, causal_variants_dir, phenotypes_dir)) {
     if (!dir.exists(dir)) {
-      dir.create(dir, recursive = TRUE)
+      dir.create(dir, recursive = TRUE, showWarnings = FALSE)
       log_msg(glue::glue("Created directory: {dir}"))
     }
   }
@@ -374,6 +412,32 @@ generate_mapping_id <- function(params) {
 #' @return Character string marker set ID
 generate_marker_set_id <- function(population, maf) {
   as.character(glue::glue("{population}_{maf}"))
+}
+
+
+#' Generate deterministic trait ID from simulation parameters
+#'
+#' Computes MD5 hash of the concatenated parameter string. This is the sole
+#' implementation — no Groovy counterpart exists. Any R script can reconstruct
+#' the trait_id from parameters to locate stored trait data.
+#'
+#' The Nextflow .multiMap{} block (Step 7) passes raw simulation parameters
+#' to the R script, which computes trait_id internally. This single-language
+#' approach eliminates any risk of cross-language hash divergence.
+#'
+#' @param group Population/strain group identifier
+#' @param maf MAF threshold
+#' @param nqtl Number of simulated QTLs
+#' @param effect Effect size distribution
+#' @param rep Simulation replicate number
+#' @param h2 Heritability
+#' @return 12-character hex string
+generate_trait_id <- function(group, maf, nqtl, effect, rep, h2) {
+  if (!requireNamespace("digest", quietly = TRUE)) {
+    stop("Package 'digest' is required for generate_trait_id()")
+  }
+  key <- paste(group, maf, nqtl, effect, rep, h2, sep = "_")
+  substr(digest::digest(key, algo = "md5", serialize = FALSE), 1, 12)
 }
 
 
@@ -614,6 +678,221 @@ read_genotype_matrix <- function(population, maf, base_dir = "data/db") {
   path <- get_genotype_matrix_path(population, maf, base_dir)
   if (!file.exists(path)) {
     stop("Genotype matrix not found: ", path)
+  }
+  as.data.frame(arrow::read_parquet(path))
+}
+
+
+# ==============================================================================
+# Trait Metadata Operations
+# ==============================================================================
+
+#' Get path to trait metadata file
+#'
+#' @param trait_id Deterministic 12-character hex hash from generate_trait_id()
+#' @param base_dir Database base directory
+#' @return Path to trait metadata Parquet file
+get_trait_metadata_path <- function(trait_id, base_dir) {
+  traits_dir <- file.path(base_dir, .db_constants$traits_dir)
+  filename <- gsub("\\{trait_id\\}", trait_id, .db_constants$traits_pattern)
+  file.path(traits_dir, filename)
+}
+
+
+#' Write trait metadata to database
+#'
+#' @param trait_id Deterministic 12-character hex hash from generate_trait_id()
+#' @param nqtl Number of QTLs
+#' @param rep Replicate number
+#' @param h2 Heritability
+#' @param maf MAF threshold
+#' @param effect Effect distribution
+#' @param population Strain group ID
+#' @param base_dir Database base directory
+#' @param overwrite Overwrite existing file (default TRUE for retry safety)
+write_trait_metadata <- function(trait_id, nqtl, rep, h2, maf, effect,
+                                 population, base_dir, overwrite = TRUE) {
+  out_path <- get_trait_metadata_path(trait_id, base_dir)
+  if (file.exists(out_path) && !overwrite) {
+    return(invisible(out_path))
+  }
+  df <- data.frame(
+    trait_id   = trait_id,
+    nqtl       = as.integer(nqtl),
+    rep        = as.integer(rep),
+    h2         = as.numeric(h2),
+    maf        = as.numeric(maf),
+    effect     = as.character(effect),
+    population = as.character(population),
+    created_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"),
+    stringsAsFactors = FALSE
+  )
+  arrow::write_parquet(
+    arrow::as_arrow_table(df, schema = trait_metadata_schema()),
+    sink = out_path
+  )
+  invisible(out_path)
+}
+
+
+#' Read trait metadata from database
+#'
+#' Provides API symmetry with read_genotype_matrix(), read_causal_variants_data(),
+#' and read_phenotype_data(). Required for future offline workflows that enumerate
+#' or inspect stored traits. (Addresses DS review L2)
+#'
+#' @param trait_id Deterministic 12-character hex hash
+#' @param base_dir Database base directory
+#' @return data.frame with trait metadata columns
+read_trait_metadata <- function(trait_id, base_dir) {
+  path <- get_trait_metadata_path(trait_id, base_dir)
+  if (!file.exists(path)) {
+    stop("Trait metadata not found: ", path)
+  }
+  as.data.frame(arrow::read_parquet(path))
+}
+
+
+# ==============================================================================
+# Causal Variant Operations
+# ==============================================================================
+
+#' Get path to causal variants file
+#'
+#' @param trait_id Deterministic 12-character hex hash
+#' @param base_dir Database base directory
+#' @return Path to causal variants Parquet file
+get_causal_variants_path <- function(trait_id, base_dir) {
+  cv_dir <- file.path(base_dir, .db_constants$causal_variants_dir)
+  filename <- gsub("\\{trait_id\\}", trait_id,
+                   .db_constants$causal_variants_pattern)
+  file.path(cv_dir, filename)
+}
+
+
+#' Check if causal variants exist in database
+#'
+#' @param trait_id Deterministic 12-character hex hash
+#' @param base_dir Database base directory
+#' @return TRUE if causal variants file exists
+causal_variants_exist <- function(trait_id, base_dir) {
+  file.exists(get_causal_variants_path(trait_id, base_dir))
+}
+
+
+#' Write causal variants to database
+#'
+#' @param par_file Path to .par file from GCTA simulation
+#' @param trait_id Deterministic trait ID
+#' @param base_dir Database base directory
+#' @param overwrite Overwrite existing file (default TRUE)
+write_causal_variants <- function(par_file, trait_id, base_dir,
+                                  overwrite = TRUE) {
+  out_path <- get_causal_variants_path(trait_id, base_dir)
+  if (file.exists(out_path) && !overwrite) {
+    return(invisible(out_path))
+  }
+  # load_causal_variants() is defined in assessment.R
+  cv <- load_causal_variants(par_file)
+  arrow::write_parquet(cv, sink = out_path)
+  invisible(out_path)
+}
+
+
+#' Read causal variants from database
+#'
+#' @param trait_id Deterministic 12-character hex hash
+#' @param base_dir Database base directory
+#' @return data.frame with causal variant columns
+read_causal_variants_data <- function(trait_id, base_dir) {
+  path <- get_causal_variants_path(trait_id, base_dir)
+  if (!file.exists(path)) {
+    stop("Causal variants not found: ", path)
+  }
+  as.data.frame(arrow::read_parquet(path))
+}
+
+
+# ==============================================================================
+# Phenotype Operations
+# ==============================================================================
+
+#' Get path to phenotype data file
+#'
+#' @param trait_id Deterministic 12-character hex hash
+#' @param base_dir Database base directory
+#' @return Path to phenotype Parquet file
+get_phenotype_path <- function(trait_id, base_dir) {
+  pheno_dir <- file.path(base_dir, .db_constants$phenotypes_dir)
+  filename <- gsub("\\{trait_id\\}", trait_id,
+                   .db_constants$phenotypes_pattern)
+  file.path(pheno_dir, filename)
+}
+
+
+#' Check if phenotype data exists in database
+#'
+#' @param trait_id Deterministic 12-character hex hash
+#' @param base_dir Database base directory
+#' @return TRUE if phenotype file exists
+phenotype_exists <- function(trait_id, base_dir) {
+  file.exists(get_phenotype_path(trait_id, base_dir))
+}
+
+
+#' Write phenotype data to database
+#'
+#' IMPORTANT: Stores the pre-upscaled phenotype values from GCTA_SIMULATE_PHENOTYPES,
+#' captured BEFORE the pipeline flow continues through PLINK_UPDATE_BY_H2 ->
+#' PYTHON_CHECK_VP (which may multiply values by 1000x when Vp < 1e-6) ->
+#' GCTA_PERFORM_GWA. The stored values may differ from the values used in
+#' the actual GWAS mapping by a factor of 1000x.
+#'
+#' Rationale: For future variance explained estimation, the ANOVA SS ratio
+#' (SS_between / SS_total) is scale-invariant — the ratio is identical whether
+#' computed on pre-upscaled or post-upscaled phenotypes. Storing pre-upscaled
+#' values is preferred because they represent the direct output of GCTA
+#' simulation before any pipeline-specific transformations.
+#'
+#' @param pheno_file Path to .phen file (space-delimited: FID IID value, no header)
+#' @param trait_id Deterministic trait ID
+#' @param base_dir Database base directory
+#' @param overwrite Overwrite existing file (default TRUE)
+write_phenotype_data <- function(pheno_file, trait_id, base_dir,
+                                 overwrite = TRUE) {
+  out_path <- get_phenotype_path(trait_id, base_dir)
+  if (file.exists(out_path) && !overwrite) {
+    return(invisible(out_path))
+  }
+  phen <- read.table(pheno_file, header = FALSE,
+                     col.names = c("FID", "IID", "value"))
+  df <- data.frame(
+    strain    = phen$FID,
+    phenotype = phen$value,
+    stringsAsFactors = FALSE
+  )
+  arrow::write_parquet(
+    arrow::as_arrow_table(df, schema = phenotype_schema()),
+    sink = out_path
+  )
+  invisible(out_path)
+}
+
+
+#' Read phenotype data from database
+#'
+#' Returns pre-upscaled phenotype values from GCTA simulation. These may differ
+#' from the values used in GWAS mapping if variance upscaling was applied by
+#' check_vp.py. The ANOVA SS ratio (SS_between / SS_total) is scale-invariant,
+#' so these values are appropriate for variance explained estimation.
+#'
+#' @param trait_id Deterministic 12-character hex hash
+#' @param base_dir Database base directory
+#' @return data.frame with columns: strain, phenotype
+read_phenotype_data <- function(trait_id, base_dir) {
+  path <- get_phenotype_path(trait_id, base_dir)
+  if (!file.exists(path)) {
+    stop("Phenotype data not found: ", path)
   }
   as.data.frame(arrow::read_parquet(path))
 }
