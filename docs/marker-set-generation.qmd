@@ -294,3 +294,12 @@ missing data (`NA`) rather than given an intermediate value.
 | Input | `recoded.vcf.gz` + `.tbi` | Chromosome-renamed, strain-subset VCF |
 | Input | `markers.txt` | LD-pruned marker positions from `PLINK_RECODE_VCF` |
 | Output | `${group}_${maf}_Genotype_Matrix.tsv` | Tab-separated genotype matrix: rows are markers (CHROM, POS, REF, ALT), columns are strains |
+
+::: {.callout-note}
+This TSV is consumed by two downstream paths: the legacy path (`R_GET_GCTA_INTERVALS`,
+`R_ASSESS_SIMS`) uses it for variance explained estimation; the DB path
+(`DB_MIGRATION_WRITE_GENOTYPE_MATRIX`) pivots it to long format and stores it in
+`{db}/marker_sets/{group}_{maf}_genotypes.parquet` for future offline analysis.
+:::
+
+
