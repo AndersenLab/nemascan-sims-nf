@@ -135,6 +135,23 @@ Unit tests use static fixtures and do not require pipeline output:
 Rscript tests/run_tests.R
 ```
 
+Tests are organized by functional area in `tests/testthat/`. Phase 5 added two
+new test files:
+
+| File | What it tests |
+|------|--------------|
+| `test-genotype_storage.R` | Round-trip `write_genotype_matrix()` / `read_genotype_matrix()`; schema validation (CHROM, POS, strain, allele); existence checks; verifies genotype files are excluded from the `markers` DuckDB view |
+| `test-trait_storage.R` | `generate_trait_id()` determinism (same params → same ID), uniqueness (different params → different IDs), character class (`[0-9a-f]{12}`), and golden-value hash; round-trips for `write_trait_metadata()`, `write_causal_variants()`, `write_phenotype_data()`; `overwrite = TRUE` retry behavior; `phenotype_exists()` existence check |
+
+#### Test Fixtures
+
+`tests/fixtures/` contains static synthetic inputs for unit tests:
+
+| File | Description |
+|------|-------------|
+| `test_genotype_matrix.tsv` | 5 markers × 3 strains, wide-format TSV with `−1`/`1`/`NA` encoding — includes a heterozygous (NA) case to verify encoding is preserved |
+| `test_sims.phen` | 3-strain phenotype file in GCTA `.phen` format (space-delimited: FID IID value, no header) |
+
 ### Integration Tests
 
 Integration tests require pipeline output collected by `tests/collect_test_data.sh`:
@@ -201,11 +218,25 @@ nemascan-sims-nf/
  │   ├── python/                 Causal variant selection, variance check
  │   ├── r/                      Legacy QTL detection and assessment
  │   ├── db_migration/           DB-path ingestion, analysis, assessment
+ │   │   ├── write_marker_set/
+ │   │   ├── write_genotype_matrix/   ◄── Phase 5: long-format genotype storage
+ │   │   ├── write_gwa_to_db/
+ │   │   ├── write_trait_data/        ◄── Phase 5: trait metadata/causal/phenotype
+ │   │   ├── aggregate_metadata/
+ │   │   ├── analyze_qtl/
+ │   │   └── assess_sims/
  │   └── local/                  Helper processes (contig info, eigens)
  ├── bin/                        Pipeline scripts (available to all processes)
  ├── R/                          Shared R library (sourced by db_migration + tests)
  ├── data/test/                  Test VCF, parameter files, strain lists
- ├── tests/                      R/testthat test suite
+ ├── tests/
+ │   ├── testthat/               R/testthat unit test files
+ │   │   ├── test-genotype_storage.R  ◄── Phase 5: genotype matrix round-trip
+ │   │   └── test-trait_storage.R     ◄── Phase 5: trait ID, metadata, causal, phenotype
+ │   ├── fixtures/               Static inputs for unit tests
+ │   │   ├── test_genotype_matrix.tsv ◄── Phase 5: 5 markers × 3 strains
+ │   │   └── test_sims.phen           ◄── Phase 5: 3-strain phenotype fixture
+ │   └── notebooks/              Cross-validation analysis notebooks
  └── docs/                       Quarto documentation site
 ```
 

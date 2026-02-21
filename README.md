@@ -42,7 +42,22 @@ The final phase detects QTL intervals from GWA results and assesses detection
 performance against simulated truth. Two parallel paths produce equivalent
 output: the DB path (default) writes results to a Parquet database and queries
 via DuckDB, while the legacy path (opt-in via `--legacy_assess`) operates
-directly on intermediate files. See the [QTL Detection & Assessment](docs/qtl-detection-assessment.qmd)
+directly on intermediate files.
+
+The DB path writes five data domains to `{output-dir}/db/`:
+
+| Directory | Content |
+|-----------|---------|
+| `marker_sets/` | LD-pruned marker data and long-format genotype matrices |
+| `mappings/` | Per-marker GWA statistics (Hive-partitioned) |
+| `traits/` | Per-trait metadata (parameters + deterministic trait ID) |
+| `causal_variants/` | Simulated causal variant positions and effects |
+| `phenotypes/` | Pre-upscaled phenotype values per strain |
+
+The `traits/`, `causal_variants/`, and `phenotypes/` directories store the raw
+inputs needed for offline variance-explained estimation without re-running the
+pipeline. See the [Database Structure](docs/database-structure.qmd) reference
+for full Parquet schemas and the [QTL Detection & Assessment](docs/qtl-detection-assessment.qmd)
 documentation for detailed process descriptions, commands, and output schema.
 
 ## Test Data

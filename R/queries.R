@@ -38,7 +38,7 @@ open_mapping_db <- function(base_dir = "data/db", read_only = TRUE) {
 
   # Register markers view
   markers_dir <- file.path(config$base_dir, config$markers_dir)
-  marker_files <- list.files(markers_dir, pattern = "\\.parquet$", full.names = TRUE)
+  marker_files <- list.files(markers_dir, pattern = "_markers\\.parquet$", full.names = TRUE)
 
   if (length(marker_files) > 0) {
     file_list <- paste0("'", marker_files, "'", collapse = ", ")
@@ -638,7 +638,7 @@ db_stats <- function(base_dir = "data/db") {
 
   markers_dir <- file.path(config$base_dir, config$markers_dir)
   marker_files <- if (dir.exists(markers_dir)) {
-    list.files(markers_dir, pattern = "\\.parquet$", full.names = TRUE)
+    list.files(markers_dir, pattern = "_markers\\.parquet$", full.names = TRUE)
   } else {
     character()
   }
