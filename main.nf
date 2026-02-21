@@ -246,6 +246,14 @@ workflow {
         )
     ch_versions = ch_versions.mix(GCTA_SIMULATE_PHENOTYPES.out.versions)
 
+    // Resolve db_output to absolute path so SLURM tasks write to the correct
+    // shared filesystem location, not relative to their work directory.
+    // Default: {outputDir}/db (computed from workflow.outputDir when params.db_output is null)
+    def db_output_dir = params.db_output
+        ? file(params.db_output).toAbsolutePath().toString()
+        : file("${workflow.outputDir}/db").toAbsolutePath().toString()
+    log.info "Database output directory: ${db_output_dir}"
+
     // -- TRAIT DATA WRITES -------------------------------------------------------
     // Source: GCTA_SIMULATE_PHENOTYPES (pre-upscaled phenotype, pre-mode-crossing)
     //
@@ -360,14 +368,6 @@ workflow {
     // Writes raw GWA results to a Parquet database alongside the existing
     // QTL analysis chain. The database is a bonus artifact — if DB writes
     // fail, the pipeline still produces simulation_assessment_results.tsv.
-
-    // Resolve db_output to absolute path so SLURM tasks write to the correct
-    // shared filesystem location, not relative to their work directory.
-    // Default: {outputDir}/db (computed from workflow.outputDir when params.db_output is null)
-    def db_output_dir = params.db_output
-        ? file(params.db_output).toAbsolutePath().toString()
-        : file("${workflow.outputDir}/db").toAbsolutePath().toString()
-    log.info "Database output directory: ${db_output_dir}"
 
     // ── MARKER SET CREATION ──────────────────────────────────────────
     // Wire from upstream PLINK + EIGEN channels (not from GCTA_PERFORM_GWA).
