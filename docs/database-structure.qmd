@@ -10,25 +10,36 @@ format:
 ## Overview
 
 The DB path stores pipeline outputs in a Parquet database queried at analysis
-time via DuckDB. The database contains two primary data domains:
+time via DuckDB. The database contains five data domains:
 
 1. **Marker sets** &mdash; static variant data from LD-pruned PLINK files, one
    file per (population, MAF) combination
-2. **Mappings** &mdash; per-marker association statistics from GCTA GWAS output,
+2. **Genotype matrices** &mdash; long-format genotype data (CHROM, POS, strain,
+   allele) co-located in `marker_sets/`, one file per (population, MAF)
+3. **Mappings** &mdash; per-marker association statistics from GCTA GWAS output,
    Hive-partitioned by population and mapping ID
-
-Two metadata tables provide summary lookups without scanning the full data files.
+4. **Trait data** &mdash; per-trait metadata, causal variant parameters, and
+   phenotype values for future offline variance-explained estimation
+5. **Metadata tables** &mdash; lightweight summary lookups for marker sets and
+   mappings without scanning the full data files
 
 ```
 {outputDir}/db/
  ├── marker_sets/
  │   ├── {population}_{maf}_markers.parquet      ◄── marker data
- │   └── marker_set_metadata.parquet              ◄── EIGEN + marker counts
+ │   ├── {population}_{maf}_genotypes.parquet    ◄── genotype matrix, long format
+ │   └── marker_set_metadata.parquet             ◄── EIGEN + marker counts
  ├── mappings/
  │   └── population={pop}/
  │       └── mapping_id={id}/
- │           └── data.parquet                     ◄── GWA statistics
- └── mappings_metadata.parquet                    ◄── mapping summary table
+ │           └── data.parquet                    ◄── GWA statistics
+ ├── traits/
+ │   └── {trait_id}.parquet                      ◄── trait metadata
+ ├── causal_variants/
+ │   └── {trait_id}_causal.parquet               ◄── causal variant parameters
+ ├── phenotypes/
+ │   └── {trait_id}_phenotype.parquet            ◄── pre-upscaled phenotype values
+ └── mappings_metadata.parquet                   ◄── mapping summary table
 ```
 
 All Parquet files use Snappy compression. Schemas are defined as Arrow schema
@@ -125,6 +136,54 @@ result <- DBI::dbGetQuery(con, "
 ```
 
 
+## Genotype Matrices
+
+A genotype matrix stores the LD-pruned variant calls for a given population and
+MAF threshold. Genotype matrices are written once during
+[database ingestion](qtl-detection-assessment.qmd#db_migration_write_genotype_matrix)
+and are available for future offline variance-explained estimation.
+
+Genotype files are co-located in `marker_sets/` alongside the marker Parquet
+files. The `markers` DuckDB view uses a narrowed glob (`_markers.parquet$`) to
+exclude genotype files from marker queries.
+
+
+### Data Source
+
+Genotype data originates from the wide-format TSV produced by
+`BCFTOOLS_CREATE_GENOTYPE_MATRIX`. The TSV has one column per strain plus
+`CHROM`, `POS`, `REF`, and `ALT` columns. The write function:
+
+- Drops `REF` and `ALT` (redundant with the markers file)
+- Pivots from wide format to long format via `data.table::melt()`
+- Applies strict biallelic encoding: `−1` (hom ref), `1` (hom alt), `NA`
+  (heterozygous or missing)
+
+**Source:** `R/database.R::write_genotype_matrix()`
+
+
+### Genotype Matrix Schema
+
+**File:** `{base_dir}/marker_sets/{population}_{maf}_genotypes.parquet`
+
+| Column | Arrow Type | Description |
+|--------|-----------|-------------|
+| `CHROM` | `utf8` | Chromosome identifier |
+| `POS` | `int32` | Genomic position (bp) |
+| `strain` | `utf8` | Strain name |
+| `allele` | `float64` | `−1.0` (hom ref), `1.0` (hom alt), `NA` (het/missing) |
+
+**Key:** (`CHROM`, `POS`, `strain`) uniquely identifies a row.
+
+This fixed 4-column schema avoids dynamic Arrow schemas when strain panels vary
+across populations. At production scale (7,000 markers × 200 strains) the
+long-format file contains ~1.4 million rows; CHROM and strain have low
+cardinality and compress well with Parquet dictionary encoding.
+
+**Source:** `R/database.R::genotype_matrix_schema()`,
+`R/database.R::write_genotype_matrix()`, `R/database.R::read_genotype_matrix()`
+
+
 ## Mappings
 
 A mapping stores the per-marker association statistics from a single GWAS run.
@@ -172,7 +231,6 @@ before writing.
 | `BETA` | `float64` | Effect size estimate |
 | `SE` | `float64` | Standard error of effect estimate |
 | `P` | `float64` | P-value from association test |
-| `var.exp` | `float64` | Variance explained (`NA` for the inline DB path) |
 | `nqtl` | `int32` | Number of simulated causal QTLs |
 | `rep` | `int32` | Simulation replicate number |
 | `h2` | `float64` | Simulated heritability |
@@ -182,6 +240,15 @@ before writing.
 | `population` | `utf8` | Population/strain set identifier |
 | `maf` | `float64` | MAF threshold |
 | `trait` | `utf8` | Trait identifier (`"{nqtl}_{rep}_{h2}"`) |
+
+::: {.callout-note}
+`var.exp` was removed from the mappings schema in Phase 5. It was always `NA`
+in the DB path because genotype matrices were not available at write time. Raw
+data for offline variance-explained estimation is now stored in the `traits/`,
+`causal_variants/`, and `phenotypes/` directories. Assessment output continues
+to report `interval.var.exp = NA` for the DB path; the legacy path is
+unchanged.
+:::
 
 **Source:** `R/database.R::mappings_schema()`,
 `R/database.R::write_mapping_partitioned()`
@@ -320,6 +387,137 @@ writes complete, enabling fast lookups without scanning the full Parquet files.
 `modules/db_migration/aggregate_metadata/resources/usr/bin/aggregate_metadata.R`
 
 
+## Trait Data
+
+Phase 5 added three per-trait data stores to the database. Together with the
+genotype matrix, these tables contain everything needed to estimate
+variance-explained offline without re-running the pipeline.
+
+Trait data is written by `DB_MIGRATION_WRITE_TRAIT_DATA` from
+`GCTA_SIMULATE_PHENOTYPES` output (pre-mode-crossing, so each trait is written
+exactly once). These writes are fire-and-forget storage operations with no
+downstream dependents within the pipeline.
+
+
+### Trait IDs
+
+Traits are identified by a **deterministic 12-character MD5 hash** of the
+simulation parameters:
+
+```
+trait_id = MD5("{group}_{maf}_{nqtl}_{effect}_{rep}_{h2}")[1:12]
+```
+
+The hash is computed exclusively in R via `generate_trait_id()` using
+`digest::digest(serialize = FALSE)`. No Groovy counterpart exists — the
+Nextflow `.multiMap` block passes raw parameters to the R script, which
+computes `trait_id` internally. This eliminates cross-language hash divergence.
+
+**Properties:**
+
+- **Resume-safe:** identical parameters → identical `trait_id` across
+  pipeline `-resume` → Nextflow caches the write processes
+- **Debuggable:** `trait_id` can be reconstructed from parameters alone,
+  without scanning the database
+- **Unique:** any script can call `generate_trait_id(params)` to locate stored
+  data without a directory scan
+
+**Source:** `R/database.R::generate_trait_id()`
+
+```r
+trait_id <- generate_trait_id(
+  group  = "complete",
+  maf    = 0.05,
+  nqtl   = 5,
+  effect = "gamma",
+  rep    = 1,
+  h2     = 0.8
+)
+```
+
+
+### Trait Metadata Schema
+
+**File:** `{base_dir}/traits/{trait_id}.parquet`
+
+| Column | Arrow Type | Description |
+|--------|-----------|-------------|
+| `trait_id` | `utf8` | Deterministic MD5 hash (12 hex characters) |
+| `nqtl` | `int32` | Number of simulated causal QTLs |
+| `rep` | `int32` | Simulation replicate number |
+| `h2` | `float64` | Simulated heritability |
+| `maf` | `float64` | MAF threshold |
+| `effect` | `utf8` | Effect size distribution (e.g. `"gamma"`) |
+| `population` | `utf8` | Population/strain group identifier |
+| `created_at` | `utf8` | ISO 8601 write timestamp |
+
+**Key:** `trait_id` uniquely identifies each record. Re-running with the same
+parameters writes to the same path; `overwrite = TRUE` replaces the file cleanly.
+
+**Source:** `R/database.R::trait_metadata_schema()`,
+`R/database.R::write_trait_metadata()`, `R/database.R::read_trait_metadata()`
+
+
+### Causal Variants Schema
+
+**File:** `{base_dir}/causal_variants/{trait_id}_causal.parquet`
+
+| Column | Arrow Type | Description |
+|--------|-----------|-------------|
+| `QTL` | `utf8` | QTL label from GCTA `.par` file |
+| `CHROM` | `utf8` | Chromosome |
+| `POS` | `int32` | Genomic position (bp) |
+| `RefAllele` | `utf8` | Reference allele |
+| `Frequency` | `float64` | Allele frequency of the causal variant |
+| `Effect` | `float64` | Simulated effect size |
+
+Causal variant records are loaded from the GCTA `.par` file via
+`assessment.R::load_causal_variants()`.
+
+**Source:** `R/database.R::write_causal_variants()`,
+`R/database.R::read_causal_variants_data()`
+
+
+### Phenotype Schema
+
+**File:** `{base_dir}/phenotypes/{trait_id}_phenotype.parquet`
+
+| Column | Arrow Type | Description |
+|--------|-----------|-------------|
+| `strain` | `utf8` | Strain name (FID column from `.phen` file) |
+| `phenotype` | `float64` | Simulated phenotype value |
+
+::: {.callout-important}
+**Pre-upscaled values.** The stored phenotype is the direct output of
+`GCTA_SIMULATE_PHENOTYPES`, captured *before* `PLINK_UPDATE_BY_H2` →
+`PYTHON_CHECK_VP`. The `check_vp.py` script may multiply values by 1000× when
+Vp < 1e-6, so phenotype values stored here *may differ* from the values used
+in the actual GWAS mapping. For future variance-explained estimation this is
+immaterial: the ANOVA SS ratio (SS~between~ / SS~total~) is scale-invariant.
+:::
+
+**Source:** `R/database.R::phenotype_schema()`,
+`R/database.R::write_phenotype_data()`, `R/database.R::read_phenotype_data()`
+
+
+### Offline Variance-Explained Estimation
+
+With all four data stores populated, variance explained can be estimated for
+any trait without re-running the pipeline:
+
+```r
+trait_id <- generate_trait_id(group, maf, nqtl, effect, rep, h2)
+
+geno   <- read_genotype_matrix(group, maf, base_dir)         # CHROM, POS, strain, allele
+pheno  <- read_phenotype_data(trait_id, base_dir)            # strain, phenotype
+causal <- read_causal_variants_data(trait_id, base_dir)      # QTL, CHROM, POS, Effect, ...
+
+# ANOVA SS method (matching legacy Assess_Sims.R):
+#   var_exp = SS_between / SS_total per marker
+# Join geno + pheno on strain, filter to causal positions, compute SS ratio.
+```
+
+
 ## Query Patterns
 
 The database is accessed through DuckDB via helper functions in `R/queries.R`.
@@ -328,12 +526,12 @@ All queries are read-only; writes go through `R/database.R`.
 
 ### Connection Setup
 
-`open_mapping_db()` creates an in-memory DuckDB connection and registers three
+`open_mapping_db()` creates an in-memory DuckDB connection and registers four
 views:
 
 | View | Source | Description |
 |------|--------|-------------|
-| `markers` | `marker_sets/*.parquet` | All marker set files |
+| `markers` | `marker_sets/*_markers.parquet` | All marker set files (excludes genotype files) |
 | `mappings` | `mappings/**/*.parquet` (Hive) | All mapping partitions |
 | `metadata` | `mappings_metadata.parquet` | Mapping summary table |
 | `marker_set_metadata` | `marker_sets/marker_set_metadata.parquet` | EIGEN values and marker counts |
@@ -350,6 +548,11 @@ views:
 | `get_metadata()` | `R/queries.R` | Read the mappings metadata summary table |
 | `list_populations()` | `R/queries.R` | List available populations from partition directories |
 | `db_stats()` | `R/queries.R` | Database-wide statistics (file counts, sizes, populations) |
+| `generate_trait_id()` | `R/database.R` | Compute deterministic 12-char MD5 trait ID from simulation parameters |
+| `read_genotype_matrix()` | `R/database.R` | Read long-format genotype matrix for a (population, MAF) combination |
+| `read_trait_metadata()` | `R/database.R` | Read per-trait metadata record by `trait_id` |
+| `read_causal_variants_data()` | `R/database.R` | Read causal variant parameters by `trait_id` |
+| `read_phenotype_data()` | `R/database.R` | Read per-strain phenotype values by `trait_id` |
 
 The `query_for_threshold_analysis()` function is the primary entry point used by
 `analyze_qtl.R` and `assess_sims.R`. It joins mappings with markers to resolve

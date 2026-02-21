@@ -25,7 +25,9 @@ GWA results (from Phase 3)
  │                                                                │
  │  Stage 1: Database Ingestion                                   │
  │    DB_MIGRATION_WRITE_MARKER_SET  (barrier)                    │
+ │    DB_MIGRATION_WRITE_GENOTYPE_MATRIX                          │
  │    DB_MIGRATION_WRITE_GWA_TO_DB                                │
+ │    DB_MIGRATION_WRITE_TRAIT_DATA                               │
  │    DB_MIGRATION_AGGREGATE_METADATA (barrier)                   │
  │                                                                │
  │  Stage 2: QTL Analysis                                         │
@@ -135,7 +137,10 @@ The DB path writes marker sets and raw GWA results to a Hive-partitioned
 Parquet database before performing QTL analysis. This enables DuckDB-based
 queries at analysis time and decouples threshold application from data storage.
 
-Three processes run sequentially with two barrier points:
+Five processes run during Stage 1. `DB_MIGRATION_WRITE_MARKER_SET` and
+`DB_MIGRATION_AGGREGATE_METADATA` act as barriers. `DB_MIGRATION_WRITE_GENOTYPE_MATRIX`
+and `DB_MIGRATION_WRITE_TRAIT_DATA` run in parallel as independent fire-and-forget
+storage operations — they have no downstream dependents within the pipeline:
 
 
 ### 1. DB_MIGRATION_WRITE_MARKER_SET
@@ -183,7 +188,47 @@ marker set was written.
 | Output | `{base_dir}/marker_sets/marker_set_metadata.parquet` | Marker set metadata |
 
 
-### 2. DB_MIGRATION_WRITE_GWA_TO_DB
+### 2. DB_MIGRATION_WRITE_GENOTYPE_MATRIX
+
+**Source:** `modules/db_migration/write_genotype_matrix/main.nf`
+&nbsp;&bull;&nbsp; **Script:** `resources/usr/bin/write_genotype_matrix.R`
+
+Reads the wide-format genotype matrix TSV produced by `BCFTOOLS_CREATE_GENOTYPE_MATRIX`
+(Phase 1), pivots it to long format, and writes a Parquet file per (group, maf)
+combination. Runs in parallel with `DB_MIGRATION_WRITE_GWA_TO_DB` — no barrier
+dependency in either direction.
+
+**Command:**
+
+```bash
+write_genotype_matrix.R --group ${group} --maf ${maf} \
+    --genotype_matrix ${genotype_matrix} --base_dir ${base_dir}
+```
+
+| Flag | Description |
+|------|-------------|
+| `--group` | Population/strain group identifier |
+| `--maf` | MAF threshold used for this marker set |
+| `--genotype_matrix` | Path to wide-format TSV from `BCFTOOLS_CREATE_GENOTYPE_MATRIX` |
+| `--base_dir` | Database output directory |
+
+**R functions called:**
+
+| Function | Source | Purpose |
+|----------|--------|---------|
+| `write_genotype_matrix()` | `R/database.R` | Pivot wide TSV to long format and write Parquet |
+
+**Cardinality:** 1 invocation per (group, maf) — typically 2–4 tasks.
+
+**Inputs / Outputs:**
+
+| Direction | File | Description |
+|-----------|------|-------------|
+| Input | `${group}_${maf}_Genotype_Matrix.tsv` | Wide-format genotype matrix from Phase 1 |
+| Output | `{base_dir}/marker_sets/{group}_{maf}_genotypes.parquet` | Long-format genotype Parquet (CHROM, POS, strain, allele) |
+
+
+### 3. DB_MIGRATION_WRITE_GWA_TO_DB
 
 **Source:** `modules/db_migration/write_gwa_to_db/main.nf`
 &nbsp;&bull;&nbsp; **Script:** `resources/usr/bin/write_gwa_to_db.R`
@@ -239,7 +284,69 @@ fields:
 | Output | `{base_dir}/mappings/population={pop}/mapping_id={id}/data.parquet` | Hive-partitioned mapping data |
 
 
-### 3. DB_MIGRATION_AGGREGATE_METADATA
+### 4. DB_MIGRATION_WRITE_TRAIT_DATA
+
+**Source:** `modules/db_migration/write_trait_data/main.nf`
+&nbsp;&bull;&nbsp; **Script:** `resources/usr/bin/write_trait_data.R`
+
+Writes per-trait metadata, causal variants, and phenotype data to the database.
+Sources the pre-upscaled `.phen` and `.par` files from `GCTA_SIMULATE_PHENOTYPES`
+(Phase 2) via a `.multiMap` channel — before the mode-crossing at `GCTA_MAKE_GRM`.
+Each trait is written exactly once regardless of how many mode/type combinations
+are mapped.
+
+**Command:**
+
+```bash
+write_trait_data.R --group ${group} --maf ${maf} --nqtl ${nqtl} \
+    --effect ${effect} --rep ${rep} --h2 ${h2} \
+    --pheno_file ${pheno_file} --par_file ${par_file} --base_dir ${base_dir}
+```
+
+| Flag | Description |
+|------|-------------|
+| `--group` | Population/strain group identifier |
+| `--maf` | MAF threshold |
+| `--nqtl` | Number of simulated QTLs |
+| `--effect` | Effect size distribution |
+| `--rep` | Simulation replicate number |
+| `--h2` | Heritability |
+| `--pheno_file` | Pre-upscaled `.phen` file from `GCTA_SIMULATE_PHENOTYPES` |
+| `--par_file` | Causal variant `.par` file from `GCTA_SIMULATE_PHENOTYPES` |
+| `--base_dir` | Database output directory |
+
+**R functions called:**
+
+| Function | Source | Purpose |
+|----------|--------|---------|
+| `generate_trait_id()` | `R/database.R` | Compute deterministic 12-char MD5 trait ID from simulation parameters |
+| `write_trait_metadata()` | `R/database.R` | Write per-trait parameter metadata |
+| `write_causal_variants()` | `R/database.R` | Write causal variant positions and effects |
+| `write_phenotype_data()` | `R/database.R` | Write per-strain phenotype values |
+
+**Trait ID:** Computed internally by the R script via `generate_trait_id(group, maf, nqtl, effect, rep, h2)` — a deterministic MD5 hash. No Groovy counterpart. Stable across `-resume`.
+
+**Cardinality:** 1 invocation per unique trait (nqtl × rep × h2 × maf × effect × group).
+
+**Inputs / Outputs:**
+
+| Direction | File | Description |
+|-----------|------|-------------|
+| Input | `*_sims.phen` | Pre-upscaled phenotype file from `GCTA_SIMULATE_PHENOTYPES` |
+| Input | `*_sims.par` | Causal variant parameters from `GCTA_SIMULATE_PHENOTYPES` |
+| Output | `{base_dir}/traits/{trait_id}.parquet` | Per-trait metadata (parameters + trait_id) |
+| Output | `{base_dir}/causal_variants/{trait_id}_causal.parquet` | QTL positions, effects, frequencies |
+| Output | `{base_dir}/phenotypes/{trait_id}_phenotype.parquet` | Per-strain phenotype values |
+
+::: {.callout-note}
+The stored phenotype is pre-upscaled (GCTA output before `PYTHON_CHECK_VP`). Values
+may differ from those used in the actual GWAS mapping by up to 1000× if `check_vp.py`
+applied upscaling. This is intentional — the ANOVA SS ratio for offline
+variance-explained estimation is scale-invariant.
+:::
+
+
+### 5. DB_MIGRATION_AGGREGATE_METADATA
 
 **Source:** `modules/db_migration/aggregate_metadata/main.nf`
 &nbsp;&bull;&nbsp; **Script:** `resources/usr/bin/aggregate_metadata.R`
@@ -278,11 +385,18 @@ The Parquet database uses a Hive partitioning scheme:
 {outputDir}/db/
  ├── marker_sets/
  │   ├── {population}_{maf}_markers.parquet
+ │   ├── {population}_{maf}_genotypes.parquet    ◄── long-format genotype matrix
  │   └── marker_set_metadata.parquet
  ├── mappings/
  │   └── population={pop}/
  │       └── mapping_id={id}/
  │           └── data.parquet
+ ├── traits/
+ │   └── {trait_id}.parquet                      ◄── trait metadata
+ ├── causal_variants/
+ │   └── {trait_id}_causal.parquet               ◄── causal variant parameters
+ ├── phenotypes/
+ │   └── {trait_id}_phenotype.parquet            ◄── pre-upscaled phenotype values
  └── mappings_metadata.parquet
 ```
 
@@ -290,6 +404,11 @@ At query time, DuckDB reads the partitioned Parquet files directly via the
 `read_parquet()` function with `hive_partitioning = true`. This allows
 efficient filtering by population and mapping ID without loading all data into
 memory. See `R/queries.R::open_mapping_db()` for the connection setup.
+
+The `traits/`, `causal_variants/`, and `phenotypes/` directories are written by
+`DB_MIGRATION_WRITE_TRAIT_DATA` and are not read by any pipeline process — they
+are stored for future offline analysis. See
+[Database Structure](database-structure.qmd#trait-data) for full schemas.
 
 
 ## Stage 2: QTL Detection
