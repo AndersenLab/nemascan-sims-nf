@@ -264,7 +264,6 @@ mappings_schema <- function() {
     BETA = arrow::float64(),
     SE = arrow::float64(),
     P = arrow::float64(),
-    var.exp = arrow::float64(),   # NA for inline path (no genotype matrix available)
     nqtl = arrow::int32(),
     rep = arrow::int32(),
     h2 = arrow::float64(),
@@ -486,7 +485,7 @@ marker_set_exists <- function(population, maf, base_dir = "data/db") {
 #' @param eigen_source_file Source filename for EIGEN value (optional)
 #' @return Invisibly returns the output path
 write_marker_set <- function(df, population, maf, base_dir = "data/db",
-                             overwrite = FALSE, n_independent_tests = NA_real_,
+                             overwrite = TRUE, n_independent_tests = NA_real_,
                              eigen_source_file = NA_character_) {
   init_database(base_dir)
   config <- .make_db_config(base_dir)
@@ -1185,7 +1184,7 @@ write_mapping_to_db <- function(df, source_file, base_dir = "data/db",
 prepare_mapping_data <- function(df, params) {
   mapping_id <- generate_mapping_id(params)
 
-  mapping_cols <- c("marker", "AF1", "BETA", "SE", "P", "var.exp", "trait")
+  mapping_cols <- c("marker", "AF1", "BETA", "SE", "P", "trait")
   available_cols <- intersect(mapping_cols, names(df))
 
   mapping_df <- df %>%
@@ -1225,7 +1224,7 @@ prepare_mappings_for_parquet <- function(df) {
     }
   }
 
-  num_cols <- c("AF1", "BETA", "SE", "P", "var.exp", "h2", "maf")
+  num_cols <- c("AF1", "BETA", "SE", "P", "h2", "maf")
   for (col in num_cols) {
     if (col %in% names(df)) {
       df[[col]] <- as.numeric(df[[col]])
