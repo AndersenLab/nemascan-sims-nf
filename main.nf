@@ -21,11 +21,13 @@ include { GCTA_PERFORM_GWA                } from './modules/gcta/perform_gwa/mai
 include { PYTHON_CHECK_VP               } from './modules/python/check_vp.nf'
 
 // Database migration modules
-include { DB_MIGRATION_WRITE_MARKER_SET  } from './modules/db_migration/write_marker_set/main'
-include { DB_MIGRATION_WRITE_GWA_TO_DB   } from './modules/db_migration/write_gwa_to_db/main'
-include { DB_MIGRATION_AGGREGATE_METADATA } from './modules/db_migration/aggregate_metadata/main'
-include { DB_MIGRATION_ANALYZE_QTL       } from './modules/db_migration/analyze_qtl/main'
-include { DB_MIGRATION_ASSESS_SIMS       } from './modules/db_migration/assess_sims/main'
+include { DB_MIGRATION_WRITE_MARKER_SET       } from './modules/db_migration/write_marker_set/main'
+include { DB_MIGRATION_WRITE_GWA_TO_DB        } from './modules/db_migration/write_gwa_to_db/main'
+include { DB_MIGRATION_AGGREGATE_METADATA     } from './modules/db_migration/aggregate_metadata/main'
+include { DB_MIGRATION_ANALYZE_QTL            } from './modules/db_migration/analyze_qtl/main'
+include { DB_MIGRATION_ASSESS_SIMS            } from './modules/db_migration/assess_sims/main'
+include { DB_MIGRATION_WRITE_GENOTYPE_MATRIX  } from './modules/db_migration/write_genotype_matrix/main'
+include { DB_MIGRATION_WRITE_TRAIT_DATA       } from './modules/db_migration/write_trait_data/main'
 
 workflow {
     main:
@@ -244,6 +246,52 @@ workflow {
         )
     ch_versions = ch_versions.mix(GCTA_SIMULATE_PHENOTYPES.out.versions)
 
+    // -- TRAIT DATA WRITES -------------------------------------------------------
+    // Source: GCTA_SIMULATE_PHENOTYPES (pre-upscaled phenotype, pre-mode-crossing)
+    //
+    // GCTA_SIMULATE_PHENOTYPES runs 1x per trait (before mode crossing at
+    // GCTA_MAKE_GRM line 260). No mode deduplication needed -- each emission
+    // is a unique trait.
+    //
+    // Trait data (metadata, causal variants, phenotype) and genotype matrix are
+    // stored in the DB for future analysis. These data are NOT consumed by
+    // ASSESS_SIMS -- no barrier is needed.
+    //
+    // WARNING: .merge() aligns channels by emission order, NOT by key matching.
+    // Do NOT insert .filter(), .branch(), .map(), or any reordering operator
+    // between GCTA_SIMULATE_PHENOTYPES.out.* and this .merge() chain — doing
+    // so will silently misalign phenotype/causal files with metadata.
+    // Runtime validation in write_trait_data.R catches misalignment (see M4).
+    //
+    // Merged tuple structure (19 elements):
+    //   [0-5]   params:  group, maf, nqtl, effect, rep, h2
+    //   [6-7]   pheno:   phen_path, par_path
+    //   [8-18]  plink:   group, maf, bed, bim, fam, map, nosex, ped, log, gm, n_indep_tests
+    //
+    // IMPORTANT: If GCTA_SIMULATE_PHENOTYPES output channels change, update
+    // these indices. See "Tuple index verification" in step7-plan.qmd.
+
+    GCTA_SIMULATE_PHENOTYPES.out.params
+        .merge(GCTA_SIMULATE_PHENOTYPES.out.pheno)
+        .merge(GCTA_SIMULATE_PHENOTYPES.out.plink)
+        .multiMap { it ->
+            assert it.size() == 19 : "Expected 19-element tuple, got ${it.size()}. First elements: ${it.take(6)}. Check output channels in modules/gcta/simulate_phenotypes/main.nf"
+            // trait_id is computed in R by write_trait_data.R via generate_trait_id()
+            // — no cross-language hash computation (addresses review B2)
+            write_params:  tuple(it[0], it[1], it[2], it[3], it[4], it[5])
+            write_pheno:   it[6]   // pre-upscaled .phen file
+            write_par:     it[7]   // causal variant .par file
+        }
+        .set { ch_trait }
+
+    // Write trait metadata + causal variants + phenotype to DB
+    DB_MIGRATION_WRITE_TRAIT_DATA(
+        ch_trait.write_params,
+        ch_trait.write_pheno,
+        ch_trait.write_par,
+        db_output_dir
+    )
+
     // Update plink data by heritability
     PLINK_UPDATE_BY_H2(
         GCTA_SIMULATE_PHENOTYPES.out.params,
@@ -342,6 +390,11 @@ workflow {
     // Result: tuple(group, maf, bim, n_indep_tests)
 
     DB_MIGRATION_WRITE_MARKER_SET(ch_marker_set_inputs, db_output_dir)
+
+    DB_MIGRATION_WRITE_GENOTYPE_MATRIX(
+        BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix,
+        db_output_dir
+    )
 
     // ── GWA DATABASE WRITES ──────────────────────────────────────────
     // Barrier: wait for ALL marker sets to complete before writing mappings.
