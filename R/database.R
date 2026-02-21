@@ -30,6 +30,7 @@ library(glue)
   markers_dir = "markers",
   mappings_dir = "mappings",
   markers_pattern = "{population}_{maf}_markers.parquet",
+  genotypes_pattern = "{population}_{maf}_genotypes.parquet",
   mappings_pattern = "{population}_mappings.parquet",
   metadata_file = "mappings_metadata.parquet",
   marker_set_metadata_file = "marker_set_metadata.parquet",
@@ -312,6 +313,22 @@ marker_set_metadata_schema <- function() {
 }
 
 
+#' Define Arrow schema for genotype matrix data (long format)
+#'
+#' Genotype matrix stored in long format with fixed 4-column schema.
+#' Allele encoding: -1 (hom ref), 1 (hom alt), NA (het/missing).
+#'
+#' @return Arrow schema object
+genotype_matrix_schema <- function() {
+  arrow::schema(
+    CHROM  = arrow::utf8(),
+    POS    = arrow::int32(),
+    strain = arrow::utf8(),
+    allele = arrow::float64()
+  )
+}
+
+
 # ==============================================================================
 # Database Initialization
 # ==============================================================================
@@ -496,6 +513,109 @@ list_marker_sets <- function(base_dir = "data/db") {
   })
 
   dplyr::bind_rows(parsed)
+}
+
+
+# ==============================================================================
+# Genotype Matrix Operations
+# ==============================================================================
+
+#' Get path to genotype matrix file
+#'
+#' @param population Population identifier
+#' @param maf MAF threshold
+#' @param base_dir Database root directory
+#' @return Path to genotype matrix Parquet file
+get_genotype_matrix_path <- function(population, maf, base_dir = "data/db") {
+  markers_dir <- file.path(base_dir, .db_constants$markers_dir)
+  filename <- gsub("\\{population\\}", population,
+                   gsub("\\{maf\\}", maf, .db_constants$genotypes_pattern))
+  file.path(markers_dir, filename)
+}
+
+
+#' Check if genotype matrix exists in database
+#'
+#' @param population Population identifier
+#' @param maf MAF threshold
+#' @param base_dir Database root directory
+#' @return TRUE if genotype matrix exists
+genotype_matrix_exists <- function(population, maf, base_dir = "data/db") {
+  file.exists(get_genotype_matrix_path(population, maf, base_dir))
+}
+
+
+#' Write genotype matrix to database in long format
+#'
+#' Reads a wide-format TSV genotype matrix, pivots to long format, and writes
+#' as Parquet. The wide-to-long pivot uses data.table::melt() for performance.
+#'
+#' @param genotype_tsv Path to wide-format TSV from
+#'   BCFTOOLS_CREATE_GENOTYPE_MATRIX
+#' @param population Population/strain group identifier
+#' @param maf MAF threshold
+#' @param base_dir Database base directory
+#' @param overwrite Overwrite existing file (default TRUE for retry safety)
+#' @return Invisible path to written Parquet file
+write_genotype_matrix <- function(genotype_tsv, population, maf,
+                                  base_dir = "data/db", overwrite = TRUE) {
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    stop("Package 'data.table' is required for write_genotype_matrix()")
+  }
+
+  out_path <- get_genotype_matrix_path(population, maf, base_dir)
+
+  if (file.exists(out_path) && !overwrite) {
+    message("Genotype matrix already exists: ", out_path)
+    return(invisible(out_path))
+  }
+
+  # Read wide-format TSV
+  geno_wide <- data.table::fread(genotype_tsv)
+
+  # Drop REF/ALT (redundant with markers file)
+  drop_cols <- intersect(c("REF", "ALT"), names(geno_wide))
+  if (length(drop_cols) > 0) {
+    geno_wide[, (drop_cols) := NULL]
+  }
+
+  # Pivot to long format: CHROM, POS are id vars; strain columns become rows
+  id_vars <- c("CHROM", "POS")
+  geno_long <- data.table::melt(
+    geno_wide,
+    id.vars = id_vars,
+    variable.name = "strain",
+    value.name = "allele"
+  )
+
+  # Cast schema
+  geno_long[, CHROM := as.character(CHROM)]
+  geno_long[, POS := as.integer(POS)]
+  geno_long[, strain := as.character(strain)]
+  geno_long[, allele := as.numeric(allele)]
+
+  # Write Parquet with schema enforcement
+  arrow::write_parquet(
+    arrow::as_arrow_table(geno_long, schema = genotype_matrix_schema()),
+    sink = out_path
+  )
+
+  invisible(out_path)
+}
+
+
+#' Read genotype matrix from database
+#'
+#' @param population Population/strain group identifier
+#' @param maf MAF threshold
+#' @param base_dir Database base directory
+#' @return data.frame with columns: CHROM, POS, strain, allele (long format)
+read_genotype_matrix <- function(population, maf, base_dir = "data/db") {
+  path <- get_genotype_matrix_path(population, maf, base_dir)
+  if (!file.exists(path)) {
+    stop("Genotype matrix not found: ", path)
+  }
+  as.data.frame(arrow::read_parquet(path))
 }
 
 
