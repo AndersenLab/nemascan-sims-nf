@@ -39,25 +39,32 @@ skip_if_no_assessment_cross_validation <- function() {
 }
 
 # Helper: parse the existing assessment TSV (no header, column structure from Assess_Sims.R)
-read_existing_assessment <- function(path) {
-  col_names <- c("QTL", "Simulated", "Detected", "CHROM", "POS", "RefAllele",
-                  "Frequency", "Effect", "Simulated.QTL.VarExp", "log10p", "significant",
-                  "startPOS", "peakPOS", "endPOS",
-                  "detected.peak", "BETA", "interval.log10p",
-                  "peak_id", "interval_size",
-                  "interval.var.exp", "interval.Frequency",
-                  "top.hit", "nQTL", "simREP", "h2", "maf",
-                  "effect_distribution", "strain_set_id",
-                  "mode", "type", "threshold", "algorithm_id",
-                  "alpha", "ci_size", "snp_grouping")
-
+read_legacy_assessment <- function(path) {
+  col_names <- c(
+    "QTL", "Simulated", "Detected", "CHROM", "POS", "RefAllele",
+    "Frequency", "Effect", "Simulated.QTL.VarExp", "log10p", "significant",
+    "startPOS", "peakPOS", "endPOS",
+    "detected.peak", "BETA", "interval.log10p",
+    "peak_id", "interval_size",
+    "interval.var.exp", "interval.Frequency",
+    "top.hit", "nQTL", "simREP", "h2", "maf",
+    "effect_distribution", "strain_set_id",
+    "mode", "type", "threshold", "algorithm_id",
+    "alpha", "ci_size", "snp_grouping"
+  )
+  # Deal with presence/absence of header in output files
+  # needed to accommodate different versions of legacy assessment output (with or without header) and avoid test failures due to that
   df <- tryCatch(
-    data.table::fread(path, header = FALSE, col.names = col_names,
-                      sep = "\t", na.strings = c("NA", ""))  %>%
+    data.table::fread(path,
+      header = FALSE, col.names = col_names,
+      sep = "\t", na.strings = c("NA", "")
+    ) %>%
       as.data.frame(),
     error = function(e) {
-      data.table::fread(path, header = TRUE, sep = "\t",
-                        na.strings = c("NA", "")) %>%
+      data.table::fread(path,
+        header = TRUE, sep = "\t",
+        na.strings = c("NA", "")
+      ) %>%
         as.data.frame()
     }
   )
@@ -79,22 +86,28 @@ read_existing_assessment <- function(path) {
 
 # Helper: parse the DB assessment TSV (no header, from assess_sims.R via format_assessment_tsv())
 read_db_assessment <- function(path) {
-  col_names <- c("QTL", "Simulated", "Detected", "CHROM", "POS", "RefAllele",
-                  "Frequency", "Effect", "Simulated.QTL.VarExp", "log10p", "significant",
-                  "BETA", "startPOS", "peakPOS", "endPOS", "detected.peak",
-                  "interval.log10p", "interval.var.exp", "interval.Frequency",
-                  "peak_id", "interval_size", "top.hit",
-                  "nQTL", "simREP", "h2", "maf", "effect_distribution",
-                  "strain_set_id", "mode", "type", "threshold", "algorithm_id",
-                  "alpha", "ci_size", "snp_grouping")
+  col_names <- c(
+    "QTL", "Simulated", "Detected", "CHROM", "POS", "RefAllele",
+    "Frequency", "Effect", "Simulated.QTL.VarExp", "log10p", "significant",
+    "BETA", "startPOS", "peakPOS", "endPOS", "detected.peak",
+    "interval.log10p", "interval.var.exp", "interval.Frequency",
+    "peak_id", "interval_size", "top.hit",
+    "nQTL", "simREP", "h2", "maf", "effect_distribution",
+    "strain_set_id", "mode", "type", "threshold", "algorithm_id",
+    "alpha", "ci_size", "snp_grouping"
+  )
 
   df <- tryCatch(
-    data.table::fread(path, header = FALSE, col.names = col_names,
-                      sep = "\t", na.strings = c("NA", "")) %>%
+    data.table::fread(path,
+      header = FALSE, col.names = col_names,
+      sep = "\t", na.strings = c("NA", "")
+    ) %>%
       as.data.frame(),
     error = function(e) {
-      data.table::fread(path, header = TRUE, sep = "\t",
-                        na.strings = c("NA", "")) %>%
+      data.table::fread(path,
+        header = TRUE, sep = "\t",
+        na.strings = c("NA", "")
+      ) %>%
         as.data.frame()
     }
   )
@@ -128,7 +141,9 @@ make_join_key <- function(df) {
     dplyr::mutate(
       norm_alg = normalize_algorithm_id(algorithm_id),
       join_key = paste(nQTL, simREP, h2, maf, effect_distribution,
-                       strain_set_id, norm_alg, QTL, sep = "|")
+        strain_set_id, norm_alg, QTL,
+        sep = "|"
+      )
     )
 }
 
@@ -145,7 +160,7 @@ interval_jaccard <- function(start_a, end_a, start_b, end_b) {
 
 # Helper: join QTL rows from both paths on the composite key
 build_joined_assessment <- function() {
-  existing <- read_existing_assessment(existing_assessment_path) %>%
+  existing <- read_legacy_assessment(existing_assessment_path) %>%
     designate_qtl() %>%
     make_join_key()
   db_assess <- read_db_assessment(db_assessment_path) %>%
@@ -155,17 +170,19 @@ build_joined_assessment <- function() {
   dplyr::inner_join(
     existing %>%
       dplyr::select(join_key, norm_alg,
-                    nQTL, simREP, h2, maf, strain_set_id,
-                    designation_legacy = designation,
-                    Detected_legacy = Detected, Simulated_legacy = Simulated,
-                    startPOS_legacy = startPOS, peakPOS_legacy = peakPOS,
-                    endPOS_legacy = endPOS),
+        nQTL, simREP, h2, maf, strain_set_id,
+        designation_legacy = designation,
+        Detected_legacy = Detected, Simulated_legacy = Simulated,
+        startPOS_legacy = startPOS, peakPOS_legacy = peakPOS,
+        endPOS_legacy = endPOS
+      ),
     db_assess %>%
       dplyr::select(join_key,
-                    designation_db = designation,
-                    Detected_db = Detected, Simulated_db = Simulated,
-                    startPOS_db = startPOS, peakPOS_db = peakPOS,
-                    endPOS_db = endPOS),
+        designation_db = designation,
+        Detected_db = Detected, Simulated_db = Simulated,
+        startPOS_db = startPOS, peakPOS_db = peakPOS,
+        endPOS_db = endPOS
+      ),
     by = "join_key"
   )
 }
@@ -177,9 +194,11 @@ test_that("both assessment output files exist and are non-empty", {
   skip_if_no_assessment_cross_validation()
 
   expect_true(file.exists(existing_assessment_path),
-              label = "existing assessment file exists")
+    label = "existing assessment file exists"
+  )
   expect_true(file.exists(db_assessment_path),
-              label = "DB assessment file exists")
+    label = "DB assessment file exists"
+  )
 
   existing_size <- file.info(existing_assessment_path)$size
   db_size <- file.info(db_assessment_path)$size
@@ -237,7 +256,8 @@ test_that("per-mapping designation concordance is 1.0 for all mappings", {
     )
 
   expect_gt(nrow(designation_conc), 0,
-            label = "at least one mapping has designated QTLs")
+    label = "at least one mapping has designated QTLs"
+  )
 
   imperfect <- designation_conc %>%
     dplyr::filter(designation_concordance < 1)

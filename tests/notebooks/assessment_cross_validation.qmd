@@ -132,7 +132,7 @@ designation_colors <- c(
 )
 
 # Parse legacy assessment TSV (no header, 35-column schema from Assess_Sims.R)
-read_existing_assessment <- function(path) {
+read_legacy_assessment <- function(path) {
   col_names <- c("QTL", "Simulated", "Detected", "CHROM", "POS", "RefAllele",
                   "Frequency", "Effect", "Simulated.QTL.VarExp", "log10p", "significant",
                   "startPOS", "peakPOS", "endPOS",
@@ -242,7 +242,7 @@ make_badge <- function(passed, label = NULL) {
 
 ```{r}
 #| label: load-data
-existing <- read_existing_assessment(existing_assessment_path)
+existing <- read_legacy_assessment(existing_assessment_path)
 db_assess <- read_db_assessment(db_assessment_path)
 
 message("Existing assessment: ", nrow(existing), " rows x ", ncol(existing), " cols")
