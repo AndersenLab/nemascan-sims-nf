@@ -145,3 +145,19 @@ test_that("output Parquet has correct Arrow types", {
   expect_equal(schema$GetFieldByName("strain")$type, arrow::utf8())
   expect_equal(schema$GetFieldByName("allele")$type, arrow::float64())
 })
+
+
+# ── Directory structure ───────────────────────────────────────────────────────
+
+test_that("genotype parquet file is in markers/genotypes/ dir", {
+  db_dir <- create_temp_db()
+  init_database(db_dir)
+  tsv <- fixture_path("test_genotype_matrix.tsv")
+
+  write_genotype_matrix(tsv, "test_pop", 0.05, db_dir)
+
+  markers_dir <- file.path(db_dir, "markers", "genotypes")
+  geno_files <- list.files(markers_dir, pattern = "_genotypes\\.parquet$")
+  expect_gt(length(geno_files), 0L,
+            label = "genotype parquet file is in markers/genotypes/ dir")
+})
