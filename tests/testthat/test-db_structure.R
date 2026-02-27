@@ -173,22 +173,12 @@ test_that("PCA flags are correct", {
   expect_true(any(meta$pca == FALSE), label = "at least one noPCA mapping")
 })
 
-test_that("mapping IDs follow expected naming convention", {
+test_that("mapping IDs are 20-character lowercase hex hashes", {
   skip_if_no_db()
   meta <- get_metadata(db_dir)
 
-  # IDs should end with _PCA or _noPCA
-  pca_ids <- meta$mapping_id[meta$pca == TRUE]
-  nopca_ids <- meta$mapping_id[meta$pca == FALSE]
-
-  if (length(pca_ids) > 0) {
-    expect_true(all(grepl("_PCA$", pca_ids)),
-                label = "PCA mapping IDs should end with _PCA")
-  }
-  if (length(nopca_ids) > 0) {
-    expect_true(all(grepl("_noPCA$", nopca_ids)),
-                label = "noPCA mapping IDs should end with _noPCA")
-  }
+  expect_true(all(grepl("^[0-9a-f]{20}$", meta$mapping_id)),
+              label = "all mapping IDs should be 20-char lowercase hex")
 })
 
 # ── Database Queryability ────────────────────────────────────────────────────
