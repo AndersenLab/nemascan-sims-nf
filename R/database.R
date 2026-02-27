@@ -238,14 +238,12 @@ get_population_thresholds <- function(population, alpha = 0.05, base_dir = "data
 #' @return Arrow schema object
 markers_schema <- function() {
   arrow::schema(
-    marker = arrow::utf8(),
-    CHROM = arrow::utf8(),
-    POS = arrow::int32(),
-    A1 = arrow::utf8(),
-    A2 = arrow::utf8(),
-    AF1 = arrow::float64(),
-    population = arrow::utf8(),
-    maf = arrow::float64()
+    marker_set_id = arrow::utf8(),
+    marker        = arrow::utf8(),
+    CHROM         = arrow::utf8(),
+    POS           = arrow::int32(),
+    A1            = arrow::utf8(),
+    A2            = arrow::utf8()
   )
 }
 
@@ -310,12 +308,15 @@ metadata_schema <- function() {
 #' @return Arrow schema object
 marker_set_metadata_schema <- function() {
   arrow::schema(
-    population = arrow::utf8(),
-    maf = arrow::float64(),
-    n_markers = arrow::int32(),
-    n_independent_tests = arrow::float64(),
-    eigen_source_file = arrow::utf8(),
-    created_at = arrow::timestamp("us")
+    marker_set_id          = arrow::utf8(),
+    marker_set_hash_string = arrow::utf8(),
+    hash_schema_version    = arrow::utf8(),  # "v=1": increment if hash construction rules change; existing DBs regenerated
+    population             = arrow::utf8(),
+    maf                    = arrow::float64(),
+    n_markers              = arrow::int32(),
+    n_independent_tests    = arrow::float64(),
+    eigen_source_file      = arrow::utf8(),
+    created_at             = arrow::timestamp("us")
   )
 }
 
@@ -328,10 +329,11 @@ marker_set_metadata_schema <- function() {
 #' @return Arrow schema object
 genotype_matrix_schema <- function() {
   arrow::schema(
-    CHROM  = arrow::utf8(),
-    POS    = arrow::int32(),
-    strain = arrow::utf8(),
-    allele = arrow::float64()
+    marker_set_id = arrow::utf8(),
+    CHROM         = arrow::utf8(),
+    POS           = arrow::int32(),
+    strain        = arrow::utf8(),
+    allele        = arrow::float64()
   )
 }
 
@@ -534,23 +536,21 @@ write_marker_set <- function(df, population, maf, base_dir = "data/db",
                              eigen_source_file = NA_character_) {
   init_database(base_dir)
   config <- .make_db_config(base_dir)
-  markers_path <- get_markers_path(population, maf, base_dir)
+
+  ms_id        <- generate_marker_set_id(population, maf)        # compute once
+  markers_path <- .markers_path_from_hash(ms_id$hash, base_dir)  # no second hash call
 
   if (file.exists(markers_path) && !overwrite) {
     log_msg(glue::glue("Marker set {population}_{maf} already exists - skipping"))
     return(invisible(markers_path))
   }
 
-  marker_cols <- c("marker", "CHROM", "POS", "A1", "A2", "AF1")
-  available_cols <- intersect(marker_cols, names(df))
+  marker_cols <- c("marker", "CHROM", "POS", "A1", "A2")  # AF1/population/maf removed
 
   markers_df <- df %>%
-    dplyr::select(dplyr::all_of(available_cols)) %>%
+    dplyr::select(dplyr::any_of(marker_cols)) %>%
     dplyr::distinct() %>%
-    dplyr::mutate(
-      population = population,
-      maf = maf
-    )
+    dplyr::mutate(marker_set_id = ms_id$hash)  # short hash only — no hash_string in data
 
   markers_df <- prepare_markers_for_parquet(markers_df)
 
@@ -564,12 +564,14 @@ write_marker_set <- function(df, population, maf, base_dir = "data/db",
 
   # Also write marker set metadata
   write_marker_set_metadata(
-    population = population,
-    maf = maf,
-    n_markers = nrow(markers_df),
-    n_independent_tests = n_independent_tests,
-    eigen_source_file = eigen_source_file,
-    base_dir = base_dir
+    population             = population,
+    maf                    = maf,
+    n_markers              = nrow(markers_df),
+    marker_set_id          = ms_id$hash,         # thread through
+    marker_set_hash_string = ms_id$hash_string,  # stored once in metadata only
+    n_independent_tests    = n_independent_tests,
+    eigen_source_file      = eigen_source_file,
+    base_dir               = base_dir
   )
 
   invisible(markers_path)
@@ -655,7 +657,8 @@ write_genotype_matrix <- function(genotype_tsv, population, maf,
     stop("Package 'data.table' is required for write_genotype_matrix()")
   }
 
-  out_path <- get_genotype_matrix_path(population, maf, base_dir)
+  ms_id    <- generate_marker_set_id(population, maf)         # compute once
+  out_path <- .genotypes_path_from_hash(ms_id$hash, base_dir) # no second hash call
 
   if (file.exists(out_path) && !overwrite) {
     message("Genotype matrix already exists: ", out_path)
@@ -685,6 +688,7 @@ write_genotype_matrix <- function(genotype_tsv, population, maf,
   geno_long[, POS := as.integer(POS)]
   geno_long[, strain := as.character(strain)]
   geno_long[, allele := as.numeric(allele)]
+  geno_long[, marker_set_id := ms_id$hash]  # join key (hash only)
 
   # Write Parquet with schema enforcement
   arrow::write_parquet(
@@ -955,6 +959,8 @@ get_marker_set_metadata_path <- function(base_dir = "data/db") {
 #' @param base_dir Database root directory
 #' @return Invisibly returns the metadata file path
 write_marker_set_metadata <- function(population, maf, n_markers,
+                                       marker_set_id, marker_set_hash_string,
+                                       hash_schema_version = "v=1",
                                        n_independent_tests = NA_real_,
                                        eigen_source_file = NA_character_,
                                        base_dir = "data/db") {
@@ -962,22 +968,22 @@ write_marker_set_metadata <- function(population, maf, n_markers,
   metadata_path <- get_marker_set_metadata_path(base_dir)
 
   new_record <- data.frame(
-    population = as.character(population),
-    maf = as.numeric(maf),
-    n_markers = as.integer(n_markers),
-    n_independent_tests = as.numeric(n_independent_tests),
-    eigen_source_file = as.character(eigen_source_file),
-    created_at = Sys.time(),
-    stringsAsFactors = FALSE
+    marker_set_id          = as.character(marker_set_id),
+    marker_set_hash_string = as.character(marker_set_hash_string),
+    hash_schema_version    = as.character(hash_schema_version),
+    population             = as.character(population),
+    maf                    = as.numeric(maf),
+    n_markers              = as.integer(n_markers),
+    n_independent_tests    = as.numeric(n_independent_tests),
+    eigen_source_file      = as.character(eigen_source_file),
+    created_at             = Sys.time(),
+    stringsAsFactors       = FALSE
   )
 
   if (file.exists(metadata_path)) {
     existing <- as.data.frame(arrow::read_parquet(metadata_path))
-    # Remove existing record for this population+maf combination
-    existing_filtered <- existing[
-      !(existing$population == population & existing$maf == maf),
-      , drop = FALSE
-    ]
+    # Dedup by marker_set_id — the canonical identity for a marker set
+    existing_filtered <- existing[existing$marker_set_id != marker_set_id, , drop = FALSE]
     result <- dplyr::bind_rows(existing_filtered, new_record)
   } else {
     result <- new_record
