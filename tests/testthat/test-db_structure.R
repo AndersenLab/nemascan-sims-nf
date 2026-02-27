@@ -79,7 +79,8 @@ test_that("marker_set_metadata.parquet has required columns and valid data", {
   ms_meta <- arrow::read_parquet(file.path(db_dir, "marker_set_metadata.parquet"))
 
   # Required columns
-  expected_cols <- c("population", "maf", "n_markers", "n_independent_tests",
+  expected_cols <- c("marker_set_id", "marker_set_hash_string", "hash_schema_version",
+                     "population", "maf", "n_markers", "n_independent_tests",
                      "eigen_source_file", "created_at")
   expect_true(all(expected_cols %in% names(ms_meta)),
               label = paste("marker_set_metadata columns:",
@@ -101,18 +102,20 @@ test_that("marker set parquet has correct schema", {
   skip_if_no_db()
   ms <- read_marker_set(expected_population, 0.05, db_dir)
 
-  expected_cols <- c("marker", "CHROM", "POS", "A1", "A2", "AF1",
-                     "population", "maf")
+  expected_cols <- c("marker_set_id", "marker", "CHROM", "POS", "A1", "A2")
   expect_true(all(expected_cols %in% names(ms)))
   expect_gt(nrow(ms), 0)
+  # marker_set_hash_string must NOT be in the data file (metadata only)
+  expect_false("marker_set_hash_string" %in% names(ms),
+               label = "marker_set_hash_string absent from data file")
+  expect_false("AF1" %in% names(ms), label = "AF1 absent from marker data schema")
+  expect_false("population" %in% names(ms), label = "population absent from marker data schema")
+  expect_false("maf" %in% names(ms), label = "maf absent from marker data schema")
 
   # CHROM should be character
   expect_type(ms$CHROM, "character")
   # POS should be integer
   expect_type(ms$POS, "integer")
-  # AF1 should be NA for .bim-sourced marker sets
-  expect_true(all(is.na(ms$AF1)),
-              label = "AF1 should be NA for bim-sourced markers")
 })
 
 # ── Mappings Metadata ────────────────────────────────────────────────────────
