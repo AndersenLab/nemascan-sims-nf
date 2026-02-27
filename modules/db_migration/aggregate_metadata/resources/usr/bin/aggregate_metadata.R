@@ -48,12 +48,11 @@ if (length(parquet_files) == 0) {
 # Extract metadata from each parquet file (read just one row for efficiency)
 metadata_list <- lapply(parquet_files, function(pq_file) {
   tryCatch({
-    # Read first row to get metadata columns
+    # Read first row to get FK columns (metadata params now in mappings_metadata.parquet)
     df <- arrow::read_parquet(pq_file) %>%
       head(1) %>%
       select(any_of(c(
-        "mapping_id", "population", "maf", "nqtl", "rep",
-        "h2", "effect", "algorithm", "pca", "trait"
+        "mapping_id", "marker_set_id", "trait_id"
       )))
 
     # Get marker count from full file
@@ -94,11 +93,9 @@ cat("Wrote metadata to:", metadata_path, "\n")
 summary_text <- paste0(
   "Aggregation complete\n",
   "Total mappings: ", nrow(metadata_df), "\n",
-  "Populations: ", paste(unique(metadata_df$population), collapse = ", "), "\n",
-  "MAF values: ", paste(unique(metadata_df$maf), collapse = ", "), "\n"
+  "Unique mapping IDs: ", length(unique(metadata_df$mapping_id)), "\n"
 )
 writeLines(summary_text, "aggregation_summary.txt")
 
 cat("\nAggregation complete:\n")
 cat("  Total mappings:", nrow(metadata_df), "\n")
-cat("  Populations:", length(unique(metadata_df$population)), "\n")

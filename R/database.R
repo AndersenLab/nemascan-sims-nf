@@ -258,21 +258,14 @@ markers_schema <- function() {
 #' @return Arrow schema object
 mappings_schema <- function() {
   arrow::schema(
-    marker = arrow::utf8(),
-    mapping_id = arrow::utf8(),
-    AF1 = arrow::float64(),      # Per-mapping allele frequency from raw GWA output
-    BETA = arrow::float64(),
-    SE = arrow::float64(),
-    P = arrow::float64(),
-    nqtl = arrow::int32(),
-    rep = arrow::int32(),
-    h2 = arrow::float64(),
-    effect = arrow::utf8(),
-    algorithm = arrow::utf8(),
-    pca = arrow::boolean(),
-    population = arrow::utf8(),
-    maf = arrow::float64(),
-    trait = arrow::utf8()
+    marker_set_id = arrow::utf8(),   # FK → markers + marker_set_metadata
+    trait_id      = arrow::utf8(),   # FK → trait_metadata
+    mapping_id    = arrow::utf8(),   # partition key; FK → mappings_metadata
+    marker        = arrow::utf8(),
+    AF1           = arrow::float64(),
+    BETA          = arrow::float64(),
+    SE            = arrow::float64(),
+    P             = arrow::float64()
   )
 }
 
@@ -282,20 +275,23 @@ mappings_schema <- function() {
 #' @return Arrow schema object
 metadata_schema <- function() {
   arrow::schema(
-    mapping_id = arrow::utf8(),
-    population = arrow::utf8(),
-    maf = arrow::float64(),
-    nqtl = arrow::int32(),
-    rep = arrow::int32(),
-    h2 = arrow::float64(),
-    effect = arrow::utf8(),
-    algorithm = arrow::utf8(),
-    pca = arrow::boolean(),
-    trait = arrow::utf8(),
-    n_markers = arrow::int32(),
-    source_file = arrow::utf8(),
-    processed_at = arrow::timestamp("us"),
-    processing_version = arrow::utf8()
+    mapping_id          = arrow::utf8(),
+    mapping_hash_string = arrow::utf8(),
+    trait_id            = arrow::utf8(),
+    marker_set_id       = arrow::utf8(),
+    hash_schema_version = arrow::utf8(),
+    population          = arrow::utf8(),
+    maf                 = arrow::float64(),
+    nqtl                = arrow::int32(),
+    rep                 = arrow::int32(),
+    h2                  = arrow::float64(),
+    effect              = arrow::utf8(),
+    algorithm           = arrow::utf8(),
+    pca                 = arrow::boolean(),
+    n_markers           = arrow::int32(),
+    source_file         = arrow::utf8(),
+    processed_at        = arrow::timestamp("us"),
+    processing_version  = arrow::utf8()
   )
 }
 
@@ -1170,9 +1166,12 @@ write_mapping_to_db <- function(df, source_file, base_dir = "data/db",
     stop("Could not parse mapping filename - cannot determine parameters for storage")
   }
 
-  mapping_id <- generate_mapping_id(params)
-  population <- params$population
-  maf <- params$maf
+  ms_id       <- generate_marker_set_id(params$population, params$maf)
+  trait_obj   <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
+  mapping_obj <- generate_mapping_id(trait_obj$hash, params$algorithm, params$pca)
+  mapping_id  <- mapping_obj$hash
+  population  <- params$population
+  maf         <- params$maf
 
   # Deduplicate by CHROM:POS (LOCO files have duplicate rows per marker)
   n_before <- nrow(df)
@@ -1206,7 +1205,7 @@ write_mapping_to_db <- function(df, source_file, base_dir = "data/db",
   }
 
   # 4. Update metadata table
-  update_metadata_table(df, params, source_file, base_dir)
+  update_metadata_table(df, params, source_file, base_dir, ms_id, trait_obj, mapping_obj)
 
   invisible(mappings_path)
 }
@@ -1221,26 +1220,11 @@ write_mapping_to_db <- function(df, source_file, base_dir = "data/db",
 #' @param params Parsed filename parameters
 #' @return Dataframe ready for storage
 prepare_mapping_data <- function(df, params) {
-  mapping_id <- generate_mapping_id(params)
-
-  mapping_cols <- c("marker", "AF1", "BETA", "SE", "P", "trait")
+  mapping_cols   <- c("marker", "AF1", "BETA", "SE", "P")
   available_cols <- intersect(mapping_cols, names(df))
-
-  mapping_df <- df %>%
+  df %>%
     dplyr::select(dplyr::all_of(available_cols)) %>%
-    dplyr::mutate(
-      mapping_id = mapping_id,
-      nqtl = as.integer(params$nqtl),
-      rep = as.integer(params$rep),
-      h2 = as.numeric(params$h2),
-      effect = as.character(params$effect),
-      algorithm = as.character(params$algorithm),
-      pca = as.logical(params$pca),
-      population = as.character(params$population),
-      maf = as.numeric(params$maf)
-    )
-
-  prepare_mappings_for_parquet(mapping_df)
+    prepare_mappings_for_parquet()
 }
 
 
@@ -1249,29 +1233,18 @@ prepare_mapping_data <- function(df, params) {
 #' @param df Mappings dataframe
 #' @return Dataframe with proper types
 prepare_mappings_for_parquet <- function(df) {
-  char_cols <- c("marker", "mapping_id", "effect", "algorithm", "population", "trait")
+  char_cols <- c("marker", "mapping_id", "marker_set_id", "trait_id")
   for (col in char_cols) {
     if (col %in% names(df)) {
       df[[col]] <- as.character(df[[col]])
     }
   }
 
-  int_cols <- c("nqtl", "rep")
-  for (col in int_cols) {
-    if (col %in% names(df)) {
-      df[[col]] <- as.integer(df[[col]])
-    }
-  }
-
-  num_cols <- c("AF1", "BETA", "SE", "P", "h2", "maf")
+  num_cols <- c("AF1", "BETA", "SE", "P")
   for (col in num_cols) {
     if (col %in% names(df)) {
       df[[col]] <- as.numeric(df[[col]])
     }
-  }
-
-  if ("pca" %in% names(df)) {
-    df$pca <- as.logical(df$pca)
   }
 
   df
@@ -1320,34 +1293,34 @@ merge_mapping_data <- function(parquet_file, new_data, mapping_id, overwrite, ba
 #' @param params Parsed filename parameters
 #' @param source_file Original source filename
 #' @param base_dir Database root directory
-update_metadata_table <- function(df, params, source_file, base_dir) {
-  config <- .make_db_config(base_dir)
+update_metadata_table <- function(df, params, source_file, base_dir, ms_id, trait_obj, mapping_obj) {
+  config        <- .make_db_config(base_dir)
   metadata_file <- file.path(config$base_dir, config$metadata_file)
-  mapping_id <- generate_mapping_id(params)
-
-  trait_name <- if ("trait" %in% names(df)) unique(df$trait)[1] else NA_character_
 
   meta_record <- data.frame(
-    mapping_id = mapping_id,
-    population = params$population,
-    maf = params$maf,
-    nqtl = params$nqtl,
-    rep = params$rep,
-    h2 = params$h2,
-    effect = params$effect,
-    algorithm = params$algorithm,
-    pca = params$pca,
-    trait = trait_name,
-    n_markers = nrow(df),
-    source_file = basename(source_file),
-    processed_at = Sys.time(),
-    processing_version = "2.0.0",
-    stringsAsFactors = FALSE
+    mapping_id          = mapping_obj$hash,
+    mapping_hash_string = mapping_obj$hash_string,
+    trait_id            = trait_obj$hash,
+    marker_set_id       = ms_id$hash,
+    hash_schema_version = "v=1",
+    population          = params$population,
+    maf                 = as.numeric(params$maf),
+    nqtl                = as.integer(params$nqtl),
+    rep                 = as.integer(params$rep),
+    h2                  = as.numeric(params$h2),
+    effect              = params$effect,
+    algorithm           = params$algorithm,
+    pca                 = as.logical(params$pca),
+    n_markers           = nrow(df),
+    source_file         = basename(source_file),
+    processed_at        = Sys.time(),
+    processing_version  = "2.0.0",
+    stringsAsFactors    = FALSE
   )
 
   if (file.exists(metadata_file)) {
     existing_meta <- arrow::read_parquet(metadata_file) %>%
-      dplyr::filter(mapping_id != !!mapping_id)
+      dplyr::filter(mapping_id != !!mapping_obj$hash)
     updated_meta <- dplyr::bind_rows(existing_meta, meta_record)
   } else {
     updated_meta <- meta_record
@@ -1367,26 +1340,30 @@ update_metadata_table <- function(df, params, source_file, base_dir) {
 #' @param df Mapping dataframe
 #' @param params Parsed filename parameters
 #' @param source_file Original source filename
+#' @param ms_id Marker set ID object from generate_marker_set_id()
+#' @param trait_obj Trait ID object from generate_trait_id()
+#' @param mapping_obj Mapping ID object from generate_mapping_id()
 #' @return Dataframe with single metadata row
-create_metadata_record <- function(df, params, source_file) {
-  trait_name <- if ("trait" %in% names(df)) unique(df$trait)[1] else NA_character_
-
+create_metadata_record <- function(df, params, source_file, ms_id, trait_obj, mapping_obj) {
   data.frame(
-    mapping_id = generate_mapping_id(params),
-    population = params$population,
-    maf = params$maf,
-    nqtl = params$nqtl,
-    rep = params$rep,
-    h2 = params$h2,
-    effect = params$effect,
-    algorithm = params$algorithm,
-    pca = params$pca,
-    trait = trait_name,
-    n_markers = nrow(df),
-    source_file = basename(source_file),
-    processed_at = Sys.time(),
-    processing_version = "2.1.0",
-    stringsAsFactors = FALSE
+    mapping_id          = mapping_obj$hash,
+    mapping_hash_string = mapping_obj$hash_string,
+    trait_id            = trait_obj$hash,
+    marker_set_id       = ms_id$hash,
+    hash_schema_version = "v=1",
+    population          = params$population,
+    maf                 = as.numeric(params$maf),
+    nqtl                = as.integer(params$nqtl),
+    rep                 = as.integer(params$rep),
+    h2                  = as.numeric(params$h2),
+    effect              = params$effect,
+    algorithm           = params$algorithm,
+    pca                 = as.logical(params$pca),
+    n_markers           = nrow(df),
+    source_file         = basename(source_file),
+    processed_at        = Sys.time(),
+    processing_version  = "2.1.0",
+    stringsAsFactors    = FALSE
   )
 }
 
@@ -1456,29 +1433,21 @@ get_partition_path <- function(population, mapping_id, base_dir = "data/db") {
 #' @param params Parsed filename parameters
 #' @param base_dir Database root directory
 #' @return Invisibly returns the partition path
-write_mapping_partitioned <- function(df, params, base_dir = "data/db") {
-  # Load config to access compression setting from .db_constants
-  config <- .make_db_config(base_dir)
+write_mapping_partitioned <- function(df, params, ms_id, trait_id, base_dir = "data/db") {
+  config     <- .make_db_config(base_dir)
+  mapping    <- generate_mapping_id(trait_id$hash, params$algorithm, params$pca)
+  mapping_id <- mapping$hash
 
-  # Generate unique identifier for this mapping
-  mapping_id <- generate_mapping_id(params)
-
-  # Transform raw df into storage format: select stats columns, add metadata columns
   mapping_df <- prepare_mapping_data(df, params)
+  mapping_df$mapping_id    <- mapping_id
+  mapping_df$marker_set_id <- ms_id$hash
+  mapping_df$trait_id      <- trait_id$hash
 
-  # Build Hive-style partition path: mappings/population={pop}/mapping_id={id}/
   partition_path <- get_partition_path(params$population, mapping_id, base_dir)
-
-  # Ensure partition directory exists
   dir.create(partition_path, recursive = TRUE, showWarnings = FALSE)
 
-  # Write Parquet file with compression setting from config
-  parquet_path <- file.path(partition_path, "data.parquet")
-  arrow::write_parquet(
-    mapping_df,
-    parquet_path,
-    compression = config$compression  # "snappy" from .db_constants
-  )
+  arrow::write_parquet(mapping_df, file.path(partition_path, "data.parquet"),
+                       compression = config$compression)
 
   invisible(partition_path)
 }

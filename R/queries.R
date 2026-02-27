@@ -219,16 +219,16 @@ query_mapping_data <- function(population = NULL, maf = NULL, h2 = NULL,
     conditions <- c(conditions, glue::glue("m.population = '{population}'"))
   }
   if (!is.null(maf)) {
-    conditions <- c(conditions, glue::glue("m.maf = {maf}"))
+    conditions <- c(conditions, glue::glue("mm.maf = {maf}"))
   }
   if (!is.null(h2)) {
-    conditions <- c(conditions, glue::glue("m.h2 = {h2}"))
+    conditions <- c(conditions, glue::glue("mm.h2 = {h2}"))
   }
   if (!is.null(nqtl)) {
-    conditions <- c(conditions, glue::glue("m.nqtl = {nqtl}"))
+    conditions <- c(conditions, glue::glue("mm.nqtl = {nqtl}"))
   }
   if (!is.null(algorithm)) {
-    conditions <- c(conditions, glue::glue("m.algorithm = '{algorithm}'"))
+    conditions <- c(conditions, glue::glue("mm.algorithm = '{algorithm}'"))
   }
 
   where_clause <- if (length(conditions) > 0) {
@@ -247,9 +247,9 @@ query_mapping_data <- function(population = NULL, maf = NULL, h2 = NULL,
       COALESCE(m.AF1, mk.AF1) AS AF1_resolved
     FROM mappings m
     LEFT JOIN markers mk
-      ON m.marker = mk.marker
-      AND m.population = mk.population
-      AND m.maf = mk.maf
+      ON m.marker_set_id = mk.marker_set_id
+      AND m.marker = mk.marker
+    LEFT JOIN metadata mm ON m.mapping_id = mm.mapping_id
     {where_clause}
     ORDER BY m.mapping_id, mk.CHROM, mk.POS
   ")
@@ -327,12 +327,12 @@ query_for_threshold_analysis <- function(mapping_id, base_dir = "data/db", con =
       mk.POS,
       COALESCE(m.AF1, mk.AF1) AS AF1,
       m.population,
-      m.maf
+      mm.maf
     FROM mappings m
     LEFT JOIN markers mk
-      ON m.marker = mk.marker
-      AND m.population = mk.population
-      AND m.maf = mk.maf
+      ON m.marker_set_id = mk.marker_set_id
+      AND m.marker = mk.marker
+    LEFT JOIN metadata mm ON m.mapping_id = mm.mapping_id
     WHERE m.mapping_id = '{mapping_id}'
     ORDER BY mk.CHROM, mk.POS, m.marker
   "))
@@ -395,12 +395,12 @@ query_bulk_for_threshold_analysis <- function(mapping_ids, base_dir = "data/db",
       mk.POS,
       COALESCE(m.AF1, mk.AF1) AS AF1,
       m.population,
-      m.maf
+      mm.maf
     FROM mappings m
     LEFT JOIN markers mk
-      ON m.marker = mk.marker
-      AND m.population = mk.population
-      AND m.maf = mk.maf
+      ON m.marker_set_id = mk.marker_set_id
+      AND m.marker = mk.marker
+    LEFT JOIN metadata mm ON m.mapping_id = mm.mapping_id
     WHERE m.mapping_id IN ({ids_quoted})
     ORDER BY m.mapping_id, mk.CHROM, mk.POS, m.marker
   "))
