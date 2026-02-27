@@ -27,20 +27,22 @@ library(glue)
 # Module-level constants for database structure
 # These are fixed and never change - only base_dir is configurable
 .db_constants <- list(
-  markers_dir = "markers",
-  mappings_dir = "mappings",
-  traits_dir = "traits",
-  causal_variants_dir = "causal_variants",
-  phenotypes_dir = "phenotypes",
-  markers_pattern = "{population}_{maf}_markers.parquet",
-  genotypes_pattern = "{population}_{maf}_genotypes.parquet",
-  mappings_pattern = "{population}_mappings.parquet",
-  traits_pattern = "{trait_id}.parquet",
+  markers_dir            = "markers",
+  marker_sets_subdir     = "marker_sets",
+  genotypes_subdir       = "genotypes",
+  traits_dir             = "traits",
+  causal_variants_subdir = "causal_variants",
+  phenotypes_subdir      = "phenotypes",
+  mappings_dir           = "mappings",
+  markers_pattern        = "{marker_set_id}_markers.parquet",
+  genotypes_pattern      = "{marker_set_id}_genotypes.parquet",
+  mappings_pattern       = "{population}_mappings.parquet",
+  traits_pattern         = "{trait_id}.parquet",
   causal_variants_pattern = "{trait_id}_causal.parquet",
-  phenotypes_pattern = "{trait_id}_phenotype.parquet",
-  metadata_file = "mappings_metadata.parquet",
+  phenotypes_pattern     = "{trait_id}_phenotype.parquet",
+  metadata_file          = "mappings_metadata.parquet",
   marker_set_metadata_file = "marker_set_metadata.parquet",
-  compression = "snappy"
+  compression            = "snappy"
 )
 
 # Default database location
@@ -372,20 +374,17 @@ phenotype_schema <- function() {
 #' @return Invisibly returns the base directory path
 init_database <- function(base_dir = "data/db") {
   config <- .make_db_config(base_dir)
-  markers_dir <- file.path(base_dir, config$markers_dir)
-  mappings_dir <- file.path(base_dir, config$mappings_dir)
-  traits_dir <- file.path(base_dir, config$traits_dir)
-  causal_variants_dir <- file.path(base_dir, config$causal_variants_dir)
-  phenotypes_dir <- file.path(base_dir, config$phenotypes_dir)
-
-  for (dir in c(base_dir, markers_dir, mappings_dir,
-                traits_dir, causal_variants_dir, phenotypes_dir)) {
-    if (!dir.exists(dir)) {
-      dir.create(dir, recursive = TRUE, showWarnings = FALSE)
-      log_msg(glue::glue("Created directory: {dir}"))
-    }
+  markers_dir            <- file.path(base_dir, config$markers_dir)
+  marker_sets_subdir     <- file.path(markers_dir, config$marker_sets_subdir)
+  genotypes_subdir       <- file.path(markers_dir, config$genotypes_subdir)
+  traits_dir             <- file.path(base_dir, config$traits_dir)
+  causal_variants_subdir <- file.path(traits_dir, config$causal_variants_subdir)
+  phenotypes_subdir      <- file.path(traits_dir, config$phenotypes_subdir)
+  mappings_dir           <- file.path(base_dir, config$mappings_dir)
+  for (dir in c(base_dir, markers_dir, marker_sets_subdir, genotypes_subdir,
+                traits_dir, causal_variants_subdir, phenotypes_subdir, mappings_dir)) {
+    if (!dir.exists(dir)) dir.create(dir, recursive = TRUE, showWarnings = FALSE)
   }
-
   invisible(base_dir)
 }
 
@@ -481,6 +480,19 @@ generate_mapping_id <- function(trait_hash, algorithm, pca) {
 # Marker Set Operations
 # ==============================================================================
 
+.markers_path_from_hash <- function(ms_id_hash, base_dir = "data/db") {
+  config <- .make_db_config(base_dir)
+  file.path(config$base_dir, config$markers_dir, config$marker_sets_subdir,
+            paste0(ms_id_hash, "_markers.parquet"))
+}
+
+.genotypes_path_from_hash <- function(ms_id_hash, base_dir = "data/db") {
+  config <- .make_db_config(base_dir)
+  file.path(config$base_dir, config$markers_dir, config$genotypes_subdir,
+            paste0(ms_id_hash, "_genotypes.parquet"))
+}
+
+
 #' Get path to marker set file
 #'
 #' @param population Population identifier
@@ -488,12 +500,8 @@ generate_mapping_id <- function(trait_hash, algorithm, pca) {
 #' @param base_dir Database root directory
 #' @return Path to marker set Parquet file
 get_markers_path <- function(population, maf, base_dir = "data/db") {
-  config <- .make_db_config(base_dir)
-  file.path(
-    config$base_dir,
-    config$markers_dir,
-    glue::glue(config$markers_pattern, population = population, maf = maf)
-  )
+  ms_id <- generate_marker_set_id(population, maf)
+  .markers_path_from_hash(ms_id$hash, base_dir)
 }
 
 
@@ -589,30 +597,16 @@ read_marker_set <- function(population, maf, base_dir = "data/db") {
 #' List all marker sets in database
 #'
 #' @param base_dir Database root directory
-#' @return Dataframe with population and maf columns
+#' @return Dataframe with population, maf, and marker_set_id columns
 list_marker_sets <- function(base_dir = "data/db") {
-  config <- .make_db_config(base_dir)
-  markers_dir <- file.path(config$base_dir, config$markers_dir)
-
-  if (!dir.exists(markers_dir)) {
-    return(data.frame(population = character(), maf = numeric()))
+  meta <- get_all_marker_set_metadata(base_dir)
+  if (nrow(meta) == 0) {
+    return(data.frame(population = character(), maf = numeric(),
+                      marker_set_id = character(), stringsAsFactors = FALSE))
   }
-
-  files <- list.files(markers_dir, pattern = "_markers\\.parquet$")
-
-  if (length(files) == 0) {
-    return(data.frame(population = character(), maf = numeric()))
-  }
-
-  parsed <- lapply(files, function(f) {
-    base <- sub("_markers\\.parquet$", "", f)
-    parts <- strsplit(base, "_")[[1]]
-    maf <- as.numeric(parts[length(parts)])
-    population <- paste(parts[-length(parts)], collapse = "_")
-    data.frame(population = population, maf = maf, stringsAsFactors = FALSE)
-  })
-
-  dplyr::bind_rows(parsed)
+  # intersect() returns only columns present in the metadata file.
+  # All expected columns are present after Step 3.
+  meta[, intersect(c("population", "maf", "marker_set_id"), names(meta))]
 }
 
 
@@ -627,10 +621,8 @@ list_marker_sets <- function(base_dir = "data/db") {
 #' @param base_dir Database root directory
 #' @return Path to genotype matrix Parquet file
 get_genotype_matrix_path <- function(population, maf, base_dir = "data/db") {
-  markers_dir <- file.path(base_dir, .db_constants$markers_dir)
-  filename <- gsub("\\{population\\}", population,
-                   gsub("\\{maf\\}", maf, .db_constants$genotypes_pattern))
-  file.path(markers_dir, filename)
+  ms_id <- generate_marker_set_id(population, maf)
+  .genotypes_path_from_hash(ms_id$hash, base_dir)
 }
 
 
@@ -799,7 +791,8 @@ read_trait_metadata <- function(trait_id, base_dir) {
 #' @param base_dir Database base directory
 #' @return Path to causal variants Parquet file
 get_causal_variants_path <- function(trait_id, base_dir) {
-  cv_dir <- file.path(base_dir, .db_constants$causal_variants_dir)
+  cv_dir <- file.path(base_dir, .db_constants$traits_dir,
+                      .db_constants$causal_variants_subdir)
   filename <- gsub("\\{trait_id\\}", trait_id,
                    .db_constants$causal_variants_pattern)
   file.path(cv_dir, filename)
@@ -859,7 +852,8 @@ read_causal_variants_data <- function(trait_id, base_dir) {
 #' @param base_dir Database base directory
 #' @return Path to phenotype Parquet file
 get_phenotype_path <- function(trait_id, base_dir) {
-  pheno_dir <- file.path(base_dir, .db_constants$phenotypes_dir)
+  pheno_dir <- file.path(base_dir, .db_constants$traits_dir,
+                         .db_constants$phenotypes_subdir)
   filename <- gsub("\\{trait_id\\}", trait_id,
                    .db_constants$phenotypes_pattern)
   file.path(pheno_dir, filename)

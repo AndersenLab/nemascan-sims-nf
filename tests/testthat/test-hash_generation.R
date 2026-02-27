@@ -263,11 +263,37 @@ test_that("generate_mapping_id golden value", {
 })
 
 # ==============================================================================
-# Path stub (Step 2 scope — skip if not yet implemented)
+# Path functions (Step 2 scope)
 # ==============================================================================
 
 test_that("get_markers_path returns path ending in {20-char-hex}_markers.parquet", {
-  skip("get_markers_path not yet updated for hash-based paths (Step 2)")
   result <- get_markers_path("ce100", 0.05, "data/db")
   expect_match(result, "[0-9a-f]{20}_markers\\.parquet$")
+})
+
+test_that("get_markers_path path includes markers/marker_sets subdir", {
+  result <- get_markers_path("ce100", 0.05, "data/db")
+  expect_true(grepl("markers/marker_sets", result, fixed = TRUE))
+})
+
+test_that("get_markers_path is deterministic", {
+  p1 <- get_markers_path("ce100", 0.05, "data/db")
+  p2 <- get_markers_path("ce100", 0.05, "data/db")
+  expect_equal(p1, p2)
+})
+
+test_that("get_markers_path produces different paths for different params", {
+  p_ce100 <- get_markers_path("ce100", 0.05, "data/db")
+  p_ce96  <- get_markers_path("ce96",  0.05, "data/db")
+  expect_false(p_ce100 == p_ce96)
+})
+
+test_that("init_database creates markers/marker_sets, markers/genotypes, traits/causal_variants, traits/phenotypes subdirs", {
+  db_dir <- create_temp_db()
+  init_database(db_dir)
+  expect_true(dir.exists(file.path(db_dir, "markers", "marker_sets")))
+  expect_true(dir.exists(file.path(db_dir, "markers", "genotypes")))
+  expect_true(dir.exists(file.path(db_dir, "traits", "causal_variants")))
+  expect_true(dir.exists(file.path(db_dir, "traits", "phenotypes")))
+  expect_true(dir.exists(file.path(db_dir, "mappings")))
 })

@@ -25,17 +25,20 @@ test_that("database root directory exists and has expected subdirectories", {
   skip_if_no_db()
   expect_true(dir.exists(db_dir))
   expect_true(dir.exists(file.path(db_dir, "markers")))
+  expect_true(dir.exists(file.path(db_dir, "markers", "marker_sets")))
+  expect_true(dir.exists(file.path(db_dir, "markers", "genotypes")))
   expect_true(dir.exists(file.path(db_dir, "mappings")))
 })
 
 test_that("marker set parquet files exist", {
   skip_if_no_db()
-  markers_dir <- file.path(db_dir, "markers")
+  markers_dir <- file.path(db_dir, "markers", "marker_sets")
   marker_files <- list.files(markers_dir, pattern = "_markers\\.parquet$")
   expect_gt(length(marker_files), 0, label = "at least one marker set file")
 
-  # Check expected file for test profile
-  expected_file <- paste0(expected_population, "_0.05_markers.parquet")
+  # Derive expected filename from hash
+  expected_hash <- generate_marker_set_id(expected_population, 0.05)$hash
+  expected_file <- paste0(expected_hash, "_markers.parquet")
   expect_true(
     expected_file %in% marker_files,
     label = paste("expected marker set file:", expected_file)

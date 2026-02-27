@@ -37,7 +37,7 @@ open_mapping_db <- function(base_dir = "data/db", read_only = TRUE) {
   con <- DBI::dbConnect(duckdb::duckdb(), ":memory:", read_only = read_only)
 
   # Register markers view
-  markers_dir <- file.path(config$base_dir, config$markers_dir)
+  markers_dir  <- file.path(config$base_dir, config$markers_dir, config$marker_sets_subdir)
   marker_files <- list.files(markers_dir, pattern = "_markers\\.parquet$", full.names = TRUE)
 
   if (length(marker_files) > 0) {
@@ -636,7 +636,7 @@ db_stats <- function(base_dir = "data/db") {
     ))
   }
 
-  markers_dir <- file.path(config$base_dir, config$markers_dir)
+  markers_dir <- file.path(config$base_dir, config$markers_dir, config$marker_sets_subdir)
   marker_files <- if (dir.exists(markers_dir)) {
     list.files(markers_dir, pattern = "_markers\\.parquet$", full.names = TRUE)
   } else {
