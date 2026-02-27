@@ -118,6 +118,18 @@ test_that("generate_trait_id is sensitive to effect", {
   expect_false(h_gamma == h_normal)
 })
 
+test_that("generate_trait_id accepts numeric range effect string (e.g. '0.2-0.3')", {
+  result <- generate_trait_id(ms_hash, 5, "0.2-0.3", 1, 0.8)
+  expect_match(result$hash, "^[0-9a-f]{20}$")
+  expect_true(grepl("effect=0.2-0.3", result$hash_string))
+})
+
+test_that("generate_trait_id range effect differs from named distribution", {
+  h_range <- generate_trait_id(ms_hash, 5, "0.2-0.3", 1, 0.8)$hash
+  h_gamma <- generate_trait_id(ms_hash, 5, "gamma",   1, 0.8)$hash
+  expect_false(h_range == h_gamma)
+})
+
 test_that("generate_trait_id is sensitive to rep", {
   h1 <- generate_trait_id(ms_hash, 5, "gamma", 1, 0.8)$hash
   h2 <- generate_trait_id(ms_hash, 5, "gamma", 2, 0.8)$hash
