@@ -72,19 +72,24 @@ params <- list(
   rep = as.integer(opt$rep),
   h2 = as.numeric(opt$h2),
   algorithm = algorithm,
-  pca = pca,
-  trait = paste(opt$nqtl, opt$rep, opt$h2, sep = "_")
+  pca = pca
 )
 
-mapping_id <- generate_mapping_id(params)
-log_msg(paste("Writing mapping:", mapping_id))
+ms_id   <- generate_marker_set_id(params$population, params$maf)
+trait   <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
+mapping <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
+
+log_msg(paste("Marker set ID:", ms_id$hash))
+log_msg(paste("Trait ID:",      trait$hash))
+log_msg(paste("Writing mapping:", mapping$hash))
 
 # Write to Hive-partitioned Parquet
-# var.exp is NA for inline-path databases (no genotype matrix available)
 write_mapping_partitioned(
-  df = gwa_df,
-  params = params,
+  df       = gwa_df,
+  params   = params,
+  ms_id    = ms_id,
+  trait_id = trait,
   base_dir = opt$base_dir
 )
 
-log_msg(paste("Mapping written successfully:", mapping_id))
+log_msg(paste("Mapping written successfully:", mapping$hash))
