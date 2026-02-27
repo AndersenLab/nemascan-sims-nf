@@ -339,14 +339,16 @@ genotype_matrix_schema <- function() {
 #' @return Arrow schema object
 trait_metadata_schema <- function() {
   arrow::schema(
-    trait_id   = arrow::utf8(),
-    nqtl       = arrow::int32(),
-    rep        = arrow::int32(),
-    h2         = arrow::float64(),
-    maf        = arrow::float64(),
-    effect     = arrow::utf8(),
-    population = arrow::utf8(),
-    created_at = arrow::utf8()
+    trait_id          = arrow::utf8(),
+    trait_hash_string = arrow::utf8(),
+    marker_set_id     = arrow::utf8(),
+    nqtl              = arrow::int32(),
+    rep               = arrow::int32(),
+    h2                = arrow::float64(),
+    maf               = arrow::float64(),
+    effect            = arrow::utf8(),
+    population        = arrow::utf8(),
+    created_at        = arrow::utf8()
   )
 }
 
@@ -719,7 +721,7 @@ read_genotype_matrix <- function(population, maf, base_dir = "data/db") {
 
 #' Get path to trait metadata file
 #'
-#' @param trait_id Deterministic 12-character hex hash from generate_trait_id()
+#' @param trait_id Deterministic 20-character hex hash from generate_trait_id()
 #' @param base_dir Database base directory
 #' @return Path to trait metadata Parquet file
 get_trait_metadata_path <- function(trait_id, base_dir) {
@@ -731,7 +733,9 @@ get_trait_metadata_path <- function(trait_id, base_dir) {
 
 #' Write trait metadata to database
 #'
-#' @param trait_id Deterministic 12-character hex hash from generate_trait_id()
+#' @param trait_id Deterministic 20-character hex hash from generate_trait_id()
+#' @param trait_hash_string Human-readable hash input string from generate_trait_id()$hash_string
+#' @param marker_set_id Parent marker set hash from generate_marker_set_id()$hash
 #' @param nqtl Number of QTLs
 #' @param rep Replicate number
 #' @param h2 Heritability
@@ -740,14 +744,17 @@ get_trait_metadata_path <- function(trait_id, base_dir) {
 #' @param population Strain group ID
 #' @param base_dir Database base directory
 #' @param overwrite Overwrite existing file (default TRUE for retry safety)
-write_trait_metadata <- function(trait_id, nqtl, rep, h2, maf, effect,
+write_trait_metadata <- function(trait_id, trait_hash_string, marker_set_id,
+                                 nqtl, rep, h2, maf, effect,
                                  population, base_dir, overwrite = TRUE) {
   out_path <- get_trait_metadata_path(trait_id, base_dir)
   if (file.exists(out_path) && !overwrite) {
     return(invisible(out_path))
   }
   df <- data.frame(
-    trait_id   = trait_id,
+    trait_id          = trait_id,
+    trait_hash_string = as.character(trait_hash_string),
+    marker_set_id     = as.character(marker_set_id),
     nqtl       = as.integer(nqtl),
     rep        = as.integer(rep),
     h2         = as.numeric(h2),
