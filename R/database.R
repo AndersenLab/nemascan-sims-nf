@@ -689,6 +689,8 @@ write_genotype_matrix <- function(genotype_tsv, population, maf,
   geno_long[, strain := as.character(strain)]
   geno_long[, allele := as.numeric(allele)]
   geno_long[, marker_set_id := ms_id$hash]  # join key (hash only)
+  # Reorder columns to match schema: marker_set_id must be first
+  data.table::setcolorder(geno_long, c("marker_set_id", "CHROM", "POS", "strain", "allele"))
 
   # Write Parquet with schema enforcement
   arrow::write_parquet(
