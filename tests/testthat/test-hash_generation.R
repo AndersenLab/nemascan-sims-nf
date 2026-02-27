@@ -1,11 +1,11 @@
 # Golden values computed 2026-02-27 after implementing SHA-256 hash functions.
-# ms_hash   <- generate_marker_set_id("ce100", 0.05)$hash   → "879ca1a75fc7fb5183e7"
+# ms_hash   <- generate_marker_set_id("ce100", 0.05)$hash          → "879ca1a75fc7fb5183e7"
 # trait_hash <- generate_trait_id(ms_hash, 5, "gamma", 1, 0.8)$hash → "2aa558d92d805fb85ee8"
-# map_hash   <- generate_mapping_id(trait_hash, "LMM-EXACT-INBRED", TRUE)$hash → "6c4379c7d9a216d77e49"
+# map_hash   <- generate_mapping_id(trait_hash, "inbred", TRUE)$hash → "5b9eecbb85032068d7e4"
 
 ms_hash    <- "879ca1a75fc7fb5183e7"
 trait_hash <- "2aa558d92d805fb85ee8"
-map_hash   <- "6c4379c7d9a216d77e49"
+map_hash   <- "5b9eecbb85032068d7e4"
 
 # ==============================================================================
 # generate_marker_set_id()
@@ -175,24 +175,24 @@ test_that("generate_trait_id golden value", {
 # ==============================================================================
 
 test_that("generate_mapping_id returns list with hash and hash_string", {
-  result <- generate_mapping_id(trait_hash, "LMM-EXACT-INBRED", TRUE)
+  result <- generate_mapping_id(trait_hash, "inbred", TRUE)
   expect_type(result, "list")
   expect_true("hash" %in% names(result))
   expect_true("hash_string" %in% names(result))
 })
 
 test_that("generate_mapping_id hash is 20-char lowercase hex", {
-  result <- generate_mapping_id(trait_hash, "LMM-EXACT-INBRED", TRUE)
+  result <- generate_mapping_id(trait_hash, "inbred", TRUE)
   expect_match(result$hash, "^[0-9a-f]{20}$")
 })
 
 test_that("generate_mapping_id hash_string contains parent trait_hash verbatim", {
-  result <- generate_mapping_id(trait_hash, "LMM-EXACT-INBRED", TRUE)
+  result <- generate_mapping_id(trait_hash, "inbred", TRUE)
   expect_true(grepl(paste0("parent=", trait_hash), result$hash_string))
 })
 
 test_that("generate_mapping_id hash_string does not contain simulation params", {
-  result <- generate_mapping_id(trait_hash, "LMM-EXACT-INBRED", TRUE)
+  result <- generate_mapping_id(trait_hash, "inbred", TRUE)
   expect_false(grepl("nqtl=",   result$hash_string))
   expect_false(grepl("rep=",    result$hash_string))
   expect_false(grepl("h2=",     result$hash_string))
@@ -200,66 +200,66 @@ test_that("generate_mapping_id hash_string does not contain simulation params", 
 })
 
 test_that("generate_mapping_id is deterministic", {
-  h1 <- generate_mapping_id(trait_hash, "LMM-EXACT-INBRED", TRUE)$hash
-  h2 <- generate_mapping_id(trait_hash, "LMM-EXACT-INBRED", TRUE)$hash
+  h1 <- generate_mapping_id(trait_hash, "inbred", TRUE)$hash
+  h2 <- generate_mapping_id(trait_hash, "inbred", TRUE)$hash
   expect_equal(h1, h2)
 })
 
 test_that("generate_mapping_id is sensitive to algorithm", {
-  h_inbred <- generate_mapping_id(trait_hash, "LMM-EXACT-INBRED", TRUE)$hash
-  h_loco   <- generate_mapping_id(trait_hash, "LMM-EXACT-LOCO",   TRUE)$hash
+  h_inbred <- generate_mapping_id(trait_hash, "inbred", TRUE)$hash
+  h_loco   <- generate_mapping_id(trait_hash, "loco",   TRUE)$hash
   expect_false(h_inbred == h_loco)
 })
 
 test_that("generate_mapping_id is sensitive to pca flag", {
-  h_pca    <- generate_mapping_id(trait_hash, "LMM-EXACT-INBRED", TRUE)$hash
-  h_nopca  <- generate_mapping_id(trait_hash, "LMM-EXACT-INBRED", FALSE)$hash
+  h_pca    <- generate_mapping_id(trait_hash, "inbred", TRUE)$hash
+  h_nopca  <- generate_mapping_id(trait_hash, "inbred", FALSE)$hash
   expect_false(h_pca == h_nopca)
 })
 
 test_that("generate_mapping_id is sensitive to parent trait_hash", {
   other_trait <- generate_trait_id(ms_hash, 3, "gamma", 1, 0.8)$hash
-  h1 <- generate_mapping_id(trait_hash,   "LMM-EXACT-INBRED", TRUE)$hash
-  h2 <- generate_mapping_id(other_trait,  "LMM-EXACT-INBRED", TRUE)$hash
+  h1 <- generate_mapping_id(trait_hash,   "inbred", TRUE)$hash
+  h2 <- generate_mapping_id(other_trait,  "inbred", TRUE)$hash
   expect_false(h1 == h2)
 })
 
 test_that("generate_mapping_id accepts arbitrary 20-char hex verbatim", {
   arbitrary <- "abcdef1234abcdef1234"
-  result <- generate_mapping_id(arbitrary, "LMM-EXACT-INBRED", TRUE)
+  result <- generate_mapping_id(arbitrary, "inbred", TRUE)
   expect_match(result$hash, "^[0-9a-f]{20}$")
 })
 
 test_that("generate_mapping_id rejects string pca", {
-  expect_error(generate_mapping_id(trait_hash, "LMM-EXACT-INBRED", pca = "TRUE"))
+  expect_error(generate_mapping_id(trait_hash, "inbred", pca = "TRUE"))
 })
 
 test_that("generate_mapping_id rejects integer pca", {
-  expect_error(generate_mapping_id(trait_hash, "LMM-EXACT-INBRED", pca = 1L))
+  expect_error(generate_mapping_id(trait_hash, "inbred", pca = 1L))
 })
 
 test_that("generate_mapping_id pca=TRUE serializes as 'pca=TRUE'", {
-  result <- generate_mapping_id(trait_hash, "LMM-EXACT-INBRED", TRUE)
+  result <- generate_mapping_id(trait_hash, "inbred", TRUE)
   expect_true(grepl("pca=TRUE", result$hash_string))
 })
 
 test_that("generate_mapping_id pca=FALSE serializes as 'pca=FALSE'", {
-  result <- generate_mapping_id(trait_hash, "LMM-EXACT-INBRED", FALSE)
+  result <- generate_mapping_id(trait_hash, "inbred", FALSE)
   expect_true(grepl("pca=FALSE", result$hash_string))
 })
 
-test_that("generate_mapping_id normalizes algorithm to uppercase", {
-  h_lower <- generate_mapping_id(trait_hash, "lmm-exact-inbred", TRUE)$hash
-  h_upper <- generate_mapping_id(trait_hash, "LMM-EXACT-INBRED", TRUE)$hash
-  expect_equal(h_lower, h_upper)
+test_that("generate_mapping_id normalizes algorithm to lowercase", {
+  h_upper <- generate_mapping_id(trait_hash, "INBRED", TRUE)$hash
+  h_lower <- generate_mapping_id(trait_hash, "inbred", TRUE)$hash
+  expect_equal(h_upper, h_lower)
 })
 
 test_that("generate_mapping_id rejects non-hex or wrong-length trait_hash", {
-  expect_error(generate_mapping_id("not-a-hash", "LMM-EXACT-INBRED", TRUE))
+  expect_error(generate_mapping_id("not-a-hash", "inbred", TRUE))
 })
 
 test_that("generate_mapping_id golden value", {
-  expect_equal(generate_mapping_id(trait_hash, "LMM-EXACT-INBRED", TRUE)$hash, map_hash)
+  expect_equal(generate_mapping_id(trait_hash, "inbred", TRUE)$hash, map_hash)
 })
 
 # ==============================================================================

@@ -449,7 +449,8 @@ generate_trait_id <- function(marker_set_hash, nqtl, effect, rep, h2) {
 #' Generate unique mapping ID from parent trait hash and mapping parameters
 #'
 #' @param trait_hash 20-char lowercase hex string from generate_trait_id()$hash
-#' @param algorithm GWA algorithm string (normalized to uppercase). Canonical: "LMM-EXACT-INBRED"
+#' @param algorithm GWA mode string (normalized to lowercase). Canonical values: "inbred", "loco"
+#'   — matches val(mode) emitted by GCTA_PERFORM_GWA in main.nf.
 #' @param pca Logical scalar (TRUE/FALSE). Derived from opt$type == "pca" in write_gwa_to_db.R
 #' @return list with $hash (20-char lowercase hex) and $hash_string (human-readable input)
 #'
@@ -462,7 +463,7 @@ generate_mapping_id <- function(trait_hash, algorithm, pca) {
     stop("trait_hash must be a 20-character lowercase hex string (pass $hash, not $hash_string)")
   }
   stopifnot(is.logical(pca), length(pca) == 1, !is.na(pca))
-  algorithm <- toupper(trimws(algorithm))
+  algorithm <- tolower(trimws(algorithm))
   pca_str   <- if (pca) "TRUE" else "FALSE"
   hash_string <- paste0(
     "v=1|parent=", trait_hash,
