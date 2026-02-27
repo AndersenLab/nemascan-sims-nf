@@ -242,9 +242,9 @@ test_that("open_mapping_db markers view excludes genotype files", {
     "test_pop", 0.05, db_dir
   )
 
-  # Confirm the genotype file is in the markers/ directory
+  # Confirm the genotype file is in the markers/ directory (stored in markers/genotypes/ subdir)
   markers_dir <- file.path(db_dir, "markers")
-  all_files <- list.files(markers_dir)
+  all_files <- list.files(markers_dir, recursive = TRUE)
   genotype_files <- grep("_genotypes\\.parquet$", all_files, value = TRUE)
   expect_equal(length(genotype_files), 1L,
                label = "genotype parquet file is in markers/ dir")
