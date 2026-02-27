@@ -75,7 +75,10 @@ params <- list(
   threshold_method = toupper(opt$threshold)
 )
 
-mapping_id <- generate_mapping_id(params)
+ms_id      <- generate_marker_set_id(params$population, params$maf)
+trait      <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
+mapping    <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
+mapping_id <- mapping$hash
 log_msg(paste("Analyzing mapping:", mapping_id, "with threshold:", opt$threshold))
 
 # Step 1: Query mapping data from database
