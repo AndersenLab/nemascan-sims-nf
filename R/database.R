@@ -417,7 +417,8 @@ generate_marker_set_id <- function(population, maf) {
 #' @param marker_set_hash 20-char lowercase hex string from generate_marker_set_id()$hash.
 #'   Passing $hash_string by mistake is caught by the format guard.
 #' @param nqtl Number of simulated QTLs (integer)
-#' @param effect Effect size distribution (normalized to lowercase). Canonical: "gamma"
+#' @param effect Effect size string — named distribution ("gamma") or numeric range ("0.2-0.3"),
+#'   matching a row from the --effect_size CSV. Normalized to lowercase; passed verbatim to hash.
 #' @param rep Simulation replicate number (integer)
 #' @param h2 Heritability (numeric)
 #' @return list with $hash (20-char lowercase hex) and $hash_string (human-readable input)
