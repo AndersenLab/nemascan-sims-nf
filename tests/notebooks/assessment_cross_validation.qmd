@@ -9,7 +9,7 @@ format:
     fig-width: 9
     fig-height: 6
 params:
-  existing_assessment: ""
+  legacy_assessment: ""
   db_assessment: ""
   db_dir: ""
 execute:
@@ -64,20 +64,16 @@ source(here::here("R", "setup.R"))
 ```{r}
 #| label: paths
 # For interactive use, set full paths here:
-# existing_assessment_path <- "/full/path/to/simulation_assessment_results.tsv"
+# legacy_assessment_path <- "/full/path/to/simulation_assessment_results.tsv"
 # db_assessment_path       <- "/full/path/to/db_simulation_assessment_results.tsv"
 # db_dir                   <- "/full/path/to/db"
 
-existing_assessment_path <- "/Users/ryanmckeown/Desktop/nemascan-sims-nf/Analysis_Results-20260213/simulation_assessment_results.tsv"
-db_assessment_path       <- "/Users/ryanmckeown/Desktop/nemascan-sims-nf/Analysis_Results-20260213/db_simulation_assessment_results.tsv"
-db_dir                   <- "/Users/ryanmckeown/Desktop/nemascan-sims-nf/Analysis_Results-20260213/db"
-
 # Read from Quarto params, fall back to env vars, then interactive vars above
-if (!exists("existing_assessment_path") || existing_assessment_path == "") {
-  existing_assessment_path <- if (params$existing_assessment != "") {
-    params$existing_assessment
+if (!exists("legacy_assessment_path") || legacy_assessment_path == "") {
+  legacy_assessment_path <- if (params$legacy_assessment != "") {
+    params$legacy_assessment
   } else {
-    Sys.getenv("TEST_EXISTING_ASSESSMENT", unset = "")
+    Sys.getenv("TEST_legacy_ASSESSMENT", unset = "")
   }
 }
 
@@ -99,14 +95,14 @@ if (!exists("db_dir") || db_dir == "") {
 
 # Validate
 stopifnot(
-  "existing_assessment path not set or file missing" =
-    existing_assessment_path != "" && file.exists(existing_assessment_path),
+  "legacy_assessment path not set or file missing" =
+    legacy_assessment_path != "" && file.exists(legacy_assessment_path),
   "db_assessment path not set or file missing" =
     db_assessment_path != "" && file.exists(db_assessment_path),
   "db_dir not set or directory missing" =
     db_dir != "" && dir.exists(db_dir)
 )
-message("Existing assessment: ", existing_assessment_path)
+message("legacy assessment: ", legacy_assessment_path)
 message("DB assessment:       ", db_assessment_path)
 message("DB directory:        ", db_dir)
 ```
@@ -229,30 +225,23 @@ parse_method_label <- function(df) {
     )
 }
 
-# HTML badge for validation summary
-make_badge <- function(passed, label = NULL) {
-  color <- if (passed) "#28a745" else "#dc3545"
-  text <- if (is.null(label)) (if (passed) "PASS" else "FAIL") else label
-  sprintf('<span style="background:%s;color:white;padding:2px 8px;border-radius:4px;font-weight:bold;font-size:0.85em;">%s</span>',
-          color, text)
-}
 ```
 
 ## Data Loading & Overview
 
 ```{r}
 #| label: load-data
-existing <- read_legacy_assessment(existing_assessment_path)
+legacy <- read_legacy_assessment(legacy_assessment_path)
 db_assess <- read_db_assessment(db_assessment_path)
 
-message("Existing assessment: ", nrow(existing), " rows x ", ncol(existing), " cols")
+message("legacy assessment: ", nrow(legacy), " rows x ", ncol(legacy), " cols")
 message("DB assessment:       ", nrow(db_assess), " rows x ", ncol(db_assess), " cols")
 ```
 
 ```{r}
 #| label: designate-and-label
 # Apply designate_qtl() from sim_performance.R to classify outcomes
-existing_d <- existing %>%
+legacy_d <- legacy %>%
   designate_qtl() %>%
   parse_method_label() %>%
   dplyr::mutate(path = "Legacy")
@@ -262,6 +251,8 @@ db_d <- db_assess %>%
   dplyr::mutate(path = "DB")
 ```
 
+## Assessment overview: dimensions, unique methods, thresholds, and designation counts for each path.
+
 ```{r}
 #| label: data-dimensions
 #| results: asis
@@ -269,13 +260,13 @@ dim_table <- data.frame(
   Metric = c("Rows", "Unique methods", "Threshold types",
              "Detected.CV", "Missed.CV", "CV.Not.Significant.In.Interval", "False.Discovery"),
   Legacy = c(
-    nrow(existing_d),
-    length(unique(existing_d$method_label)),
-    paste(sort(unique(existing_d$threshold)), collapse = ", "),
-    sum(existing_d$designation == "Detected.CV", na.rm = TRUE),
-    sum(existing_d$designation == "Missed.CV", na.rm = TRUE),
-    sum(existing_d$designation == "CV.Not.Significant.In.Interval", na.rm = TRUE),
-    sum(existing_d$designation == "False.Discovery", na.rm = TRUE)
+    nrow(legacy_d),
+    length(unique(legacy_d$method_label)),
+    paste(sort(unique(legacy_d$threshold)), collapse = ", "),
+    sum(legacy_d$designation == "Detected.CV", na.rm = TRUE),
+    sum(legacy_d$designation == "Missed.CV", na.rm = TRUE),
+    sum(legacy_d$designation == "CV.Not.Significant.In.Interval", na.rm = TRUE),
+    sum(legacy_d$designation == "False.Discovery", na.rm = TRUE)
   ),
   DB = c(
     nrow(db_d),
@@ -296,7 +287,7 @@ knitr::kable(dim_table, caption = "Data Dimensions & Designation Counts")
 
 ```{r}
 #| label: preview-legacy
-knitr::kable(head(existing, 5))
+knitr::kable(head(legacy, 5))
 ```
 
 ### DB Data
@@ -324,11 +315,11 @@ between the DB and legacy assessment paths.
 ```{r}
 #| label: replicate-join
 # Join the two paths on the full composite key (includes QTL identity)
-existing_keyed <- existing_d %>% make_join_key()
+legacy_keyed <- legacy_d %>% make_join_key()
 db_keyed <- db_d %>% make_join_key()
 
 joined <- dplyr::inner_join(
-  existing_keyed %>%
+  legacy_keyed %>%
     dplyr::select(join_key, method_label, norm_alg, threshold,
                   nQTL, simREP, h2, maf, strain_set_id,
                   designation_legacy = designation,
@@ -577,11 +568,11 @@ if (nrow(interval_conc_per_qtl) > 0) {
   n_partial <- n_total - n_perfect
 
   if (n_partial == 0) {
-    cat(make_badge(TRUE),
+    cat(
         sprintf(" All %d detected QTL intervals match perfectly (Jaccard = 1.0).\n",
                 n_total))
   } else {
-    cat(make_badge(FALSE),
+      cat(
         sprintf(" %d of %d intervals have imperfect overlap.\n\n",
                 n_partial, n_total))
     imperfect <- interval_conc_per_qtl %>%
