@@ -63,11 +63,16 @@ test_that("marker set creation from bim file works end-to-end", {
   # Verify marker set
   ms <- read_marker_set("test_pop", 0.05, db_dir)
   expect_equal(nrow(ms), 50)
+  expect_true("marker_set_id" %in% names(ms))
+  expect_false("AF1" %in% names(ms))
+  expect_false("population" %in% names(ms))
+  expect_false("maf" %in% names(ms))
 
   # Verify metadata
   meta <- read_marker_set_metadata("test_pop", 0.05, db_dir)
   expect_equal(meta$n_markers, 50)
   expect_equal(meta$n_independent_tests, 1234)
+  expect_equal(meta$marker_set_id, generate_marker_set_id("test_pop", 0.05)$hash)
 
   # Verify threshold calculation
   tp <- get_threshold_params("test_pop", 0.05, base_dir = db_dir)
