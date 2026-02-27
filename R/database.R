@@ -390,53 +390,88 @@ init_database <- function(base_dir = "data/db") {
 }
 
 
-#' Generate unique mapping ID from parameters
+#' Generate marker set ID from population and MAF threshold
 #'
-#' Always includes explicit PCA/noPCA suffix for unambiguous identification.
+#' @param population Population identifier (normalized to lowercase-trimmed). Canonical: "ce100", "ce96"
+#' @param maf MAF threshold as numeric. Do not pre-format — pass raw numeric.
+#' @return list with $hash (20-char lowercase hex) and $hash_string (human-readable input)
 #'
-#' @param params Named list with nqtl, rep, h2, maf, effect, population, algorithm, pca
-#' @return Character string mapping ID
-generate_mapping_id <- function(params) {
-  pca_str <- if (params$pca) "_PCA" else "_noPCA"
-  as.character(glue::glue(
-    "{params$nqtl}_{params$rep}_{params$h2}_{params$maf}_{params$effect}_{params$population}_{params$algorithm}{pca_str}"
-  ))
-}
-
-
-#' Generate marker set ID from population and MAF
-#'
-#' @param population Population identifier
-#' @param maf MAF threshold
-#' @return Character string marker set ID
+#' Pass $hash (not $hash_string) to generate_trait_id().
+#' hash_schema_version prefix "v=1": increment if hash construction rules change; existing DBs regenerated
 generate_marker_set_id <- function(population, maf) {
-  as.character(glue::glue("{population}_{maf}"))
+  if (!requireNamespace("digest", quietly = TRUE)) {
+    stop("Package 'digest' is required for generate_marker_set_id()")
+  }
+  population  <- tolower(trimws(population))
+  hash_string <- paste0("v=1|population=", population,
+                        "|maf=", sprintf("%.10f", as.numeric(maf)))
+  list(
+    hash_string = hash_string,
+    hash        = substr(digest::digest(hash_string, algo = "sha256", serialize = FALSE), 1, 20)
+  )
 }
 
 
-#' Generate deterministic trait ID from simulation parameters
+#' Generate deterministic trait ID from parent marker set hash and trait parameters
 #'
-#' Computes MD5 hash of the concatenated parameter string. This is the sole
-#' implementation — no Groovy counterpart exists. Any R script can reconstruct
-#' the trait_id from parameters to locate stored trait data.
+#' @param marker_set_hash 20-char lowercase hex string from generate_marker_set_id()$hash.
+#'   Passing $hash_string by mistake is caught by the format guard.
+#' @param nqtl Number of simulated QTLs (integer)
+#' @param effect Effect size distribution (normalized to lowercase). Canonical: "gamma"
+#' @param rep Simulation replicate number (integer)
+#' @param h2 Heritability (numeric)
+#' @return list with $hash (20-char lowercase hex) and $hash_string (human-readable input)
 #'
-#' The Nextflow .multiMap{} block (Step 7) passes raw simulation parameters
-#' to the R script, which computes trait_id internally. This single-language
-#' approach eliminates any risk of cross-language hash divergence.
-#'
-#' @param group Population/strain group identifier
-#' @param maf MAF threshold
-#' @param nqtl Number of simulated QTLs
-#' @param effect Effect size distribution
-#' @param rep Simulation replicate number
-#' @param h2 Heritability
-#' @return 12-character hex string
-generate_trait_id <- function(group, maf, nqtl, effect, rep, h2) {
+#' hash_schema_version prefix "v=1": increment if hash construction rules change; existing DBs regenerated
+generate_trait_id <- function(marker_set_hash, nqtl, effect, rep, h2) {
   if (!requireNamespace("digest", quietly = TRUE)) {
     stop("Package 'digest' is required for generate_trait_id()")
   }
-  key <- paste(group, maf, nqtl, effect, rep, h2, sep = "_")
-  substr(digest::digest(key, algo = "md5", serialize = FALSE), 1, 12)
+  if (!grepl("^[0-9a-f]{20}$", marker_set_hash)) {
+    stop("marker_set_hash must be a 20-character lowercase hex string (pass $hash, not $hash_string)")
+  }
+  effect      <- tolower(trimws(effect))
+  hash_string <- paste0(
+    "v=1|parent=", marker_set_hash,
+    "|nqtl=",   as.integer(nqtl),
+    "|effect=", effect,
+    "|rep=",    as.integer(rep),
+    "|h2=",     sprintf("%.10f", as.numeric(h2))
+  )
+  list(
+    hash_string = hash_string,
+    hash        = substr(digest::digest(hash_string, algo = "sha256", serialize = FALSE), 1, 20)
+  )
+}
+
+
+#' Generate unique mapping ID from parent trait hash and mapping parameters
+#'
+#' @param trait_hash 20-char lowercase hex string from generate_trait_id()$hash
+#' @param algorithm GWA algorithm string (normalized to uppercase). Canonical: "LMM-EXACT-INBRED"
+#' @param pca Logical scalar (TRUE/FALSE). Derived from opt$type == "pca" in write_gwa_to_db.R
+#' @return list with $hash (20-char lowercase hex) and $hash_string (human-readable input)
+#'
+#' hash_schema_version prefix "v=1": increment if hash construction rules change; existing DBs regenerated
+generate_mapping_id <- function(trait_hash, algorithm, pca) {
+  if (!requireNamespace("digest", quietly = TRUE)) {
+    stop("Package 'digest' is required for generate_mapping_id()")
+  }
+  if (!grepl("^[0-9a-f]{20}$", trait_hash)) {
+    stop("trait_hash must be a 20-character lowercase hex string (pass $hash, not $hash_string)")
+  }
+  stopifnot(is.logical(pca), length(pca) == 1, !is.na(pca))
+  algorithm <- toupper(trimws(algorithm))
+  pca_str   <- if (pca) "TRUE" else "FALSE"
+  hash_string <- paste0(
+    "v=1|parent=", trait_hash,
+    "|algorithm=", algorithm,
+    "|pca=",       pca_str
+  )
+  list(
+    hash_string = hash_string,
+    hash        = substr(digest::digest(hash_string, algo = "sha256", serialize = FALSE), 1, 20)
+  )
 }
 
 
