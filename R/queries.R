@@ -198,7 +198,6 @@ list_populations <- function(base_dir = "data/db") {
 #'
 #' Returns complete mapping data with marker information joined.
 #' Primary function for downstream analysis in Qmd scripts.
-#' Uses COALESCE for AF1 to prefer mapping-level value over marker-level.
 #'
 #' @param population Optional population filter
 #' @param maf Optional MAF filter
@@ -243,8 +242,7 @@ query_mapping_data <- function(population = NULL, maf = NULL, h2 = NULL,
       mk.CHROM,
       mk.POS,
       mk.A1,
-      mk.A2,
-      COALESCE(m.AF1, mk.AF1) AS AF1_resolved
+      mk.A2
     FROM mappings m
     LEFT JOIN markers mk
       ON m.marker_set_id = mk.marker_set_id
@@ -297,7 +295,6 @@ query_simulation_summary <- function(population = NULL, base_dir = "data/db") {
 #'
 #' Returns mapping statistics needed to apply significance thresholds.
 #' Note: log10p is NOT stored; compute via safe_log10p(P) after query.
-#' Uses COALESCE for AF1 to prefer mapping-level over marker-level value.
 #'
 #' @param mapping_id Mapping ID to query
 #' @param base_dir Database root directory
@@ -325,7 +322,7 @@ query_for_threshold_analysis <- function(mapping_id, base_dir = "data/db", con =
       {var_exp_col},
       mk.CHROM,
       mk.POS,
-      COALESCE(m.AF1, mk.AF1) AS AF1,
+      m.AF1,
       m.population,
       mm.maf
     FROM mappings m
@@ -393,7 +390,7 @@ query_bulk_for_threshold_analysis <- function(mapping_ids, base_dir = "data/db",
       {var_exp_col},
       mk.CHROM,
       mk.POS,
-      COALESCE(m.AF1, mk.AF1) AS AF1,
+      m.AF1,
       m.population,
       mm.maf
     FROM mappings m
