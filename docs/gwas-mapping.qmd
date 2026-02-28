@@ -25,7 +25,9 @@ PLINK binaries (from Phase 2)
  │
  ▼
  GCTA_PERFORM_GWA ───────────► .fastGWA or .mlma association results
-                                (to Phase 4: QTL Detection & Assessment)
+                                 │
+                                 ├─ Phase 4: QTL Detection & Assessment
+                                 └─ DB Migration: write_gwa_to_db.R
 ```
 
 Each process is described below with the exact commands run, key parameters,
@@ -35,9 +37,11 @@ and links to external tool documentation.
 variables defined in `main.nf`:
 
 - **mode**: `"inbred"` or `"loco"` &mdash; determines the type of GRM and the
-  GWA algorithm
+  GWA algorithm. These lowercase values are the canonical `algorithm` identifiers
+  used in database mapping IDs.
 - **type**: `"pca"` or `"nopca"` &mdash; determines whether the first
-  principal component eigenvector is included as a covariate
+  principal component eigenvector is included as a covariate. `type == "pca"`
+  maps to `pca = TRUE` in the database mapping ID.
 
 ```nextflow
 ch_mode = Channel.of(
@@ -327,6 +331,56 @@ fi
 | loco | pca | `--make-grm` | `--mlma-loco` | `--grm` | `--qcovar .eigenvec` | `.mlma` |
 | loco | nopca | `--make-grm` | `--mlma-loco` | `--grm` | none | `.mlma` |
 
+### Mapping identifiers
+
+Each of the four mapping conditions is assigned a unique `mapping_id` by
+`write_gwa_to_db.R` during database migration. The ID is a 20-character
+SHA-256 hash computed from the parent trait hash and the two condition
+parameters:
+
+```
+mapping_id = SHA-256("v=1|parent={trait_hash}|algorithm={algorithm}|pca={pca_str}")[0:20]
+```
+
+where:
+
+- `{trait_hash}` is the 20-char parent `trait_id` hash (itself derived from
+  `marker_set_id`)
+- `{algorithm}` is the lowercased `mode` value: `"inbred"` or `"loco"`
+- `{pca_str}` is `"TRUE"` if `type == "pca"`, otherwise `"FALSE"`
+
+The full hash hierarchy is:
+
+```
+marker_set_id  (population + maf)
+  └── trait_id (marker_set_id + nqtl + effect + rep + h2)
+        └── mapping_id (trait_id + algorithm + pca)
+```
+
+Because each level embeds its parent hash, a `mapping_id` uniquely encodes
+the entire simulation and mapping parameter chain. `generate_mapping_id()`
+normalizes `algorithm` to lowercase via `tolower()`. The canonical `algorithm`
+values are `"inbred"` and `"loco"`, matching `val(mode)` from this process
+after normalization.
+
+When mapping results are written to the database, only measurement columns and
+foreign keys are stored per row:
+
+| Column | Description |
+|--------|-------------|
+| `marker_set_id` | Hash join key to marker set |
+| `trait_id` | Hash join key to parent trait |
+| `mapping_id` | Hash join key to mapping metadata |
+| `marker` | Marker ID (`CHROM:POS` format) |
+| `AF1` | Effect allele frequency |
+| `BETA` | Effect size estimate |
+| `SE` | Standard error |
+| `P` | P-value |
+
+Simulation parameters (`nqtl`, `rep`, `h2`, `effect`, `algorithm`, `pca`,
+`population`, `maf`) are stored once in `mappings_metadata.parquet` and
+recovered via FK joins — they are not repeated in every data row.
+
 ### Example `.fastGWA` output
 
 First 10 lines from test data (`data/test_data/.../GCTA_PERFORM_GWA/*_lmm-exact_inbred_pca.fastGWA`):
@@ -369,3 +423,10 @@ CHR	SNP	POS	A1	A2	N	AF1	BETA	SE	P
 | Input | `type` (val) | `"pca"` or `"nopca"` |
 | Output | `*_lmm-exact_${mode}_${type}.${suffix}` | Association results (`.fastGWA` for inbred, `.mlma` for loco) |
 | Output | GRM + PLINK + phenotype files | Passed through for downstream use |
+
+> **Database migration:** After this process, `write_gwa_to_db.R` reads the
+> association result file and writes it to the database using the mapping
+> identifier scheme described above. `mode` is passed as `algorithm` (normalized
+> to lowercase by `generate_mapping_id()`). `type` is evaluated as
+> `type == "pca"` to produce an R logical, which is then serialized as `"TRUE"`
+> or `"FALSE"` in the hash string.
