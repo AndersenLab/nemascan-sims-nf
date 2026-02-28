@@ -107,7 +107,7 @@ After collection, the script prints the exact command to run integration tests:
 ```bash
 TEST_DB_DIR=tests/integration_data/db \
 TEST_WORK_DIR=tests/.nf-work \
-TEST_EXISTING_ASSESSMENT=tests/integration_data/simulation_assessment_results.tsv \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/simulation_assessment_results.tsv \
 TEST_DB_ASSESSMENT=tests/integration_data/db_simulation_assessment_results.tsv \
 Rscript tests/run_tests.R
 ```
