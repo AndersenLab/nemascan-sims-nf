@@ -28,6 +28,11 @@ VCF
  │                                    │
  ▼                                    ▼
  (to Phase 2/3)          BCFTOOLS_CREATE_GENOTYPE_MATRIX ──► genotype matrix TSV
+                                       │
+                          (DB path — see callout notes below)
+                          ├─ DB_MIGRATION_WRITE_MARKER_SET ──► marker_sets/{id}_markers.parquet
+                          │    (requires .bim + n_indep_tests from EIGEN)
+                          └─ DB_MIGRATION_WRITE_GENOTYPE_MATRIX ──► genotypes/{id}_genotypes.parquet
 ```
 
 Each process is described below with the exact commands run, key parameters,
@@ -100,7 +105,7 @@ bcftools index --tbi ${group}.vcf.gz
 
 | Direction | File | Description |
 |-----------|------|-------------|
-| Input | `*.vcf.gz` + `.tbi` | Chromosome-renamed VCF from `BCFTOOLS_RENAME_CHROMS` |
+| Input | `*.vcf.gz` + `.tbi` | Raw input VCF (original, before chromosome renaming) |
 | Input | `strains` (val) | Comma-separated list of strain names |
 | Output | `${group}.vcf.gz` + `.tbi` | Strain-subset, no-missing-site VCF with tabix index |
 
@@ -227,13 +232,24 @@ marker list is used by `BCFTOOLS_CREATE_GENOTYPE_MATRIX` to subset the VCF.
 | Direction | File | Description |
 |-----------|------|-------------|
 | Input | `recoded.vcf.gz` + `.tbi` | Chromosome-renamed, strain-subset VCF |
-| Input | `mito_name` (val) | Mitochondrial chromosome name to exclude (from `LOCAL_GET_CONTIG_INFO`) |
+| Input | `mito_name` (val) | Numeric mitochondrial chromosome ID (looked up from `LOCAL_GET_CONTIG_INFO` mapping using the `--mito_name` parameter; e.g., `7` for MtDNA) |
 | Input | `maf` (val) | Minor allele frequency threshold |
 | Output | `TO_SIMS.bed/.bim/.fam` | PLINK binary fileset (used by GCTA for GRM and GWAS) |
 | Output | `TO_SIMS.map/.ped` | PLINK text-format fileset |
 | Output | `TO_SIMS.nosex/.log` | PLINK auxiliary outputs |
 | Output | `recoded.vcf.gz` + `.tbi` | Copy of the input VCF (passed through for downstream use) |
 | Output | `markers.txt` | Tab-separated list of retained markers (CHROM, POS) |
+
+::: {.callout-note}
+The `TO_SIMS.bim` file is consumed by `DB_MIGRATION_WRITE_MARKER_SET`, which
+writes the LD-pruned variant list to
+`{db}/markers/marker_sets/{marker_set_id}_markers.parquet`. `marker_set_id` is
+the 20-character SHA-256 hash of the population and MAF threshold, computed by
+`generate_marker_set_id()` in `R/database.R`. `DB_MIGRATION_WRITE_MARKER_SET`
+also requires `n_indep_tests` (number of independent tests from EIGEN analysis)
+before it can run; it stores this alongside the marker list in
+`marker_set_metadata.parquet`.
+:::
 
 
 ## 4. BCFTOOLS_CREATE_GENOTYPE_MATRIX
@@ -299,7 +315,9 @@ missing data (`NA`) rather than given an intermediate value.
 This TSV is consumed by two downstream paths: the legacy path (`R_GET_GCTA_INTERVALS`,
 `R_ASSESS_SIMS`) uses it for variance explained estimation; the DB path
 (`DB_MIGRATION_WRITE_GENOTYPE_MATRIX`) pivots it to long format and stores it in
-`{db}/marker_sets/{group}_{maf}_genotypes.parquet` for future offline analysis.
+`{db}/markers/genotypes/{marker_set_id}_genotypes.parquet` for future offline
+analysis. `marker_set_id` is the 20-character SHA-256 hash of the population and
+MAF threshold, computed by `generate_marker_set_id()` in `R/database.R`.
 :::
 
 
