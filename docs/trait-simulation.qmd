@@ -139,13 +139,47 @@ gcta64 --bfile TO_SIMS \
 | Output | `*_sims.par` | Simulation parameters (QTL, RefAllele, Frequency, Effect) |
 
 ::: {.callout-note}
+## Database migration: `DB_MIGRATION_WRITE_TRAIT_DATA`
+
 The `.phen` and `.par` outputs are captured by the DB path before the mode-crossing
 (`GCTA_MAKE_GRM`). `DB_MIGRATION_WRITE_TRAIT_DATA` stores trait metadata, causal
 variants, and pre-upscaled phenotype values in the database for future offline
 variance-explained estimation. The phenotype values passed to `PLINK_UPDATE_BY_H2`
 and ultimately to GWAS mapping may differ (upscaled by `check_vp.py`), but the
 ANOVA SS ratio used for offline estimation is scale-invariant.
+
+**Trait ID generation:** Each simulated trait is assigned a deterministic
+20-character SHA-256 hash identifier (`trait_id`). The ID is the second level of
+the canonical three-level hash hierarchy used throughout the database:
+
+```
+marker_set_id  (SHA-256 of "v=1|population=...|maf=...")
+  └── trait_id (SHA-256 of "v=1|parent={marker_set_hash}|nqtl=...|effect=...|rep=...|h2=...")
+        └── mapping_id (SHA-256 of "v=1|parent={trait_hash}|algorithm=...|pca=...")
+```
+
+The `trait_id` is computed in `write_trait_data.R` as:
+
+```r
+ms_id    <- generate_marker_set_id(opt$group, as.numeric(opt$maf))
+trait    <- generate_trait_id(ms_id$hash, opt$nqtl, opt$effect, opt$rep, opt$h2)
+trait_id <- trait$hash  # 20-character lowercase hex string
+```
+
+The hash is derived from this input string, where `h2` and `maf` are serialized
+with `sprintf("%.10f", as.numeric(...))` and `nqtl`/`rep` are serialized with
+`as.integer()`:
+
+```
+v=1|parent={marker_set_hash}|nqtl={nqtl}|effect={effect}|rep={rep}|h2={h2}
+```
+
+The human-readable `trait_hash_string` and the parent `marker_set_id` are stored
+once in the trait metadata file (within the `traits/` directory). The short
+20-character `trait_id` hash serves as the join key in data files and is passed
+as the parent hash when generating downstream `mapping_id` values in Phase 3.
 :::
+
 
 
 ### Example `.par` output
