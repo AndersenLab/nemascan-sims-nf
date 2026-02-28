@@ -131,11 +131,33 @@ test_that("mappings_metadata.parquet has required columns", {
   present <- expected_cols[expected_cols %in% names(meta)]
   # Allow some optional columns (source_file, processed_at, processing_version
   # may come from aggregate_metadata.R which uses slightly different column set)
-  core_cols <- c("mapping_id", "population", "maf", "nqtl", "rep",
+  core_cols <- c("mapping_id", "mapping_hash_string", "trait_id",
+                 "marker_set_id", "hash_schema_version",
+                 "population", "maf", "nqtl", "rep",
                  "h2", "effect", "algorithm", "pca", "n_markers")
   expect_true(all(core_cols %in% names(meta)),
               label = paste("missing core columns:",
                             paste(setdiff(core_cols, names(meta)), collapse = ", ")))
+})
+
+test_that("hash_string columns are present in metadata files and absent from data files", {
+  skip_if_no_db()
+
+  # mapping_hash_string must be in mappings_metadata, absent from data partitions
+  meta <- get_metadata(db_dir)
+  expect_true("mapping_hash_string" %in% names(meta),
+              label = "mapping_hash_string present in mappings_metadata.parquet")
+
+  data_files <- list.files(file.path(db_dir, "mappings"),
+                           pattern = "data\\.parquet$",
+                           recursive = TRUE, full.names = TRUE)
+  if (length(data_files) > 0) {
+    first_data <- arrow::read_parquet(data_files[1])
+    expect_false("mapping_hash_string" %in% names(first_data),
+                 label = "mapping_hash_string absent from mapping data.parquet")
+    expect_false("mapping_id" %in% names(first_data),
+                 label = "mapping_id absent from mapping data.parquet (partition key only)")
+  }
 })
 
 test_that("mappings_metadata has correct row count for test profile", {

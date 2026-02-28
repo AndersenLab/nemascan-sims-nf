@@ -188,6 +188,37 @@ build_joined_assessment <- function() {
 }
 
 
+test_that("generate_mapping_id() is deterministic across invocations", {
+  skip_if_no_assessment_cross_validation()
+
+  # Read known params from DB assessment to get a real mapping's parameters
+  db_assess <- read_db_assessment(db_assessment_path)
+  params_row <- db_assess[1, ]
+
+  algorithm <- if (grepl("inbred", tolower(params_row$mode))) "LMM-EXACT-INBRED" else "LMM-EXACT-LOCO"
+  pca       <- params_row$type == "pca"
+
+  ms1    <- generate_marker_set_id(params_row$strain_set_id, as.numeric(params_row$maf))
+  trait1 <- generate_trait_id(ms1$hash, as.integer(params_row$nQTL),
+                              params_row$effect_distribution,
+                              as.integer(params_row$simREP),
+                              as.numeric(params_row$h2))
+  map1   <- generate_mapping_id(trait1$hash, algorithm, pca)
+
+  ms2    <- generate_marker_set_id(params_row$strain_set_id, as.numeric(params_row$maf))
+  trait2 <- generate_trait_id(ms2$hash, as.integer(params_row$nQTL),
+                              params_row$effect_distribution,
+                              as.integer(params_row$simREP),
+                              as.numeric(params_row$h2))
+  map2   <- generate_mapping_id(trait2$hash, algorithm, pca)
+
+  expect_equal(map1$hash, map2$hash,
+               label = "mapping_id is deterministic: same params → same hash")
+  expect_true(grepl("^[0-9a-f]{20}$", map1$hash),
+              label = "mapping_id is 20-char lowercase hex")
+})
+
+
 # ── Output File Existence ────────────────────────────────────────────────────
 
 test_that("both assessment output files exist and are non-empty", {
@@ -244,6 +275,7 @@ test_that("per-mapping designation concordance is 1.0 for all mappings", {
   skip_if_no_assessment_cross_validation()
 
   joined <- build_joined_assessment()
+  expect_gt(nrow(joined), 0, label = "joined assessment has rows")
 
   designation_conc <- joined %>%
     dplyr::filter(!is.na(designation_legacy), !is.na(designation_db)) %>%
@@ -278,6 +310,7 @@ test_that("per-mapping interval Jaccard concordance is 1.0 for all mappings", {
   skip_if_no_assessment_cross_validation()
 
   joined <- build_joined_assessment()
+  expect_gt(nrow(joined), 0, label = "joined assessment has rows")
 
   interval_conc_per_qtl <- joined %>%
     dplyr::filter(
