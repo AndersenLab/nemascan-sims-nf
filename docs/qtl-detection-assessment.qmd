@@ -170,6 +170,7 @@ write_marker_set.R --group ${group} --maf ${maf} --bim ${bim_file} \
 
 | Function | Source | Purpose |
 |----------|--------|---------|
+| `generate_marker_set_id()` | `R/database.R` | Compute deterministic 20-char SHA-256 marker set ID from population and MAF |
 | `read_bim_file()` | `R/io.R` | Read PLINK `.bim` file into a marker dataframe |
 | `read_eigen_file()` | `R/io.R` | Read single-value EIGEN independent tests file |
 | `write_marker_set()` | `R/database.R` | Write marker Parquet file and metadata |
@@ -184,8 +185,8 @@ marker set was written.
 |-----------|------|-------------|
 | Input | `TO_SIMS.bim` | PLINK binary marker information file |
 | Input | `*_total_independent_tests.txt` | EIGEN independent tests count |
-| Output | `{base_dir}/marker_sets/*.parquet` | Marker set Parquet file |
-| Output | `{base_dir}/marker_sets/marker_set_metadata.parquet` | Marker set metadata |
+| Output | `{base_dir}/markers/marker_sets/{marker_set_id}_markers.parquet` | Marker set Parquet file |
+| Output | `{base_dir}/marker_set_metadata.parquet` | Marker set metadata |
 
 
 ### 2. DB_MIGRATION_WRITE_GENOTYPE_MATRIX
@@ -218,6 +219,9 @@ write_genotype_matrix.R --group ${group} --maf ${maf} \
 |----------|--------|---------|
 | `write_genotype_matrix()` | `R/database.R` | Pivot wide TSV to long format and write Parquet |
 
+**Note:** `write_genotype_matrix()` calls `generate_marker_set_id()` internally to
+construct the hash-based output path — it is not called directly in the script.
+
 **Cardinality:** 1 invocation per (group, maf) — typically 2–4 tasks.
 
 **Inputs / Outputs:**
@@ -225,7 +229,7 @@ write_genotype_matrix.R --group ${group} --maf ${maf} \
 | Direction | File | Description |
 |-----------|------|-------------|
 | Input | `${group}_${maf}_Genotype_Matrix.tsv` | Wide-format genotype matrix from Phase 1 |
-| Output | `{base_dir}/marker_sets/{group}_{maf}_genotypes.parquet` | Long-format genotype Parquet (CHROM, POS, strain, allele) |
+| Output | `{base_dir}/markers/genotypes/{marker_set_id}_genotypes.parquet` | Long-format genotype Parquet (CHROM, POS, strain, allele) |
 
 
 ### 3. DB_MIGRATION_WRITE_GWA_TO_DB
@@ -264,7 +268,9 @@ write_gwa_to_db.R \
 | Function | Source | Purpose |
 |----------|--------|---------|
 | `read_raw_gwa_file()` | `R/io.R` | Auto-detect and read `.fastGWA` or `.mlma` format |
-| `generate_mapping_id()` | `R/database.R` | Construct unique mapping ID from parameters |
+| `generate_marker_set_id()` | `R/database.R` | Compute parent marker-set hash from population and MAF |
+| `generate_trait_id()` | `R/database.R` | Compute trait hash from marker-set hash and simulation parameters |
+| `generate_mapping_id()` | `R/database.R` | Compute mapping hash from trait hash, algorithm, and PCA flag |
 | `write_mapping_partitioned()` | `R/database.R` | Write to Hive-partitioned Parquet structure |
 
 **LOCO deduplication:** LOCO `.mlma` files may contain duplicate marker rows.
@@ -319,12 +325,13 @@ write_trait_data.R --group ${group} --maf ${maf} --nqtl ${nqtl} \
 
 | Function | Source | Purpose |
 |----------|--------|---------|
-| `generate_trait_id()` | `R/database.R` | Compute deterministic 12-char MD5 trait ID from simulation parameters |
+| `generate_marker_set_id()` | `R/database.R` | Compute parent marker-set hash from population and MAF |
+| `generate_trait_id()` | `R/database.R` | Compute deterministic 20-char SHA-256 trait ID from marker-set hash and simulation parameters |
 | `write_trait_metadata()` | `R/database.R` | Write per-trait parameter metadata |
 | `write_causal_variants()` | `R/database.R` | Write causal variant positions and effects |
 | `write_phenotype_data()` | `R/database.R` | Write per-strain phenotype values |
 
-**Trait ID:** Computed internally by the R script via `generate_trait_id(group, maf, nqtl, effect, rep, h2)` — a deterministic MD5 hash. No Groovy counterpart. Stable across `-resume`.
+**Trait ID:** Computed via a two-step chain: `generate_marker_set_id(group, maf)` yields the parent 20-char SHA-256 marker-set hash; `generate_trait_id(marker_set_hash, nqtl, effect, rep, h2)` yields the trait hash. All IDs are 20-character truncated SHA-256 hashes. No Groovy counterpart. Stable across `-resume`.
 
 **Cardinality:** 1 invocation per unique trait (nqtl × rep × h2 × maf × effect × group).
 
@@ -335,8 +342,8 @@ write_trait_data.R --group ${group} --maf ${maf} --nqtl ${nqtl} \
 | Input | `*_sims.phen` | Pre-upscaled phenotype file from `GCTA_SIMULATE_PHENOTYPES` |
 | Input | `*_sims.par` | Causal variant parameters from `GCTA_SIMULATE_PHENOTYPES` |
 | Output | `{base_dir}/traits/{trait_id}.parquet` | Per-trait metadata (parameters + trait_id) |
-| Output | `{base_dir}/causal_variants/{trait_id}_causal.parquet` | QTL positions, effects, frequencies |
-| Output | `{base_dir}/phenotypes/{trait_id}_phenotype.parquet` | Per-strain phenotype values |
+| Output | `{base_dir}/traits/causal_variants/{trait_id}_causal.parquet` | QTL positions, effects, frequencies |
+| Output | `{base_dir}/traits/phenotypes/{trait_id}_phenotype.parquet` | Per-strain phenotype values |
 
 ::: {.callout-note}
 The stored phenotype is pre-upscaled (GCTA output before `PYTHON_CHECK_VP`). Values
@@ -360,9 +367,8 @@ after **all** `DB_MIGRATION_WRITE_GWA_TO_DB` processes complete.
 aggregate_metadata.R ${base_dir}
 ```
 
-The script reads the first row of each Parquet file to extract metadata columns
-(`mapping_id`, `population`, `maf`, `nqtl`, `rep`, `h2`, `effect`, `algorithm`,
-`pca`, `trait`) and counts total markers per file.
+The script reads the first row of each Parquet file to extract FK hash columns
+(`mapping_id`, `marker_set_id`, `trait_id`) and counts total markers per file.
 
 **Barrier role:** The database must be fully populated before analysis queries
 begin. The `summary` output gates all downstream `DB_MIGRATION_ANALYZE_QTL`
@@ -383,21 +389,23 @@ The Parquet database uses a Hive partitioning scheme:
 
 ```
 {outputDir}/db/
- ├── marker_sets/
- │   ├── {population}_{maf}_markers.parquet
- │   ├── {population}_{maf}_genotypes.parquet    ◄── long-format genotype matrix
- │   └── marker_set_metadata.parquet
+ ├── markers/
+ │   ├── marker_sets/
+ │   │   └── {marker_set_id}_markers.parquet
+ │   └── genotypes/
+ │       └── {marker_set_id}_genotypes.parquet
  ├── mappings/
  │   └── population={pop}/
  │       └── mapping_id={id}/
  │           └── data.parquet
  ├── traits/
- │   └── {trait_id}.parquet                      ◄── trait metadata
- ├── causal_variants/
- │   └── {trait_id}_causal.parquet               ◄── causal variant parameters
- ├── phenotypes/
- │   └── {trait_id}_phenotype.parquet            ◄── pre-upscaled phenotype values
- └── mappings_metadata.parquet
+ │   ├── {trait_id}.parquet                      ◄── trait metadata
+ │   ├── causal_variants/
+ │   │   └── {trait_id}_causal.parquet           ◄── causal variant parameters
+ │   └── phenotypes/
+ │       └── {trait_id}_phenotype.parquet        ◄── pre-upscaled phenotype values
+ ├── mappings_metadata.parquet
+ └── marker_set_metadata.parquet
 ```
 
 At query time, DuckDB reads the partitioned Parquet files directly via the
@@ -405,9 +413,9 @@ At query time, DuckDB reads the partitioned Parquet files directly via the
 efficient filtering by population and mapping ID without loading all data into
 memory. See `R/queries.R::open_mapping_db()` for the connection setup.
 
-The `traits/`, `causal_variants/`, and `phenotypes/` directories are written by
-`DB_MIGRATION_WRITE_TRAIT_DATA` and are not read by any pipeline process — they
-are stored for future offline analysis. See
+The `traits/` directory and its `causal_variants/` and `phenotypes/` subdirectories
+are written by `DB_MIGRATION_WRITE_TRAIT_DATA` and are not read by any pipeline
+process — they are stored for future offline analysis. See
 [Database Structure](database-structure.qmd#trait-data) for full schemas.
 
 
@@ -447,6 +455,9 @@ analyze_qtl.R \
 
 | Function | Source | Purpose |
 |----------|--------|---------|
+| `generate_marker_set_id()` | `R/database.R` | Compute parent marker-set hash |
+| `generate_trait_id()` | `R/database.R` | Compute trait hash from marker-set hash and simulation params |
+| `generate_mapping_id()` | `R/database.R` | Compute mapping hash for database lookup |
 | `query_for_threshold_analysis()` | `R/queries.R` | Query mapping data from Parquet DB via DuckDB |
 | `get_threshold_params()` | `R/database.R` | Retrieve marker count and EIGEN independent tests |
 | `calculate_threshold()` | `R/analysis.R` | Compute `-log10(p)` threshold value |
