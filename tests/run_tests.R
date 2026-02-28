@@ -11,7 +11,7 @@ library(testthat)
 # Resolve relative env var paths to absolute before test_dir() changes CWD.
 # testthat::test_dir() sets CWD to tests/testthat/, breaking relative paths.
 project_root <- getwd()
-for (var in c("TEST_DB_DIR", "TEST_EXISTING_ASSESSMENT",
+for (var in c("TEST_DB_DIR", "TEST_LEGACY_ASSESSMENT",
               "TEST_DB_ASSESSMENT", "TEST_WORK_DIR")) {
   val <- Sys.getenv(var, unset = "")
   if (val != "" && !startsWith(val, "/")) {

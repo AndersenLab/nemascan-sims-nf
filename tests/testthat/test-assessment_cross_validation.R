@@ -1,4 +1,4 @@
-# test-assessment_cross_validation.R - Cross-validation: DB-path vs existing-path assessment
+# test-assessment_cross_validation.R - Cross-validation: DB-path vs legacy-path assessment
 #
 # Compares db_simulation_assessment_results.tsv (from DB_MIGRATION_ANALYZE_QTL + DB_MIGRATION_ASSESS_SIMS)
 # against simulation_assessment_results.tsv (from R_GET_GCTA_INTERVALS + R_ASSESS_SIMS) to verify
@@ -14,31 +14,31 @@
 # Each score is 1.0 for perfect concordance, 0.0 for no concordance.
 #
 # Requires pipeline output from BOTH paths:
-#   TEST_EXISTING_ASSESSMENT - Path to simulation_assessment_results.tsv (existing path)
-#   TEST_DB_ASSESSMENT       - Path to db_simulation_assessment_results.tsv (DB path)
+#   TEST_LEGACY_ASSESSMENT - Path to simulation_assessment_results.tsv (legacy path)
+#   TEST_DB_ASSESSMENT     - Path to db_simulation_assessment_results.tsv (DB path)
 #
 # Known differences (by design):
 #   - var.exp and Simulated.QTL.VarExp are NA in DB-path (no genotype matrix)
 #   - algorithm_id format differs (both encode the same info, normalized for joining)
 #
 # Usage:
-#   TEST_EXISTING_ASSESSMENT=/path/to/simulation_assessment_results.tsv \
+#   TEST_LEGACY_ASSESSMENT=/path/to/simulation_assessment_results.tsv \
 #   TEST_DB_ASSESSMENT=/path/to/db_simulation_assessment_results.tsv \
 #   Rscript tests/run_tests.R
 
-existing_assessment_path <- Sys.getenv("TEST_EXISTING_ASSESSMENT", unset = "")
+legacy_assessment_path <- Sys.getenv("TEST_LEGACY_ASSESSMENT", unset = "")
 db_assessment_path <- Sys.getenv("TEST_DB_ASSESSMENT", unset = "")
 
 skip_if_no_assessment_cross_validation <- function() {
-  if (existing_assessment_path == "" || !file.exists(existing_assessment_path)) {
-    skip("TEST_EXISTING_ASSESSMENT not set or file does not exist")
+  if (legacy_assessment_path == "" || !file.exists(legacy_assessment_path)) {
+    skip("TEST_LEGACY_ASSESSMENT not set or file does not exist")
   }
   if (db_assessment_path == "" || !file.exists(db_assessment_path)) {
     skip("TEST_DB_ASSESSMENT not set or file does not exist")
   }
 }
 
-# Helper: parse the existing assessment TSV (no header, column structure from Assess_Sims.R)
+# Helper: parse the legacy assessment TSV (no header, column structure from Assess_Sims.R)
 read_legacy_assessment <- function(path) {
   col_names <- c(
     "QTL", "Simulated", "Detected", "CHROM", "POS", "RefAllele",
@@ -160,7 +160,7 @@ interval_jaccard <- function(start_a, end_a, start_b, end_b) {
 
 # Helper: join QTL rows from both paths on the composite key
 build_joined_assessment <- function() {
-  existing <- read_legacy_assessment(existing_assessment_path) %>%
+  legacy <- read_legacy_assessment(legacy_assessment_path) %>%
     designate_qtl() %>%
     make_join_key()
   db_assess <- read_db_assessment(db_assessment_path) %>%
@@ -168,7 +168,7 @@ build_joined_assessment <- function() {
     make_join_key()
 
   dplyr::inner_join(
-    existing %>%
+    legacy %>%
       dplyr::select(join_key, norm_alg,
         nQTL, simREP, h2, maf, strain_set_id,
         designation_legacy = designation,
@@ -224,17 +224,17 @@ test_that("generate_mapping_id() is deterministic across invocations", {
 test_that("both assessment output files exist and are non-empty", {
   skip_if_no_assessment_cross_validation()
 
-  expect_true(file.exists(existing_assessment_path),
-    label = "existing assessment file exists"
+  expect_true(file.exists(legacy_assessment_path),
+    label = "legacy assessment file exists"
   )
   expect_true(file.exists(db_assessment_path),
     label = "DB assessment file exists"
   )
 
-  existing_size <- file.info(existing_assessment_path)$size
+  legacy_size <- file.info(legacy_assessment_path)$size
   db_size <- file.info(db_assessment_path)$size
 
-  expect_gt(existing_size, 0, label = "existing assessment is non-empty")
+  expect_gt(legacy_size, 0, label = "legacy assessment is non-empty")
   expect_gt(db_size, 0, label = "DB assessment is non-empty")
 })
 
