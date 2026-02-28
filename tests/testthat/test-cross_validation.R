@@ -54,7 +54,7 @@ parse_inline_gwa_filename <- function(filename) {
     maf = as.numeric(matches[5]),
     effect = matches[6],
     population = matches[7],
-    algorithm = if (mode == "inbred") "LMM-EXACT-INBRED" else "LMM-EXACT-LOCO",
+    algorithm = mode,   # "inbred" or "loco" — matches canonical form written by scripts
     pca = type == "pca",
     trait = paste(matches[2], matches[3], matches[4], sep = "_")
   )

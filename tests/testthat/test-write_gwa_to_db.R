@@ -4,7 +4,7 @@ test_that("fastGWA data writes to database with correct schema and values", {
 
   df <- read_raw_gwa_file(fixture_path("test.fastGWA"), verbose = FALSE)
   params <- list(nqtl = 5L, rep = 1L, h2 = 0.8, maf = 0.05, effect = "gamma",
-                 population = "test_pop", algorithm = "LMM-EXACT-INBRED", pca = TRUE)
+                 population = "test_pop", algorithm = "inbred", pca = TRUE)
   ms_id   <- generate_marker_set_id(params$population, params$maf)
   trait   <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
   mapping <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
@@ -46,7 +46,7 @@ test_that("mlma data writes with correct LOCO metadata", {
 
   df <- read_raw_gwa_file(fixture_path("test.mlma"), verbose = FALSE)
   params <- list(nqtl = 5L, rep = 1L, h2 = 0.8, maf = 0.05, effect = "gamma",
-                 population = "test_pop", algorithm = "LMM-EXACT-LOCO", pca = FALSE)
+                 population = "test_pop", algorithm = "loco", pca = FALSE)
   ms_id   <- generate_marker_set_id(params$population, params$maf)
   trait   <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
   mapping <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
@@ -61,7 +61,7 @@ test_that("mlma data writes with correct LOCO metadata", {
 
 test_that("PCA=TRUE and PCA=FALSE produce different mapping_ids", {
   params_base <- list(nqtl = 5L, rep = 1L, h2 = 0.8, maf = 0.05, effect = "gamma",
-                      population = "test_pop", algorithm = "LMM-EXACT-INBRED")
+                      population = "test_pop", algorithm = "inbred")
   ms_id  <- generate_marker_set_id(params_base$population, params_base$maf)
   trait  <- generate_trait_id(ms_id$hash, params_base$nqtl, params_base$effect,
                                params_base$rep, params_base$h2)
