@@ -175,7 +175,7 @@ test_that("algorithm values are valid", {
   skip_if_no_db()
   meta <- get_metadata(db_dir)
 
-  valid_algorithms <- c("LMM-EXACT-INBRED", "LMM-EXACT-LOCO")
+  valid_algorithms <- c("inbred", "loco")
   expect_true(all(meta$algorithm %in% valid_algorithms),
               label = paste("unexpected algorithms:",
                             paste(setdiff(unique(meta$algorithm), valid_algorithms),
