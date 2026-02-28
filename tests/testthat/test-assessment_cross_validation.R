@@ -128,9 +128,9 @@ read_db_assessment <- function(path) {
 }
 
 # Helper: normalize algorithm_id across both paths for joining
-# Existing path: "inbred_nopca_EIGEN", "loco_pca_BF"
-# DB path: "LMM-EXACT-INBRED_noPCA_EIGEN", "LMM-EXACT-LOCO_PCA_BF"
-# Normalization: uppercase + remove "LMM-EXACT-" prefix -> "INBRED_NOPCA_EIGEN"
+# Both paths now use canonical algorithm values ("inbred"/"loco").
+# Normalization strips no prefix but uppercases for comparison:
+#   "inbred_nopca_EIGEN" -> "INBRED_NOPCA_EIGEN"
 normalize_algorithm_id <- function(alg_id) {
   toupper(sub("^LMM-EXACT-", "", toupper(alg_id)))
 }
@@ -195,7 +195,7 @@ test_that("generate_mapping_id() is deterministic across invocations", {
   db_assess <- read_db_assessment(db_assessment_path)
   params_row <- db_assess[1, ]
 
-  algorithm <- if (grepl("inbred", tolower(params_row$mode))) "LMM-EXACT-INBRED" else "LMM-EXACT-LOCO"
+  algorithm <- params_row$mode   # "inbred" or "loco" per canonical form
   pca       <- params_row$type == "pca"
 
   ms1    <- generate_marker_set_id(params_row$strain_set_id, as.numeric(params_row$maf))
