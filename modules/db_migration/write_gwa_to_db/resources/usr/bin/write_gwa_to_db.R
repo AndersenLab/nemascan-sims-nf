@@ -56,12 +56,9 @@ if (n_before != n_after) {
 }
 
 # Construct mapping params from Nextflow channel metadata
-# Maps GWA mode/type to database algorithm/pca fields:
-#   mode "inbred" → algorithm "LMM-EXACT-INBRED"
-#   mode "loco"   → algorithm "LMM-EXACT-LOCO"
+# algorithm = opt$mode ("inbred" or "loco") — canonical form per Step 1
 #   type "pca"    → pca = TRUE
 #   type "nopca"  → pca = FALSE
-algorithm <- if (opt$mode == "inbred") "LMM-EXACT-INBRED" else "LMM-EXACT-LOCO"
 pca <- opt$type == "pca"
 
 params <- list(
@@ -71,7 +68,7 @@ params <- list(
   effect = opt$effect,
   rep = as.integer(opt$rep),
   h2 = as.numeric(opt$h2),
-  algorithm = algorithm,
+  algorithm = opt$mode,   # "inbred" or "loco" — canonical form per Step 1
   pca = pca
 )
 

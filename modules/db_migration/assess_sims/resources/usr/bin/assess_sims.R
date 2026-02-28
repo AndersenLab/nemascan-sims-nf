@@ -57,7 +57,6 @@ source(file.path(r_source_dir, "analysis.R"))
 source(file.path(r_source_dir, "assessment.R"))
 
 # Construct mapping params
-algorithm <- if (opt$mode == "inbred") "LMM-EXACT-INBRED" else "LMM-EXACT-LOCO"
 pca <- opt$type == "pca"
 
 params <- list(
@@ -67,7 +66,7 @@ params <- list(
   effect = opt$effect,
   rep = as.integer(opt$rep),
   h2 = as.numeric(opt$h2),
-  algorithm = algorithm,
+  algorithm = opt$mode,   # "inbred" or "loco" — canonical form per Step 1
   pca = pca,
   trait = paste(opt$nqtl, opt$rep, opt$h2, sep = "_"),
   threshold_method = toupper(opt$threshold),
