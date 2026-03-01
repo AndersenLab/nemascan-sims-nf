@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-02-17">
+<meta name="dcterms.date" content="2026-03-01">
 
 <title>Phase 4: QTL Detection &amp; Assessment – nemascan-sims-nf</title>
 <style>
@@ -3939,8 +3939,10 @@ vertical-align: -.125em;
   <li><a href="#stage-1-database-ingestion-db-path-only" id="toc-stage-1-database-ingestion-db-path-only" class="nav-link" data-scroll-target="#stage-1-database-ingestion-db-path-only">Stage 1: Database Ingestion (DB Path Only)</a>
   <ul class="collapse">
   <li><a href="#db_migration_write_marker_set" id="toc-db_migration_write_marker_set" class="nav-link" data-scroll-target="#db_migration_write_marker_set">1. DB_MIGRATION_WRITE_MARKER_SET</a></li>
-  <li><a href="#db_migration_write_gwa_to_db" id="toc-db_migration_write_gwa_to_db" class="nav-link" data-scroll-target="#db_migration_write_gwa_to_db">2. DB_MIGRATION_WRITE_GWA_TO_DB</a></li>
-  <li><a href="#db_migration_aggregate_metadata" id="toc-db_migration_aggregate_metadata" class="nav-link" data-scroll-target="#db_migration_aggregate_metadata">3. DB_MIGRATION_AGGREGATE_METADATA</a></li>
+  <li><a href="#db_migration_write_genotype_matrix" id="toc-db_migration_write_genotype_matrix" class="nav-link" data-scroll-target="#db_migration_write_genotype_matrix">2. DB_MIGRATION_WRITE_GENOTYPE_MATRIX</a></li>
+  <li><a href="#db_migration_write_gwa_to_db" id="toc-db_migration_write_gwa_to_db" class="nav-link" data-scroll-target="#db_migration_write_gwa_to_db">3. DB_MIGRATION_WRITE_GWA_TO_DB</a></li>
+  <li><a href="#db_migration_write_trait_data" id="toc-db_migration_write_trait_data" class="nav-link" data-scroll-target="#db_migration_write_trait_data">4. DB_MIGRATION_WRITE_TRAIT_DATA</a></li>
+  <li><a href="#db_migration_aggregate_metadata" id="toc-db_migration_aggregate_metadata" class="nav-link" data-scroll-target="#db_migration_aggregate_metadata">5. DB_MIGRATION_AGGREGATE_METADATA</a></li>
   <li><a href="#database-structure" id="toc-database-structure" class="nav-link" data-scroll-target="#database-structure">Database Structure</a></li>
   </ul></li>
   <li><a href="#stage-2-qtl-detection" id="toc-stage-2-qtl-detection" class="nav-link" data-scroll-target="#stage-2-qtl-detection">Stage 2: QTL Detection</a>
@@ -3974,7 +3976,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">February 17, 2026</p>
+      <p class="date">March 1, 2026</p>
     </div>
   </div>
   
@@ -3999,7 +4001,9 @@ vertical-align: -.125em;
  │                                                                │
  │  Stage 1: Database Ingestion                                   │
  │    DB_MIGRATION_WRITE_MARKER_SET  (barrier)                    │
+ │    DB_MIGRATION_WRITE_GENOTYPE_MATRIX                          │
  │    DB_MIGRATION_WRITE_GWA_TO_DB                                │
+ │    DB_MIGRATION_WRITE_TRAIT_DATA                               │
  │    DB_MIGRATION_AGGREGATE_METADATA (barrier)                   │
  │                                                                │
  │  Stage 2: QTL Analysis                                         │
@@ -4159,7 +4163,7 @@ vertical-align: -.125em;
 <section id="stage-1-database-ingestion-db-path-only" class="level2">
 <h2 class="anchored" data-anchor-id="stage-1-database-ingestion-db-path-only">Stage 1: Database Ingestion (DB Path Only)</h2>
 <p>The DB path writes marker sets and raw GWA results to a Hive-partitioned Parquet database before performing QTL analysis. This enables DuckDB-based queries at analysis time and decouples threshold application from data storage.</p>
-<p>Three processes run sequentially with two barrier points:</p>
+<p>Five processes run during Stage 1. <code>DB_MIGRATION_WRITE_MARKER_SET</code> and <code>DB_MIGRATION_AGGREGATE_METADATA</code> act as barriers. <code>DB_MIGRATION_WRITE_GENOTYPE_MATRIX</code> and <code>DB_MIGRATION_WRITE_TRAIT_DATA</code> run in parallel as independent fire-and-forget storage operations — they have no downstream dependents within the pipeline:</p>
 <section id="db_migration_write_marker_set" class="level3">
 <h3 class="anchored" data-anchor-id="db_migration_write_marker_set">1. DB_MIGRATION_WRITE_MARKER_SET</h3>
 <p><strong>Source:</strong> <code>modules/db_migration/write_marker_set/main.nf</code>  •  <strong>Script:</strong> <code>resources/usr/bin/write_marker_set.R</code></p>
@@ -4217,16 +4221,21 @@ vertical-align: -.125em;
 </thead>
 <tbody>
 <tr class="odd">
+<td><code>generate_marker_set_id()</code></td>
+<td><code>R/database.R</code></td>
+<td>Compute deterministic 20-char SHA-256 marker set ID from population and MAF</td>
+</tr>
+<tr class="even">
 <td><code>read_bim_file()</code></td>
 <td><code>R/io.R</code></td>
 <td>Read PLINK <code>.bim</code> file into a marker dataframe</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>read_eigen_file()</code></td>
 <td><code>R/io.R</code></td>
 <td>Read single-value EIGEN independent tests file</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>write_marker_set()</code></td>
 <td><code>R/database.R</code></td>
 <td>Write marker Parquet file and metadata</td>
@@ -4261,26 +4270,115 @@ vertical-align: -.125em;
 </tr>
 <tr class="odd">
 <td>Output</td>
-<td><code>{base_dir}/marker_sets/*.parquet</code></td>
+<td><code>{base_dir}/markers/marker_sets/{marker_set_id}_markers.parquet</code></td>
 <td>Marker set Parquet file</td>
 </tr>
 <tr class="even">
 <td>Output</td>
-<td><code>{base_dir}/marker_sets/marker_set_metadata.parquet</code></td>
+<td><code>{base_dir}/marker_set_metadata.parquet</code></td>
 <td>Marker set metadata</td>
 </tr>
 </tbody>
 </table>
 </section>
+<section id="db_migration_write_genotype_matrix" class="level3">
+<h3 class="anchored" data-anchor-id="db_migration_write_genotype_matrix">2. DB_MIGRATION_WRITE_GENOTYPE_MATRIX</h3>
+<p><strong>Source:</strong> <code>modules/db_migration/write_genotype_matrix/main.nf</code>  •  <strong>Script:</strong> <code>resources/usr/bin/write_genotype_matrix.R</code></p>
+<p>Reads the wide-format genotype matrix TSV produced by <code>BCFTOOLS_CREATE_GENOTYPE_MATRIX</code> (Phase 1), pivots it to long format, and writes a Parquet file per (group, maf) combination. Runs in parallel with <code>DB_MIGRATION_WRITE_GWA_TO_DB</code> — no barrier dependency in either direction.</p>
+<p><strong>Command:</strong></p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">write_genotype_matrix.R</span> <span class="at">--group</span> <span class="va">${group}</span> <span class="at">--maf</span> <span class="va">${maf}</span> <span class="dt">\</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--genotype_matrix</span> <span class="va">${genotype_matrix}</span> <span class="at">--base_dir</span> <span class="va">${base_dir}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 31%">
+<col style="width: 68%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--group</code></td>
+<td>Population/strain group identifier</td>
+</tr>
+<tr class="even">
+<td><code>--maf</code></td>
+<td>MAF threshold used for this marker set</td>
+</tr>
+<tr class="odd">
+<td><code>--genotype_matrix</code></td>
+<td>Path to wide-format TSV from <code>BCFTOOLS_CREATE_GENOTYPE_MATRIX</code></td>
+</tr>
+<tr class="even">
+<td><code>--base_dir</code></td>
+<td>Database output directory</td>
+</tr>
+</tbody>
+</table>
+<p><strong>R functions called:</strong></p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 37%">
+<col style="width: 29%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Function</th>
+<th>Source</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>write_genotype_matrix()</code></td>
+<td><code>R/database.R</code></td>
+<td>Pivot wide TSV to long format and write Parquet</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Note:</strong> <code>write_genotype_matrix()</code> calls <code>generate_marker_set_id()</code> internally to construct the hash-based output path — it is not called directly in the script.</p>
+<p><strong>Cardinality:</strong> 1 invocation per (group, maf) — typically 2–4 tasks.</p>
+<p><strong>Inputs / Outputs:</strong></p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 36%">
+<col style="width: 20%">
+<col style="width: 43%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Direction</th>
+<th>File</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Input</td>
+<td><code>${group}_${maf}_Genotype_Matrix.tsv</code></td>
+<td>Wide-format genotype matrix from Phase 1</td>
+</tr>
+<tr class="even">
+<td>Output</td>
+<td><code>{base_dir}/markers/genotypes/{marker_set_id}_genotypes.parquet</code></td>
+<td>Long-format genotype Parquet (CHROM, POS, strain, allele)</td>
+</tr>
+</tbody>
+</table>
+</section>
 <section id="db_migration_write_gwa_to_db" class="level3">
-<h3 class="anchored" data-anchor-id="db_migration_write_gwa_to_db">2. DB_MIGRATION_WRITE_GWA_TO_DB</h3>
+<h3 class="anchored" data-anchor-id="db_migration_write_gwa_to_db">3. DB_MIGRATION_WRITE_GWA_TO_DB</h3>
 <p><strong>Source:</strong> <code>modules/db_migration/write_gwa_to_db/main.nf</code>  •  <strong>Script:</strong> <code>resources/usr/bin/write_gwa_to_db.R</code></p>
 <p>Writes raw GWA output to Hive-partitioned Parquet. Runs once per (mode, type) combination, <strong>not</strong> per threshold — thresholds are applied at query time during <code>DB_MIGRATION_ANALYZE_QTL</code>.</p>
 <p><strong>Command:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">write_gwa_to_db.R</span> <span class="dt">\</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--group</span> <span class="va">${group}</span> <span class="at">--maf</span> <span class="va">${maf}</span> <span class="at">--nqtl</span> <span class="va">${nqtl}</span> <span class="at">--effect</span> <span class="va">${effect}</span> <span class="dt">\</span></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--rep</span> <span class="va">${rep}</span> <span class="at">--h2</span> <span class="va">${h2}</span> <span class="at">--mode</span> <span class="va">${mode}</span> <span class="at">--type</span> <span class="va">${type}</span> <span class="dt">\</span></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--gwa_file</span> <span class="va">${gwa_file}</span> <span class="at">--base_dir</span> <span class="va">${base_dir}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">write_gwa_to_db.R</span> <span class="dt">\</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--group</span> <span class="va">${group}</span> <span class="at">--maf</span> <span class="va">${maf}</span> <span class="at">--nqtl</span> <span class="va">${nqtl}</span> <span class="at">--effect</span> <span class="va">${effect}</span> <span class="dt">\</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--rep</span> <span class="va">${rep}</span> <span class="at">--h2</span> <span class="va">${h2}</span> <span class="at">--mode</span> <span class="va">${mode}</span> <span class="at">--type</span> <span class="va">${type}</span> <span class="dt">\</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--gwa_file</span> <span class="va">${gwa_file}</span> <span class="at">--base_dir</span> <span class="va">${base_dir}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -4352,9 +4450,19 @@ vertical-align: -.125em;
 <td>Auto-detect and read <code>.fastGWA</code> or <code>.mlma</code> format</td>
 </tr>
 <tr class="even">
+<td><code>generate_marker_set_id()</code></td>
+<td><code>R/database.R</code></td>
+<td>Compute parent marker-set hash from population and MAF</td>
+</tr>
+<tr class="odd">
+<td><code>generate_trait_id()</code></td>
+<td><code>R/database.R</code></td>
+<td>Compute trait hash from marker-set hash and simulation parameters</td>
+</tr>
+<tr class="even">
 <td><code>generate_mapping_id()</code></td>
 <td><code>R/database.R</code></td>
-<td>Construct unique mapping ID from parameters</td>
+<td>Compute mapping hash from trait hash, algorithm, and PCA flag</td>
 </tr>
 <tr class="odd">
 <td><code>write_mapping_partitioned()</code></td>
@@ -4397,13 +4505,171 @@ vertical-align: -.125em;
 </tbody>
 </table>
 </section>
+<section id="db_migration_write_trait_data" class="level3">
+<h3 class="anchored" data-anchor-id="db_migration_write_trait_data">4. DB_MIGRATION_WRITE_TRAIT_DATA</h3>
+<p><strong>Source:</strong> <code>modules/db_migration/write_trait_data/main.nf</code>  •  <strong>Script:</strong> <code>resources/usr/bin/write_trait_data.R</code></p>
+<p>Writes per-trait metadata, causal variants, and phenotype data to the database. Sources the pre-upscaled <code>.phen</code> and <code>.par</code> files from <code>GCTA_SIMULATE_PHENOTYPES</code> (Phase 2) via a <code>.multiMap</code> channel — before the mode-crossing at <code>GCTA_MAKE_GRM</code>. Each trait is written exactly once regardless of how many mode/type combinations are mapped.</p>
+<p><strong>Command:</strong></p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">write_trait_data.R</span> <span class="at">--group</span> <span class="va">${group}</span> <span class="at">--maf</span> <span class="va">${maf}</span> <span class="at">--nqtl</span> <span class="va">${nqtl}</span> <span class="dt">\</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--effect</span> <span class="va">${effect}</span> <span class="at">--rep</span> <span class="va">${rep}</span> <span class="at">--h2</span> <span class="va">${h2}</span> <span class="dt">\</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--pheno_file</span> <span class="va">${pheno_file}</span> <span class="at">--par_file</span> <span class="va">${par_file}</span> <span class="at">--base_dir</span> <span class="va">${base_dir}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 31%">
+<col style="width: 68%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--group</code></td>
+<td>Population/strain group identifier</td>
+</tr>
+<tr class="even">
+<td><code>--maf</code></td>
+<td>MAF threshold</td>
+</tr>
+<tr class="odd">
+<td><code>--nqtl</code></td>
+<td>Number of simulated QTLs</td>
+</tr>
+<tr class="even">
+<td><code>--effect</code></td>
+<td>Effect size distribution</td>
+</tr>
+<tr class="odd">
+<td><code>--rep</code></td>
+<td>Simulation replicate number</td>
+</tr>
+<tr class="even">
+<td><code>--h2</code></td>
+<td>Heritability</td>
+</tr>
+<tr class="odd">
+<td><code>--pheno_file</code></td>
+<td>Pre-upscaled <code>.phen</code> file from <code>GCTA_SIMULATE_PHENOTYPES</code></td>
+</tr>
+<tr class="even">
+<td><code>--par_file</code></td>
+<td>Causal variant <code>.par</code> file from <code>GCTA_SIMULATE_PHENOTYPES</code></td>
+</tr>
+<tr class="odd">
+<td><code>--base_dir</code></td>
+<td>Database output directory</td>
+</tr>
+</tbody>
+</table>
+<p><strong>R functions called:</strong></p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 37%">
+<col style="width: 29%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Function</th>
+<th>Source</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>generate_marker_set_id()</code></td>
+<td><code>R/database.R</code></td>
+<td>Compute parent marker-set hash from population and MAF</td>
+</tr>
+<tr class="even">
+<td><code>generate_trait_id()</code></td>
+<td><code>R/database.R</code></td>
+<td>Compute deterministic 20-char SHA-256 trait ID from marker-set hash and simulation parameters</td>
+</tr>
+<tr class="odd">
+<td><code>write_trait_metadata()</code></td>
+<td><code>R/database.R</code></td>
+<td>Write per-trait parameter metadata</td>
+</tr>
+<tr class="even">
+<td><code>write_causal_variants()</code></td>
+<td><code>R/database.R</code></td>
+<td>Write causal variant positions and effects</td>
+</tr>
+<tr class="odd">
+<td><code>write_phenotype_data()</code></td>
+<td><code>R/database.R</code></td>
+<td>Write per-strain phenotype values</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Trait ID:</strong> Computed via a two-step chain: <code>generate_marker_set_id(group, maf)</code> yields the parent 20-char SHA-256 marker-set hash; <code>generate_trait_id(marker_set_hash, nqtl, effect, rep, h2)</code> yields the trait hash. All IDs are 20-character truncated SHA-256 hashes. No Groovy counterpart. Stable across <code>-resume</code>.</p>
+<p><strong>Cardinality:</strong> 1 invocation per unique trait (nqtl × rep × h2 × maf × effect × group).</p>
+<p><strong>Inputs / Outputs:</strong></p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 36%">
+<col style="width: 20%">
+<col style="width: 43%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Direction</th>
+<th>File</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Input</td>
+<td><code>*_sims.phen</code></td>
+<td>Pre-upscaled phenotype file from <code>GCTA_SIMULATE_PHENOTYPES</code></td>
+</tr>
+<tr class="even">
+<td>Input</td>
+<td><code>*_sims.par</code></td>
+<td>Causal variant parameters from <code>GCTA_SIMULATE_PHENOTYPES</code></td>
+</tr>
+<tr class="odd">
+<td>Output</td>
+<td><code>{base_dir}/traits/{trait_id}.parquet</code></td>
+<td>Per-trait metadata (parameters + trait_id)</td>
+</tr>
+<tr class="even">
+<td>Output</td>
+<td><code>{base_dir}/traits/causal_variants/{trait_id}_causal.parquet</code></td>
+<td>QTL positions, effects, frequencies</td>
+</tr>
+<tr class="odd">
+<td>Output</td>
+<td><code>{base_dir}/traits/phenotypes/{trait_id}_phenotype.parquet</code></td>
+<td>Per-strain phenotype values</td>
+</tr>
+</tbody>
+</table>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>The stored phenotype is pre-upscaled (GCTA output before <code>PYTHON_CHECK_VP</code>). Values may differ from those used in the actual GWAS mapping by up to 1000× if <code>check_vp.py</code> applied upscaling. This is intentional — the ANOVA SS ratio for offline variance-explained estimation is scale-invariant.</p>
+</div>
+</div>
+</section>
 <section id="db_migration_aggregate_metadata" class="level3">
-<h3 class="anchored" data-anchor-id="db_migration_aggregate_metadata">3. DB_MIGRATION_AGGREGATE_METADATA</h3>
+<h3 class="anchored" data-anchor-id="db_migration_aggregate_metadata">5. DB_MIGRATION_AGGREGATE_METADATA</h3>
 <p><strong>Source:</strong> <code>modules/db_migration/aggregate_metadata/main.nf</code>  •  <strong>Script:</strong> <code>resources/usr/bin/aggregate_metadata.R</code></p>
 <p>Scans all mapping Parquet files and builds a metadata summary table. Runs once after <strong>all</strong> <code>DB_MIGRATION_WRITE_GWA_TO_DB</code> processes complete.</p>
 <p><strong>Command:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">aggregate_metadata.R</span> <span class="va">${base_dir}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>The script reads the first row of each Parquet file to extract metadata columns (<code>mapping_id</code>, <code>population</code>, <code>maf</code>, <code>nqtl</code>, <code>rep</code>, <code>h2</code>, <code>effect</code>, <code>algorithm</code>, <code>pca</code>, <code>trait</code>) and counts total markers per file.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">aggregate_metadata.R</span> <span class="va">${base_dir}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The script reads the first row of each Parquet file to extract FK hash columns (<code>mapping_id</code>, <code>marker_set_id</code>, <code>trait_id</code>) and counts total markers per file.</p>
 <p><strong>Barrier role:</strong> The database must be fully populated before analysis queries begin. The <code>summary</code> output gates all downstream <code>DB_MIGRATION_ANALYZE_QTL</code> invocations.</p>
 <p><strong>Inputs / Outputs:</strong></p>
 <table class="caption-top table">
@@ -4442,15 +4708,25 @@ vertical-align: -.125em;
 <h3 class="anchored" data-anchor-id="database-structure">Database Structure</h3>
 <p>The Parquet database uses a Hive partitioning scheme:</p>
 <pre><code>{outputDir}/db/
- ├── marker_sets/
- │   ├── {population}_{maf}_markers.parquet
- │   └── marker_set_metadata.parquet
+ ├── markers/
+ │   ├── marker_sets/
+ │   │   └── {marker_set_id}_markers.parquet
+ │   └── genotypes/
+ │       └── {marker_set_id}_genotypes.parquet
  ├── mappings/
  │   └── population={pop}/
  │       └── mapping_id={id}/
  │           └── data.parquet
- └── mappings_metadata.parquet</code></pre>
+ ├── traits/
+ │   ├── {trait_id}.parquet                      ◄── trait metadata
+ │   ├── causal_variants/
+ │   │   └── {trait_id}_causal.parquet           ◄── causal variant parameters
+ │   └── phenotypes/
+ │       └── {trait_id}_phenotype.parquet        ◄── pre-upscaled phenotype values
+ ├── mappings_metadata.parquet
+ └── marker_set_metadata.parquet</code></pre>
 <p>At query time, DuckDB reads the partitioned Parquet files directly via the <code>read_parquet()</code> function with <code>hive_partitioning = true</code>. This allows efficient filtering by population and mapping ID without loading all data into memory. See <code>R/queries.R::open_mapping_db()</code> for the connection setup.</p>
+<p>The <code>traits/</code> directory and its <code>causal_variants/</code> and <code>phenotypes/</code> subdirectories are written by <code>DB_MIGRATION_WRITE_TRAIT_DATA</code> and are not read by any pipeline process — they are stored for future offline analysis. See <a href="./database-structure.html#trait-data">Database Structure</a> for full schemas.</p>
 </section>
 </section>
 <section id="stage-2-qtl-detection" class="level2">
@@ -4460,12 +4736,12 @@ vertical-align: -.125em;
 <p><strong>Source:</strong> <code>modules/db_migration/analyze_qtl/main.nf</code>  •  <strong>Script:</strong> <code>resources/usr/bin/analyze_qtl.R</code></p>
 <p>Queries the populated database, applies the significance threshold, detects QTL intervals, and writes a QTL regions TSV. Runs once per upstream parameter combination × threshold (BF and EIGEN), doubling the cardinality relative to Phase 3.</p>
 <p><strong>Command:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">analyze_qtl.R</span> <span class="dt">\</span></span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--group</span> <span class="va">${group}</span> <span class="at">--maf</span> <span class="va">${maf}</span> <span class="at">--nqtl</span> <span class="va">${nqtl}</span> <span class="at">--effect</span> <span class="va">${effect}</span> <span class="dt">\</span></span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--rep</span> <span class="va">${rep}</span> <span class="at">--h2</span> <span class="va">${h2}</span> <span class="at">--mode</span> <span class="va">${mode}</span> <span class="at">--type</span> <span class="va">${type}</span> <span class="dt">\</span></span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--threshold</span> <span class="va">${threshold}</span> <span class="dt">\</span></span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--base_dir</span> <span class="va">${base_dir}</span> <span class="at">--ci_size</span> <span class="va">${ci_size}</span> <span class="at">--snp_grouping</span> <span class="va">${snp_grouping}</span> <span class="dt">\</span></span>
-<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--alpha</span> <span class="va">${alpha}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ex">analyze_qtl.R</span> <span class="dt">\</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--group</span> <span class="va">${group}</span> <span class="at">--maf</span> <span class="va">${maf}</span> <span class="at">--nqtl</span> <span class="va">${nqtl}</span> <span class="at">--effect</span> <span class="va">${effect}</span> <span class="dt">\</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--rep</span> <span class="va">${rep}</span> <span class="at">--h2</span> <span class="va">${h2}</span> <span class="at">--mode</span> <span class="va">${mode}</span> <span class="at">--type</span> <span class="va">${type}</span> <span class="dt">\</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--threshold</span> <span class="va">${threshold}</span> <span class="dt">\</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--base_dir</span> <span class="va">${base_dir}</span> <span class="at">--ci_size</span> <span class="va">${ci_size}</span> <span class="at">--snp_grouping</span> <span class="va">${snp_grouping}</span> <span class="dt">\</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--alpha</span> <span class="va">${alpha}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <table class="caption-top table">
 <colgroup>
 <col style="width: 31%">
@@ -4516,26 +4792,41 @@ vertical-align: -.125em;
 </thead>
 <tbody>
 <tr class="odd">
+<td><code>generate_marker_set_id()</code></td>
+<td><code>R/database.R</code></td>
+<td>Compute parent marker-set hash</td>
+</tr>
+<tr class="even">
+<td><code>generate_trait_id()</code></td>
+<td><code>R/database.R</code></td>
+<td>Compute trait hash from marker-set hash and simulation params</td>
+</tr>
+<tr class="odd">
+<td><code>generate_mapping_id()</code></td>
+<td><code>R/database.R</code></td>
+<td>Compute mapping hash for database lookup</td>
+</tr>
+<tr class="even">
 <td><code>query_for_threshold_analysis()</code></td>
 <td><code>R/queries.R</code></td>
 <td>Query mapping data from Parquet DB via DuckDB</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>get_threshold_params()</code></td>
 <td><code>R/database.R</code></td>
 <td>Retrieve marker count and EIGEN independent tests</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>calculate_threshold()</code></td>
 <td><code>R/analysis.R</code></td>
 <td>Compute <code>-log10(p)</code> threshold value</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>analyze_mapping()</code></td>
 <td><code>R/analysis.R</code></td>
 <td>Full QTL detection pipeline (flag → check → group → CI)</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>extract_qtl_regions()</code></td>
 <td><code>R/analysis.R</code></td>
 <td>Summarize one row per QTL interval</td>
@@ -4581,10 +4872,10 @@ vertical-align: -.125em;
 <p><strong>Source:</strong> <code>modules/r/get_gcta_intervals/main.nf</code>  •  <strong>Script:</strong> <code>bin/Get_GCTA_Intervals.R</code></p>
 <p>Reads the raw GWA output file directly (not from a database), applies the significance threshold, detects QTL intervals, and calculates variance explained (r²) for each significant marker.</p>
 <p><strong>Command:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> <span class="at">--vanilla</span> Get_GCTA_Intervals.R <span class="dt">\</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    <span class="va">${genotype_matrix}</span> <span class="va">${pheno_file}</span> <span class="va">${gwa_file}</span> <span class="dt">\</span></span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="va">${n_indep_tests}</span> <span class="va">${nqtl}</span> <span class="va">${rep}</span> <span class="va">${qtl_group_size}</span> <span class="va">${qtl_ci_size}</span> <span class="dt">\</span></span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    <span class="va">${h2}</span> <span class="va">${threshold}</span> <span class="va">${group}</span> <span class="va">${maf}</span> <span class="va">${effect}</span> <span class="va">${mode}</span>_<span class="va">${type}</span> <span class="va">${alpha}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> <span class="at">--vanilla</span> Get_GCTA_Intervals.R <span class="dt">\</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    <span class="va">${genotype_matrix}</span> <span class="va">${pheno_file}</span> <span class="va">${gwa_file}</span> <span class="dt">\</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="va">${n_indep_tests}</span> <span class="va">${nqtl}</span> <span class="va">${rep}</span> <span class="va">${qtl_group_size}</span> <span class="va">${qtl_ci_size}</span> <span class="dt">\</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    <span class="va">${h2}</span> <span class="va">${threshold}</span> <span class="va">${group}</span> <span class="va">${maf}</span> <span class="va">${effect}</span> <span class="va">${mode}</span>_<span class="va">${type}</span> <span class="va">${alpha}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <table class="caption-top table">
 <colgroup>
 <col style="width: 30%">
@@ -4764,13 +5055,13 @@ vertical-align: -.125em;
 <p><strong>Source:</strong> <code>modules/db_migration/assess_sims/main.nf</code>  •  <strong>Script:</strong> <code>resources/usr/bin/assess_sims.R</code></p>
 <p>Reads the QTL regions from <code>DB_MIGRATION_ANALYZE_QTL</code>, loads causal variants from the <code>.par</code> file, re-queries the mapping data for peak annotations, and compiles the full assessment by matching simulated and detected QTLs.</p>
 <p><strong>Command:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ex">assess_sims.R</span> <span class="dt">\</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--group</span> <span class="va">${group}</span> <span class="at">--maf</span> <span class="va">${maf}</span> <span class="at">--nqtl</span> <span class="va">${nqtl}</span> <span class="at">--effect</span> <span class="va">${effect}</span> <span class="dt">\</span></span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--rep</span> <span class="va">${rep}</span> <span class="at">--h2</span> <span class="va">${h2}</span> <span class="at">--mode</span> <span class="va">${mode}</span> <span class="at">--type</span> <span class="va">${type}</span> <span class="dt">\</span></span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--threshold</span> <span class="va">${threshold}</span> <span class="at">--par_file</span> <span class="va">${par_file}</span> <span class="dt">\</span></span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--qtl_regions</span> <span class="va">${qtl_regions}</span> <span class="dt">\</span></span>
-<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--base_dir</span> <span class="va">${base_dir}</span> <span class="at">--ci_size</span> <span class="va">${ci_size}</span> <span class="at">--snp_grouping</span> <span class="va">${snp_grouping}</span> <span class="dt">\</span></span>
-<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--alpha</span> <span class="va">${alpha}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ex">assess_sims.R</span> <span class="dt">\</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--group</span> <span class="va">${group}</span> <span class="at">--maf</span> <span class="va">${maf}</span> <span class="at">--nqtl</span> <span class="va">${nqtl}</span> <span class="at">--effect</span> <span class="va">${effect}</span> <span class="dt">\</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--rep</span> <span class="va">${rep}</span> <span class="at">--h2</span> <span class="va">${h2}</span> <span class="at">--mode</span> <span class="va">${mode}</span> <span class="at">--type</span> <span class="va">${type}</span> <span class="dt">\</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--threshold</span> <span class="va">${threshold}</span> <span class="at">--par_file</span> <span class="va">${par_file}</span> <span class="dt">\</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--qtl_regions</span> <span class="va">${qtl_regions}</span> <span class="dt">\</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--base_dir</span> <span class="va">${base_dir}</span> <span class="at">--ci_size</span> <span class="va">${ci_size}</span> <span class="at">--snp_grouping</span> <span class="va">${snp_grouping}</span> <span class="dt">\</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--alpha</span> <span class="va">${alpha}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -4881,10 +5172,10 @@ vertical-align: -.125em;
 <p><strong>Source:</strong> <code>modules/r/assess_sims/main.nf</code>  •  <strong>Script:</strong> <code>bin/Assess_Sims.R</code></p>
 <p>Loads the processed mapping output from <code>R_GET_GCTA_INTERVALS</code>, the genotype matrix, and the <code>.par</code> file to compile the assessment.</p>
 <p><strong>Command:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> <span class="at">--vanilla</span> Assess_Sims.R <span class="dt">\</span></span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    <span class="va">${processed_mapping}</span> <span class="va">${genotype_matrix}</span> <span class="va">${par_file}</span> <span class="va">${pheno_file}</span> <span class="dt">\</span></span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="va">${nqtl}</span> <span class="va">${rep}</span> <span class="va">${h2}</span> <span class="va">${maf}</span> <span class="va">${effect}</span> <span class="va">${group}</span> <span class="va">${mode}</span>_<span class="va">${type}</span>_<span class="va">${threshold}</span> <span class="dt">\</span></span>
-<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    <span class="va">${alpha}</span> <span class="va">${ci_size}</span> <span class="va">${snp_grouping}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> <span class="at">--vanilla</span> Assess_Sims.R <span class="dt">\</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    <span class="va">${processed_mapping}</span> <span class="va">${genotype_matrix}</span> <span class="va">${par_file}</span> <span class="va">${pheno_file}</span> <span class="dt">\</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    <span class="va">${nqtl}</span> <span class="va">${rep}</span> <span class="va">${h2}</span> <span class="va">${maf}</span> <span class="va">${effect}</span> <span class="va">${group}</span> <span class="va">${mode}</span>_<span class="va">${type}</span>_<span class="va">${threshold}</span> <span class="dt">\</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    <span class="va">${alpha}</span> <span class="va">${ci_size}</span> <span class="va">${snp_grouping}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <table class="caption-top table">
 <colgroup>
 <col style="width: 30%">
@@ -5036,7 +5327,7 @@ vertical-align: -.125em;
 <section id="assessment-output-schema" class="level3">
 <h3 class="anchored" data-anchor-id="assessment-output-schema">Assessment Output Schema</h3>
 <div class="callout callout-style-default callout-note callout-titled">
-<div class="callout-header d-flex align-content-center collapsed" data-bs-toggle="collapse" data-bs-target=".callout-4-contents" aria-controls="callout-4" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-header d-flex align-content-center collapsed" data-bs-toggle="collapse" data-bs-target=".callout-5-contents" aria-controls="callout-5" aria-expanded="false" aria-label="Toggle callout">
 <div class="callout-icon-container">
 <i class="callout-icon"></i>
 </div>
@@ -5045,7 +5336,7 @@ vertical-align: -.125em;
 </div>
 <div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
 </div>
-<div id="callout-4" class="callout-4-contents callout-collapse collapse">
+<div id="callout-5" class="callout-5-contents callout-collapse collapse">
 <div class="callout-body-container callout-body">
 <p>The assessment output files (<code>db_simulation_assessment_results.tsv</code> and <code>simulation_assessment_results.tsv</code>) share a standardized column schema.</p>
 <p><strong>QTL identity:</strong></p>

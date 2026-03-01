@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-02-18">
+<meta name="dcterms.date" content="2026-03-01">
 
 <title>Assessment Cross-Validation – nemascan-sims-nf</title>
 <style>
@@ -3960,7 +3960,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">February 18, 2026</p>
+      <p class="date">March 1, 2026</p>
     </div>
   </div>
   
@@ -4043,13 +4043,13 @@ vertical-align: -.125em;
 </section>
 <section id="run-the-automated-test-suite" class="level3">
 <h3 class="anchored" data-anchor-id="run-the-automated-test-suite">2. Run the automated test suite</h3>
-<p>The test file <code>tests/testthat/test-assessment_cross_validation.R</code> asserts that all three concordance scores are 1.0 for every mapping entry. It runs as part of the standard test suite:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_EXISTING_ASSESSMENT</span><span class="op">=</span>/path/to/simulation_assessment_results.tsv <span class="dt">\</span></span>
+<p>The test file <code>tests/testthat/test-assessment_cross_validation.R</code> asserts that all three concordance scores are 1.0 for every mapping entry. It also verifies that <code>generate_mapping_id()</code> is deterministic: the same simulation parameters always produce the same 20-character hex <code>mapping_id</code> across repeated invocations. It runs as part of the standard test suite:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_LEGACY_ASSESSMENT</span><span class="op">=</span>/path/to/simulation_assessment_results.tsv <span class="dt">\</span></span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_DB_ASSESSMENT</span><span class="op">=</span>/path/to/db_simulation_assessment_results.tsv <span class="dt">\</span></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>If using the <code>tests/collect_test_data.sh</code> helper:</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> tests/collect_test_data.sh</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_EXISTING_ASSESSMENT</span><span class="op">=</span>tests/integration_data/simulation_assessment_results.tsv <span class="dt">\</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_LEGACY_ASSESSMENT</span><span class="op">=</span>tests/integration_data/simulation_assessment_results.tsv <span class="dt">\</span></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_DB_ASSESSMENT</span><span class="op">=</span>tests/integration_data/db_simulation_assessment_results.tsv <span class="dt">\</span></span>
 <span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>The tests skip automatically when the environment variables are not set, so unit-only runs are unaffected.</p>
@@ -4058,11 +4058,11 @@ vertical-align: -.125em;
 <h3 class="anchored" data-anchor-id="render-the-interactive-notebook">3. Render the interactive notebook</h3>
 <p>The notebook at <code>tests/notebooks/assessment_cross_validation.qmd</code> produces an HTML report with concordance tables, score distribution histograms, heatmaps, and per-QTL interval detail. To render it after a pipeline run:</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> render tests/notebooks/assessment_cross_validation.qmd <span class="dt">\</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">-P</span> existing_assessment:/path/to/simulation_assessment_results.tsv <span class="dt">\</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">-P</span> legacy_assessment:/path/to/simulation_assessment_results.tsv <span class="dt">\</span></span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">-P</span> db_assessment:/path/to/db_simulation_assessment_results.tsv <span class="dt">\</span></span>
 <span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">-P</span> db_dir:/path/to/db</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Or set environment variables and render without <code>-P</code> flags:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">TEST_EXISTING_ASSESSMENT</span><span class="op">=</span>/path/to/simulation_assessment_results.tsv</span>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">TEST_LEGACY_ASSESSMENT</span><span class="op">=</span>/path/to/simulation_assessment_results.tsv</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">TEST_DB_ASSESSMENT</span><span class="op">=</span>/path/to/db_simulation_assessment_results.tsv</span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">TEST_DB_DIR</span><span class="op">=</span>/path/to/db</span>
 <span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> render tests/notebooks/assessment_cross_validation.qmd</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -4088,7 +4088,7 @@ vertical-align: -.125em;
 <p>The notebook can be adapted to compare any two assessment TSVs that share the 35-column schema. To compare outputs from different pipeline versions or parameter configurations:</p>
 <ol type="1">
 <li>Copy the notebook to a working directory.</li>
-<li>Set <code>existing_assessment_path</code> and <code>db_assessment_path</code> to point to the two TSVs being compared (the variable names reflect the original DB-vs-legacy use case but accept any conforming TSV).</li>
+<li>Set <code>legacy_assessment_path</code> and <code>db_assessment_path</code> to point to the two TSVs being compared (the variable names reflect the original DB-vs-legacy use case but accept any conforming TSV).</li>
 <li>Render with Quarto as described above.</li>
 </ol>
 <p>The <code>normalize_algorithm_id()</code> helper handles the <code>algorithm_id</code> format difference between DB-path (<code>LMM-EXACT-INBRED_noPCA_EIGEN</code>) and legacy-path (<code>inbred_nopca_EIGEN</code>) by uppercasing and stripping the <code>LMM-EXACT-</code> prefix. If both TSVs use the same format, this normalization is a no-op.</p>

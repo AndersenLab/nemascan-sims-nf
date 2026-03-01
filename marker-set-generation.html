@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-02-18">
+<meta name="dcterms.date" content="2026-03-01">
 
 <title>Phase 1: Marker Set Generation – nemascan-sims-nf</title>
 <style>
@@ -3965,7 +3965,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">February 18, 2026</p>
+      <p class="date">March 1, 2026</p>
     </div>
   </div>
   
@@ -3992,7 +3992,12 @@ vertical-align: -.125em;
  PLINK_RECODE_VCF ──────────► PLINK binaries (.bed/.bim/.fam), markers.txt
  │                                    │
  ▼                                    ▼
- (to Phase 2/3)          BCFTOOLS_CREATE_GENOTYPE_MATRIX ──► genotype matrix TSV</code></pre>
+ (to Phase 2/3)          BCFTOOLS_CREATE_GENOTYPE_MATRIX ──► genotype matrix TSV
+                                       │
+                          (DB path — see callout notes below)
+                          ├─ DB_MIGRATION_WRITE_MARKER_SET ──► marker_sets/{id}_markers.parquet
+                          │    (requires .bim + n_indep_tests from EIGEN)
+                          └─ DB_MIGRATION_WRITE_GENOTYPE_MATRIX ──► genotypes/{id}_genotypes.parquet</code></pre>
 <p>Each process is described below with the exact commands run, key parameters, and links to external tool documentation.</p>
 </section>
 <section id="local_get_contig_info-upstream-helper" class="level2">
@@ -4094,7 +4099,7 @@ vertical-align: -.125em;
 <tr class="odd">
 <td>Input</td>
 <td><code>*.vcf.gz</code> + <code>.tbi</code></td>
-<td>Chromosome-renamed VCF from <code>BCFTOOLS_RENAME_CHROMS</code></td>
+<td>Raw input VCF (original, before chromosome renaming)</td>
 </tr>
 <tr class="even">
 <td>Input</td>
@@ -4329,7 +4334,7 @@ MtDNA   7</code></pre>
 <tr class="even">
 <td>Input</td>
 <td><code>mito_name</code> (val)</td>
-<td>Mitochondrial chromosome name to exclude (from <code>LOCAL_GET_CONTIG_INFO</code>)</td>
+<td>Numeric mitochondrial chromosome ID (looked up from <code>LOCAL_GET_CONTIG_INFO</code> mapping using the <code>--mito_name</code> parameter; e.g., <code>7</code> for MtDNA)</td>
 </tr>
 <tr class="odd">
 <td>Input</td>
@@ -4363,6 +4368,19 @@ MtDNA   7</code></pre>
 </tr>
 </tbody>
 </table>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>The <code>TO_SIMS.bim</code> file is consumed by <code>DB_MIGRATION_WRITE_MARKER_SET</code>, which writes the LD-pruned variant list to <code>{db}/markers/marker_sets/{marker_set_id}_markers.parquet</code>. <code>marker_set_id</code> is the 20-character SHA-256 hash of the population and MAF threshold, computed by <code>generate_marker_set_id()</code> in <code>R/database.R</code>. <code>DB_MIGRATION_WRITE_MARKER_SET</code> also requires <code>n_indep_tests</code> (number of independent tests from EIGEN analysis) before it can run; it stores this alongside the marker list in <code>marker_set_metadata.parquet</code>.</p>
+</div>
+</div>
 </section>
 </section>
 <section id="bcftools_create_genotype_matrix" class="level2">
@@ -4483,6 +4501,19 @@ MtDNA   7</code></pre>
 </tr>
 </tbody>
 </table>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>This TSV is consumed by two downstream paths: the legacy path (<code>R_GET_GCTA_INTERVALS</code>, <code>R_ASSESS_SIMS</code>) uses it for variance explained estimation; the DB path (<code>DB_MIGRATION_WRITE_GENOTYPE_MATRIX</code>) pivots it to long format and stores it in <code>{db}/markers/genotypes/{marker_set_id}_genotypes.parquet</code> for future offline analysis. <code>marker_set_id</code> is the 20-character SHA-256 hash of the population and MAF threshold, computed by <code>generate_marker_set_id()</code> in <code>R/database.R</code>.</p>
+</div>
+</div>
 
 
 </section>

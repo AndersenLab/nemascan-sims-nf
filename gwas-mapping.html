@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-02-18">
+<meta name="dcterms.date" content="2026-03-01">
 
 <title>Phase 3: GWAS Mapping – nemascan-sims-nf</title>
 <style>
@@ -3950,6 +3950,7 @@ vertical-align: -.125em;
   <li><a href="#step-2-conditional-pca" id="toc-step-2-conditional-pca" class="nav-link" data-scroll-target="#step-2-conditional-pca">Step 2: Conditional PCA</a></li>
   <li><a href="#step-3-association-mapping" id="toc-step-3-association-mapping" class="nav-link" data-scroll-target="#step-3-association-mapping">Step 3: Association mapping</a></li>
   <li><a href="#summary-of-the-four-mapping-conditions" id="toc-summary-of-the-four-mapping-conditions" class="nav-link" data-scroll-target="#summary-of-the-four-mapping-conditions">Summary of the four mapping conditions</a></li>
+  <li><a href="#mapping-identifiers" id="toc-mapping-identifiers" class="nav-link" data-scroll-target="#mapping-identifiers">Mapping identifiers</a></li>
   <li><a href="#example-.fastgwa-output" id="toc-example-.fastgwa-output" class="nav-link" data-scroll-target="#example-.fastgwa-output">Example <code>.fastGWA</code> output</a></li>
   <li><a href="#inputs-outputs-2" id="toc-inputs-outputs-2" class="nav-link" data-scroll-target="#inputs-outputs-2">Inputs / Outputs</a></li>
   </ul></li>
@@ -3973,7 +3974,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">February 18, 2026</p>
+      <p class="date">March 1, 2026</p>
     </div>
   </div>
   
@@ -3998,12 +3999,14 @@ vertical-align: -.125em;
  │
  ▼
  GCTA_PERFORM_GWA ───────────► .fastGWA or .mlma association results
-                                (to Phase 4: QTL Detection &amp; Assessment)</code></pre>
+                                 │
+                                 ├─ Phase 4: QTL Detection &amp; Assessment
+                                 └─ DB Migration: write_gwa_to_db.R</code></pre>
 <p>Each process is described below with the exact commands run, key parameters, and links to external tool documentation.</p>
 <p><strong>Mode and type parameterization:</strong> The mapping phase is parameterized by two variables defined in <code>main.nf</code>:</p>
 <ul>
-<li><strong>mode</strong>: <code>&quot;inbred&quot;</code> or <code>&quot;loco&quot;</code> — determines the type of GRM and the GWA algorithm</li>
-<li><strong>type</strong>: <code>&quot;pca&quot;</code> or <code>&quot;nopca&quot;</code> — determines whether the first principal component eigenvector is included as a covariate</li>
+<li><strong>mode</strong>: <code>&quot;inbred&quot;</code> or <code>&quot;loco&quot;</code> — determines the type of GRM and the GWA algorithm. These lowercase values are the canonical <code>algorithm</code> identifiers used in database mapping IDs.</li>
+<li><strong>type</strong>: <code>&quot;pca&quot;</code> or <code>&quot;nopca&quot;</code> — determines whether the first principal component eigenvector is included as a covariate. <code>type == &quot;pca&quot;</code> maps to <code>pca = TRUE</code> in the database mapping ID.</li>
 </ul>
 <pre class="nextflow"><code>ch_mode = Channel.of(
     [&quot;inbred&quot;, &quot;fastGWA&quot;],
@@ -4426,6 +4429,66 @@ QG4080 QG4080 9.589</code></pre>
 </tbody>
 </table>
 </section>
+<section id="mapping-identifiers" class="level3">
+<h3 class="anchored" data-anchor-id="mapping-identifiers">Mapping identifiers</h3>
+<p>Each of the four mapping conditions is assigned a unique <code>mapping_id</code> by <code>write_gwa_to_db.R</code> during database migration. The ID is a 20-character SHA-256 hash computed from the parent trait hash and the two condition parameters:</p>
+<pre><code>mapping_id = SHA-256(&quot;v=1|parent={trait_hash}|algorithm={algorithm}|pca={pca_str}&quot;)[0:20]</code></pre>
+<p>where:</p>
+<ul>
+<li><code>{trait_hash}</code> is the 20-char parent <code>trait_id</code> hash (itself derived from <code>marker_set_id</code>)</li>
+<li><code>{algorithm}</code> is the lowercased <code>mode</code> value: <code>&quot;inbred&quot;</code> or <code>&quot;loco&quot;</code></li>
+<li><code>{pca_str}</code> is <code>&quot;TRUE&quot;</code> if <code>type == &quot;pca&quot;</code>, otherwise <code>&quot;FALSE&quot;</code></li>
+</ul>
+<p>The full hash hierarchy is:</p>
+<pre><code>marker_set_id  (population + maf)
+  └── trait_id (marker_set_id + nqtl + effect + rep + h2)
+        └── mapping_id (trait_id + algorithm + pca)</code></pre>
+<p>Because each level embeds its parent hash, a <code>mapping_id</code> uniquely encodes the entire simulation and mapping parameter chain. <code>generate_mapping_id()</code> normalizes <code>algorithm</code> to lowercase via <code>tolower()</code>. The canonical <code>algorithm</code> values are <code>&quot;inbred&quot;</code> and <code>&quot;loco&quot;</code>, matching <code>val(mode)</code> from this process after normalization.</p>
+<p>When mapping results are written to the database, only measurement columns and foreign keys are stored per row:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Column</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>marker_set_id</code></td>
+<td>Hash join key to marker set</td>
+</tr>
+<tr class="even">
+<td><code>trait_id</code></td>
+<td>Hash join key to parent trait</td>
+</tr>
+<tr class="odd">
+<td><code>mapping_id</code></td>
+<td>Hash join key to mapping metadata</td>
+</tr>
+<tr class="even">
+<td><code>marker</code></td>
+<td>Marker ID (<code>CHROM:POS</code> format)</td>
+</tr>
+<tr class="odd">
+<td><code>AF1</code></td>
+<td>Effect allele frequency</td>
+</tr>
+<tr class="even">
+<td><code>BETA</code></td>
+<td>Effect size estimate</td>
+</tr>
+<tr class="odd">
+<td><code>SE</code></td>
+<td>Standard error</td>
+</tr>
+<tr class="even">
+<td><code>P</code></td>
+<td>P-value</td>
+</tr>
+</tbody>
+</table>
+<p>Simulation parameters (<code>nqtl</code>, <code>rep</code>, <code>h2</code>, <code>effect</code>, <code>algorithm</code>, <code>pca</code>, <code>population</code>, <code>maf</code>) are stored once in <code>mappings_metadata.parquet</code> and recovered via FK joins — they are not repeated in every data row.</p>
+</section>
 <section id="example-.fastgwa-output" class="level3">
 <h3 class="anchored" data-anchor-id="example-.fastgwa-output">Example <code>.fastGWA</code> output</h3>
 <p>First 10 lines from test data (<code>data/test_data/.../GCTA_PERFORM_GWA/*_lmm-exact_inbred_pca.fastGWA</code>):</p>
@@ -4548,6 +4611,9 @@ QG4080 QG4080 9.589</code></pre>
 </tr>
 </tbody>
 </table>
+<blockquote class="blockquote">
+<p><strong>Database migration:</strong> After this process, <code>write_gwa_to_db.R</code> reads the association result file and writes it to the database using the mapping identifier scheme described above. <code>mode</code> is passed as <code>algorithm</code> (normalized to lowercase by <code>generate_mapping_id()</code>). <code>type</code> is evaluated as <code>type == &quot;pca&quot;</code> to produce an R logical, which is then serialized as <code>&quot;TRUE&quot;</code> or <code>&quot;FALSE&quot;</code> in the hash string.</p>
+</blockquote>
 
 
 </section>

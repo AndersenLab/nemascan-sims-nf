@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-02-18">
+<meta name="dcterms.date" content="2026-03-01">
 
 <title>Development – nemascan-sims-nf</title>
 <style>
@@ -3938,9 +3938,7 @@ vertical-align: -.125em;
   </ul></li>
   <li><a href="#publishing-to-github-pages" id="toc-publishing-to-github-pages" class="nav-link" data-scroll-target="#publishing-to-github-pages">Publishing to GitHub Pages</a>
   <ul class="collapse">
-  <li><a href="#option-a-publish-from-a-branch-no-ci-required" id="toc-option-a-publish-from-a-branch-no-ci-required" class="nav-link" data-scroll-target="#option-a-publish-from-a-branch-no-ci-required">Option A: Publish from a Branch (No CI Required)</a></li>
-  <li><a href="#option-b-github-actions-automated-build-on-push" id="toc-option-b-github-actions-automated-build-on-push" class="nav-link" data-scroll-target="#option-b-github-actions-automated-build-on-push">Option B: GitHub Actions (Automated Build on Push)</a></li>
-  <li><a href="#choosing-an-approach" id="toc-choosing-an-approach" class="nav-link" data-scroll-target="#choosing-an-approach">Choosing an Approach</a></li>
+  <li><a href="#publish-from-a-branch-no-ci-required" id="toc-publish-from-a-branch-no-ci-required" class="nav-link" data-scroll-target="#publish-from-a-branch-no-ci-required">Publish from a Branch (No CI Required)</a></li>
   </ul></li>
   <li><a href="#running-tests" id="toc-running-tests" class="nav-link" data-scroll-target="#running-tests">Running Tests</a>
   <ul class="collapse">
@@ -3970,7 +3968,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">February 18, 2026</p>
+      <p class="date">March 1, 2026</p>
     </div>
   </div>
   
@@ -4068,8 +4066,8 @@ vertical-align: -.125em;
 <section id="publishing-to-github-pages" class="level2">
 <h2 class="anchored" data-anchor-id="publishing-to-github-pages">Publishing to GitHub Pages</h2>
 <p>The documentation site can be published as a GitHub Pages site for the repository. There are two approaches depending on whether you want to commit the rendered HTML or build it in CI.</p>
-<section id="option-a-publish-from-a-branch-no-ci-required" class="level3">
-<h3 class="anchored" data-anchor-id="option-a-publish-from-a-branch-no-ci-required">Option A: Publish from a Branch (No CI Required)</h3>
+<section id="publish-from-a-branch-no-ci-required" class="level3">
+<h3 class="anchored" data-anchor-id="publish-from-a-branch-no-ci-required">Publish from a Branch (No CI Required)</h3>
 <p>This approach uses the <code>quarto publish</code> command to push rendered HTML to a dedicated <code>gh-pages</code> branch. No CI configuration is needed.</p>
 <p><strong>One-time setup:</strong></p>
 <ol type="1">
@@ -4088,142 +4086,97 @@ vertical-align: -.125em;
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> publish gh-pages docs/</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>This is a manual step — the site is not automatically rebuilt on push.</p>
 </section>
-<section id="option-b-github-actions-automated-build-on-push" class="level3">
-<h3 class="anchored" data-anchor-id="option-b-github-actions-automated-build-on-push">Option B: GitHub Actions (Automated Build on Push)</h3>
-<p>This approach uses a GitHub Actions workflow to render the site on every push to <code>main</code> and deploy the output to GitHub Pages.</p>
-<p><strong>One-time setup:</strong></p>
-<ol type="1">
-<li><p>In the GitHub repository settings, go to <strong>Settings &gt; Pages</strong> and configure:</p>
-<ul>
-<li><strong>Source:</strong> GitHub Actions</li>
-</ul></li>
-<li><p>Create <code>.github/workflows/publish-docs.yml</code>:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode yaml code-with-copy"><code class="sourceCode yaml"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">name</span><span class="kw">:</span><span class="at"> Publish Docs</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="fu">on</span><span class="kw">:</span></span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">push</span><span class="kw">:</span></span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">branches</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="at">main</span><span class="kw">]</span></span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">paths</span><span class="kw">:</span></span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="st">&#39;docs/**&#39;</span></span>
-<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="st">&#39;R/**&#39;</span></span>
-<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="fu">permissions</span><span class="kw">:</span></span>
-<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">contents</span><span class="kw">:</span><span class="at"> read</span></span>
-<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">pages</span><span class="kw">:</span><span class="at"> write</span></span>
-<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">id-token</span><span class="kw">:</span><span class="at"> write</span></span>
-<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a><span class="fu">concurrency</span><span class="kw">:</span></span>
-<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">group</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;pages&quot;</span></span>
-<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">cancel-in-progress</span><span class="kw">:</span><span class="at"> </span><span class="ch">false</span></span>
-<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a><span class="fu">jobs</span><span class="kw">:</span></span>
-<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">build</span><span class="kw">:</span></span>
-<span id="cb7-21"><a href="#cb7-21" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">runs-on</span><span class="kw">:</span><span class="at"> ubuntu-latest</span></span>
-<span id="cb7-22"><a href="#cb7-22" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">steps</span><span class="kw">:</span></span>
-<span id="cb7-23"><a href="#cb7-23" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="fu">uses</span><span class="kw">:</span><span class="at"> actions/checkout@v4</span></span>
-<span id="cb7-24"><a href="#cb7-24" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-25"><a href="#cb7-25" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="fu">uses</span><span class="kw">:</span><span class="at"> quarto-dev/quarto-actions/setup@v2</span></span>
-<span id="cb7-26"><a href="#cb7-26" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-27"><a href="#cb7-27" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> Render site</span></span>
-<span id="cb7-28"><a href="#cb7-28" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">run</span><span class="kw">:</span><span class="at"> quarto render docs/</span></span>
-<span id="cb7-29"><a href="#cb7-29" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-30"><a href="#cb7-30" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="fu">uses</span><span class="kw">:</span><span class="at"> actions/upload-pages-artifact@v3</span></span>
-<span id="cb7-31"><a href="#cb7-31" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">with</span><span class="kw">:</span></span>
-<span id="cb7-32"><a href="#cb7-32" aria-hidden="true" tabindex="-1"></a><span class="at">          </span><span class="fu">path</span><span class="kw">:</span><span class="at"> docs/_site</span></span>
-<span id="cb7-33"><a href="#cb7-33" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-34"><a href="#cb7-34" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">deploy</span><span class="kw">:</span></span>
-<span id="cb7-35"><a href="#cb7-35" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">needs</span><span class="kw">:</span><span class="at"> build</span></span>
-<span id="cb7-36"><a href="#cb7-36" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">runs-on</span><span class="kw">:</span><span class="at"> ubuntu-latest</span></span>
-<span id="cb7-37"><a href="#cb7-37" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">environment</span><span class="kw">:</span></span>
-<span id="cb7-38"><a href="#cb7-38" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">name</span><span class="kw">:</span><span class="at"> github-pages</span></span>
-<span id="cb7-39"><a href="#cb7-39" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">url</span><span class="kw">:</span><span class="at"> ${{ steps.deployment.outputs.page_url }}</span></span>
-<span id="cb7-40"><a href="#cb7-40" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">steps</span><span class="kw">:</span></span>
-<span id="cb7-41"><a href="#cb7-41" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="fu">id</span><span class="kw">:</span><span class="at"> deployment</span></span>
-<span id="cb7-42"><a href="#cb7-42" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">uses</span><span class="kw">:</span><span class="at"> actions/deploy-pages@v4</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
-</ol>
-<p>This workflow triggers only when files in <code>docs/</code> or <code>R/</code> change, keeping unrelated pushes fast. The site is published to <code>https://andersenlab.github.io/nemascan-sims-nf/</code>.</p>
-</section>
-<section id="choosing-an-approach" class="level3">
-<h3 class="anchored" data-anchor-id="choosing-an-approach">Choosing an Approach</h3>
-<table class="caption-top table">
-<colgroup>
-<col style="width: 21%">
-<col style="width: 40%">
-<col style="width: 38%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Consideration</th>
-<th>Option A (<code>quarto publish</code>)</th>
-<th>Option B (GitHub Actions)</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Setup effort</td>
-<td>Minimal</td>
-<td>Requires workflow file</td>
-</tr>
-<tr class="even">
-<td>Rebuild trigger</td>
-<td>Manual command</td>
-<td>Automatic on push to main</td>
-</tr>
-<tr class="odd">
-<td>CI dependency</td>
-<td>None</td>
-<td>GitHub Actions</td>
-</tr>
-<tr class="even">
-<td>Best for</td>
-<td>Infrequent doc updates</td>
-<td>Docs that change with code</td>
-</tr>
-</tbody>
-</table>
-</section>
 </section>
 <section id="running-tests" class="level2">
 <h2 class="anchored" data-anchor-id="running-tests">Running Tests</h2>
 <section id="unit-tests" class="level3">
 <h3 class="anchored" data-anchor-id="unit-tests">Unit Tests</h3>
 <p>Unit tests use static fixtures and do not require pipeline output:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Tests are organized by functional area in <code>tests/testthat/</code>. Phase 5 added two new test files:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 30%">
+<col style="width: 70%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>File</th>
+<th>What it tests</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>test-genotype_storage.R</code></td>
+<td>Round-trip <code>write_genotype_matrix()</code> / <code>read_genotype_matrix()</code>; schema validation (CHROM, POS, strain, allele); existence checks; verifies genotype files are excluded from the <code>markers</code> DuckDB view</td>
+</tr>
+<tr class="even">
+<td><code>test-trait_storage.R</code></td>
+<td><code>generate_trait_id()</code> determinism (same params → same ID), uniqueness (different params → different IDs), character class (<code>[0-9a-f]{12}</code>), and golden-value hash; round-trips for <code>write_trait_metadata()</code>, <code>write_causal_variants()</code>, <code>write_phenotype_data()</code>; <code>overwrite = TRUE</code> retry behavior; <code>phenotype_exists()</code> existence check</td>
+</tr>
+</tbody>
+</table>
+<section id="test-fixtures" class="level4">
+<h4 class="anchored" data-anchor-id="test-fixtures">Test Fixtures</h4>
+<p><code>tests/fixtures/</code> contains static synthetic inputs for unit tests:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 31%">
+<col style="width: 68%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>File</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>test_genotype_matrix.tsv</code></td>
+<td>5 markers × 3 strains, wide-format TSV with <code>−1</code>/<code>1</code>/<code>NA</code> encoding — includes a heterozygous (NA) case to verify encoding is preserved</td>
+</tr>
+<tr class="even">
+<td><code>test_sims.phen</code></td>
+<td>3-strain phenotype file in GCTA <code>.phen</code> format (space-delimited: FID IID value, no header)</td>
+</tr>
+</tbody>
+</table>
+</section>
 </section>
 <section id="integration-tests" class="level3">
 <h3 class="anchored" data-anchor-id="integration-tests">Integration Tests</h3>
 <p>Integration tests require pipeline output collected by <code>tests/collect_test_data.sh</code>:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Run pipeline and collect outputs</span></span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> tests/collect_test_data.sh</span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Or collect from a previous run</span></span>
-<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> tests/collect_test_data.sh <span class="at">--collect-only</span></span>
-<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Run integration tests with collected data</span></span>
-<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_DB_DIR</span><span class="op">=</span>tests/integration_data/db <span class="dt">\</span></span>
-<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_WORK_DIR</span><span class="op">=</span>tests/.nf-work <span class="dt">\</span></span>
-<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_EXISTING_ASSESSMENT</span><span class="op">=</span>tests/integration_data/simulation_assessment_results.tsv <span class="dt">\</span></span>
-<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_DB_ASSESSMENT</span><span class="op">=</span>tests/integration_data/db_simulation_assessment_results.tsv <span class="dt">\</span></span>
-<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Run pipeline and collect outputs</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> tests/collect_test_data.sh</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Or collect from a previous run</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> tests/collect_test_data.sh <span class="at">--collect-only</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Run integration tests with collected data</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_DB_DIR</span><span class="op">=</span>tests/integration_data/db <span class="dt">\</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_WORK_DIR</span><span class="op">=</span>tests/.nf-work <span class="dt">\</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_LEGACY_ASSESSMENT</span><span class="op">=</span>tests/integration_data/simulation_assessment_results.tsv <span class="dt">\</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_DB_ASSESSMENT</span><span class="op">=</span>tests/integration_data/db_simulation_assessment_results.tsv <span class="dt">\</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Integration test files skip automatically when the required environment variables are not set.</p>
 </section>
 </section>
 <section id="pipeline-stub-runs" class="level2">
 <h2 class="anchored" data-anchor-id="pipeline-stub-runs">Pipeline Stub Runs</h2>
 <p>Stub runs verify process wiring without executing real computations:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Fixed architecture</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> run main.nf <span class="at">-profile</span> test <span class="at">-stub-run</span></span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Variable architecture</span></span>
-<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> run main.nf <span class="at">-profile</span> test_variable <span class="at">-stub-run</span></span>
-<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="co"># With legacy assessment path</span></span>
-<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> run main.nf <span class="at">-profile</span> test <span class="at">--legacy_assess</span> <span class="at">-stub-run</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Fixed architecture</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> run main.nf <span class="at">-profile</span> test <span class="at">-stub-run</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Variable architecture</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> run main.nf <span class="at">-profile</span> test_variable <span class="at">-stub-run</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="co"># With legacy assessment path</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> run main.nf <span class="at">-profile</span> test <span class="at">--legacy_assess</span> <span class="at">-stub-run</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="generating-test-data" class="level2">
 <h2 class="anchored" data-anchor-id="generating-test-data">Generating Test Data</h2>
 <p>The test VCF is not committed to the repository due to its size. Regenerate it from a source CaeNDR VCF:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ex">./data/test/generate_test_vcf.sh</span> /path/to/WI.20220216.hard-filter.isotype.vcf.gz</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ex">./data/test/generate_test_vcf.sh</span> /path/to/WI.20220216.hard-filter.isotype.vcf.gz</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>This produces <code>data/test/test.vcf.gz</code> (~825 MB, 13 strains, chromosomes I/II/V) and its tabix index.</p>
 </section>
 <section id="project-structure" class="level2">
@@ -4239,11 +4192,25 @@ vertical-align: -.125em;
  │   ├── python/                 Causal variant selection, variance check
  │   ├── r/                      Legacy QTL detection and assessment
  │   ├── db_migration/           DB-path ingestion, analysis, assessment
+ │   │   ├── write_marker_set/
+ │   │   ├── write_genotype_matrix/   ◄── Phase 5: long-format genotype storage
+ │   │   ├── write_gwa_to_db/
+ │   │   ├── write_trait_data/        ◄── Phase 5: trait metadata/causal/phenotype
+ │   │   ├── aggregate_metadata/
+ │   │   ├── analyze_qtl/
+ │   │   └── assess_sims/
  │   └── local/                  Helper processes (contig info, eigens)
  ├── bin/                        Pipeline scripts (available to all processes)
  ├── R/                          Shared R library (sourced by db_migration + tests)
  ├── data/test/                  Test VCF, parameter files, strain lists
- ├── tests/                      R/testthat test suite
+ ├── tests/
+ │   ├── testthat/               R/testthat unit test files
+ │   │   ├── test-genotype_storage.R  ◄── Phase 5: genotype matrix round-trip
+ │   │   └── test-trait_storage.R     ◄── Phase 5: trait ID, metadata, causal, phenotype
+ │   ├── fixtures/               Static inputs for unit tests
+ │   │   ├── test_genotype_matrix.tsv ◄── Phase 5: 5 markers × 3 strains
+ │   │   └── test_sims.phen           ◄── Phase 5: 3-strain phenotype fixture
+ │   └── notebooks/              Cross-validation analysis notebooks
  └── docs/                       Quarto documentation site</code></pre>
 <p>Each module directory contains a <code>main.nf</code> with the process definition and optionally a <code>resources/</code> directory with scripts added to <code>$PATH</code> via <code>nextflow.enable.moduleBinaries = true</code>.</p>
 

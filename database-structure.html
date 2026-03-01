@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-02-18">
+<meta name="dcterms.date" content="2026-03-01">
 
 <title>Database Structure – nemascan-sims-nf</title>
 <style>
@@ -3937,18 +3937,30 @@ vertical-align: -.125em;
   <li><a href="#marker-set-metadata-schema" id="toc-marker-set-metadata-schema" class="nav-link" data-scroll-target="#marker-set-metadata-schema">Marker Set Metadata Schema</a></li>
   <li><a href="#example-querying-a-marker-set" id="toc-example-querying-a-marker-set" class="nav-link" data-scroll-target="#example-querying-a-marker-set">Example: Querying a Marker Set</a></li>
   </ul></li>
-  <li><a href="#mappings" id="toc-mappings" class="nav-link" data-scroll-target="#mappings">Mappings</a>
+  <li><a href="#genotype-matrices" id="toc-genotype-matrices" class="nav-link" data-scroll-target="#genotype-matrices">Genotype Matrices</a>
   <ul class="collapse">
   <li><a href="#data-source-1" id="toc-data-source-1" class="nav-link" data-scroll-target="#data-source-1">Data Source</a></li>
+  <li><a href="#genotype-matrix-schema" id="toc-genotype-matrix-schema" class="nav-link" data-scroll-target="#genotype-matrix-schema">Genotype Matrix Schema</a></li>
+  </ul></li>
+  <li><a href="#mappings" id="toc-mappings" class="nav-link" data-scroll-target="#mappings">Mappings</a>
+  <ul class="collapse">
+  <li><a href="#data-source-2" id="toc-data-source-2" class="nav-link" data-scroll-target="#data-source-2">Data Source</a></li>
   <li><a href="#mappings-schema" id="toc-mappings-schema" class="nav-link" data-scroll-target="#mappings-schema">Mappings Schema</a></li>
   <li><a href="#mapping-id-format" id="toc-mapping-id-format" class="nav-link" data-scroll-target="#mapping-id-format">Mapping ID Format</a></li>
   <li><a href="#algorithm-values" id="toc-algorithm-values" class="nav-link" data-scroll-target="#algorithm-values">Algorithm Values</a></li>
-  <li><a href="#af1-dual-storage" id="toc-af1-dual-storage" class="nav-link" data-scroll-target="#af1-dual-storage">AF1 Dual Storage</a></li>
   <li><a href="#hive-partitioning" id="toc-hive-partitioning" class="nav-link" data-scroll-target="#hive-partitioning">Hive Partitioning</a></li>
   </ul></li>
   <li><a href="#mappings-metadata" id="toc-mappings-metadata" class="nav-link" data-scroll-target="#mappings-metadata">Mappings Metadata</a>
   <ul class="collapse">
   <li><a href="#mappings-metadata-schema" id="toc-mappings-metadata-schema" class="nav-link" data-scroll-target="#mappings-metadata-schema">Mappings Metadata Schema</a></li>
+  </ul></li>
+  <li><a href="#trait-data" id="toc-trait-data" class="nav-link" data-scroll-target="#trait-data">Trait Data</a>
+  <ul class="collapse">
+  <li><a href="#trait-ids" id="toc-trait-ids" class="nav-link" data-scroll-target="#trait-ids">Trait IDs</a></li>
+  <li><a href="#trait-metadata-schema" id="toc-trait-metadata-schema" class="nav-link" data-scroll-target="#trait-metadata-schema">Trait Metadata Schema</a></li>
+  <li><a href="#causal-variants-schema" id="toc-causal-variants-schema" class="nav-link" data-scroll-target="#causal-variants-schema">Causal Variants Schema</a></li>
+  <li><a href="#phenotype-schema" id="toc-phenotype-schema" class="nav-link" data-scroll-target="#phenotype-schema">Phenotype Schema</a></li>
+  <li><a href="#offline-variance-explained-estimation" id="toc-offline-variance-explained-estimation" class="nav-link" data-scroll-target="#offline-variance-explained-estimation">Offline Variance-Explained Estimation</a></li>
   </ul></li>
   <li><a href="#query-patterns" id="toc-query-patterns" class="nav-link" data-scroll-target="#query-patterns">Query Patterns</a>
   <ul class="collapse">
@@ -3976,7 +3988,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">February 18, 2026</p>
+      <p class="date">March 1, 2026</p>
     </div>
   </div>
   
@@ -3990,21 +4002,32 @@ vertical-align: -.125em;
 
 <section id="overview" class="level2">
 <h2 class="anchored" data-anchor-id="overview">Overview</h2>
-<p>The DB path stores pipeline outputs in a Parquet database queried at analysis time via DuckDB. The database contains two primary data domains:</p>
+<p>The DB path stores pipeline outputs in a Parquet database queried at analysis time via DuckDB. The database contains five data domains:</p>
 <ol type="1">
-<li><strong>Marker sets</strong> — static variant data from LD-pruned PLINK files, one file per (population, MAF) combination</li>
+<li><strong>Marker sets</strong> — static variant data from LD-pruned PLINK files, one file per marker set (identified by <code>marker_set_id</code>)</li>
+<li><strong>Genotype matrices</strong> — long-format genotype data (CHROM, POS, strain, allele) located in <code>markers/genotypes/</code>, one file per marker set</li>
 <li><strong>Mappings</strong> — per-marker association statistics from GCTA GWAS output, Hive-partitioned by population and mapping ID</li>
+<li><strong>Trait data</strong> — per-trait metadata, causal variant parameters, and phenotype values for future offline variance-explained estimation</li>
+<li><strong>Metadata tables</strong> — lightweight summary lookups for marker sets and mappings without scanning the full data files</li>
 </ol>
-<p>Two metadata tables provide summary lookups without scanning the full data files.</p>
 <pre><code>{outputDir}/db/
- ├── marker_sets/
- │   ├── {population}_{maf}_markers.parquet      ◄── marker data
- │   └── marker_set_metadata.parquet              ◄── EIGEN + marker counts
+ ├── markers/
+ │   ├── marker_sets/
+ │   │   └── {marker_set_id}_markers.parquet     ◄── marker data
+ │   └── genotypes/
+ │       └── {marker_set_id}_genotypes.parquet   ◄── genotype matrix, long format
  ├── mappings/
  │   └── population={pop}/
  │       └── mapping_id={id}/
- │           └── data.parquet                     ◄── GWA statistics
- └── mappings_metadata.parquet                    ◄── mapping summary table</code></pre>
+ │           └── data.parquet                    ◄── GWA statistics
+ ├── traits/
+ │   ├── {trait_id}.parquet                      ◄── trait metadata
+ │   ├── causal_variants/
+ │   │   └── {trait_id}_causal.parquet           ◄── causal variant parameters
+ │   └── phenotypes/
+ │       └── {trait_id}_phenotype.parquet        ◄── pre-upscaled phenotype values
+ ├── mappings_metadata.parquet                   ◄── mapping summary table
+ └── marker_set_metadata.parquet                 ◄── EIGEN + marker counts</code></pre>
 <p>All Parquet files use Snappy compression. Schemas are defined as Arrow schema objects in <code>R/database.R</code>.</p>
 </section>
 <section id="marker-sets" class="level2">
@@ -4035,12 +4058,11 @@ vertical-align: -.125em;
 </tr>
 </tbody>
 </table>
-<p>The <code>.bim</code> file does not contain allele frequencies, so <code>AF1</code> is set to <code>NA</code> in the marker set. Allele frequencies are available per-mapping from the raw GWA output and are resolved at query time via <code>COALESCE(m.AF1, mk.AF1)</code>.</p>
 <p><strong>Source:</strong> <code>R/io.R::read_bim_file()</code></p>
 </section>
 <section id="markers-schema" class="level3">
 <h3 class="anchored" data-anchor-id="markers-schema">Markers Schema</h3>
-<p><strong>File:</strong> <code>{base_dir}/marker_sets/{population}_{maf}_markers.parquet</code></p>
+<p><strong>File:</strong> <code>{base_dir}/markers/marker_sets/{marker_set_id}_markers.parquet</code></p>
 <table class="caption-top table">
 <colgroup>
 <col style="width: 25%">
@@ -4056,53 +4078,43 @@ vertical-align: -.125em;
 </thead>
 <tbody>
 <tr class="odd">
+<td><code>marker_set_id</code></td>
+<td><code>utf8</code></td>
+<td>20-char SHA-256 hash identifying the marker set</td>
+</tr>
+<tr class="even">
 <td><code>marker</code></td>
 <td><code>utf8</code></td>
 <td>Variant identifier in <code>CHROM:POS</code> format (e.g. <code>1:157580</code>)</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>CHROM</code></td>
 <td><code>utf8</code></td>
 <td>Chromosome (numeric string: <code>&quot;1&quot;</code>, <code>&quot;2&quot;</code>, …, <code>&quot;6&quot;</code>)</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>POS</code></td>
 <td><code>int32</code></td>
 <td>Genomic position (bp)</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>A1</code></td>
 <td><code>utf8</code></td>
 <td>Allele 1 (minor allele from PLINK)</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>A2</code></td>
 <td><code>utf8</code></td>
 <td>Allele 2 (major allele from PLINK)</td>
 </tr>
-<tr class="even">
-<td><code>AF1</code></td>
-<td><code>float64</code></td>
-<td>Allele frequency of A1 (<code>NA</code> when sourced from <code>.bim</code>)</td>
-</tr>
-<tr class="odd">
-<td><code>population</code></td>
-<td><code>utf8</code></td>
-<td>Population/strain set identifier (e.g. <code>&quot;complete&quot;</code>)</td>
-</tr>
-<tr class="even">
-<td><code>maf</code></td>
-<td><code>float64</code></td>
-<td>MAF threshold used to generate this marker set</td>
-</tr>
 </tbody>
 </table>
-<p><strong>Key:</strong> (<code>population</code>, <code>maf</code>) uniquely identifies a marker set. Within a marker set, <code>marker</code> (equivalently <code>CHROM</code> + <code>POS</code>) is unique.</p>
+<p><strong>Key:</strong> <code>marker_set_id</code> uniquely identifies a marker set. Within a marker set, <code>marker</code> (equivalently <code>CHROM</code> + <code>POS</code>) is unique.</p>
 <p><strong>Source:</strong> <code>R/database.R::markers_schema()</code>, <code>R/database.R::write_marker_set()</code></p>
 </section>
 <section id="marker-set-metadata-schema" class="level3">
 <h3 class="anchored" data-anchor-id="marker-set-metadata-schema">Marker Set Metadata Schema</h3>
-<p><strong>File:</strong> <code>{base_dir}/marker_sets/marker_set_metadata.parquet</code></p>
+<p><strong>File:</strong> <code>{base_dir}/marker_set_metadata.parquet</code></p>
 <table class="caption-top table">
 <colgroup>
 <col style="width: 25%">
@@ -4118,38 +4130,53 @@ vertical-align: -.125em;
 </thead>
 <tbody>
 <tr class="odd">
+<td><code>marker_set_id</code></td>
+<td><code>utf8</code></td>
+<td>20-char SHA-256 hash (primary key)</td>
+</tr>
+<tr class="even">
+<td><code>marker_set_hash_string</code></td>
+<td><code>utf8</code></td>
+<td>Human-readable hash input string</td>
+</tr>
+<tr class="odd">
+<td><code>hash_schema_version</code></td>
+<td><code>utf8</code></td>
+<td><code>&quot;v=1&quot;</code> — increment if hash construction changes</td>
+</tr>
+<tr class="even">
 <td><code>population</code></td>
 <td><code>utf8</code></td>
 <td>Population/strain set identifier</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>maf</code></td>
 <td><code>float64</code></td>
 <td>MAF threshold</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>n_markers</code></td>
 <td><code>int32</code></td>
-<td>Total number of markers in this set</td>
-</tr>
-<tr class="even">
-<td><code>n_independent_tests</code></td>
-<td><code>float64</code></td>
-<td>Number of independent tests from EIGEN decomposition</td>
+<td>Total number of markers</td>
 </tr>
 <tr class="odd">
-<td><code>eigen_source_file</code></td>
-<td><code>utf8</code></td>
-<td>Filename of the EIGEN independent tests file</td>
+<td><code>n_independent_tests</code></td>
+<td><code>float64</code></td>
+<td>Independent tests from EIGEN decomposition</td>
 </tr>
 <tr class="even">
+<td><code>eigen_source_file</code></td>
+<td><code>utf8</code></td>
+<td>EIGEN source filename</td>
+</tr>
+<tr class="odd">
 <td><code>created_at</code></td>
 <td><code>timestamp[us]</code></td>
-<td>Timestamp when this record was written</td>
+<td>Write timestamp</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Key:</strong> (<code>population</code>, <code>maf</code>) uniquely identifies a record.</p>
+<p><strong>Key:</strong> <code>marker_set_id</code> uniquely identifies a record.</p>
 <p>This table is used by <code>get_threshold_params()</code> to retrieve marker counts and EIGEN values for significance threshold calculation without reading the full marker Parquet files.</p>
 <p><strong>Source:</strong> <code>R/database.R::marker_set_metadata_schema()</code>, <code>R/database.R::write_marker_set_metadata()</code></p>
 </section>
@@ -4159,25 +4186,89 @@ vertical-align: -.125em;
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>markers <span class="ot">&lt;-</span> <span class="fu">read_marker_set</span>(<span class="st">&quot;complete&quot;</span>, <span class="fl">0.05</span>, <span class="at">base_dir =</span> <span class="st">&quot;results/db&quot;</span>)</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Via DuckDB (used internally by open_mapping_db)</span></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>con <span class="ot">&lt;-</span> DBI<span class="sc">::</span><span class="fu">dbConnect</span>(duckdb<span class="sc">::</span><span class="fu">duckdb</span>(), <span class="st">&quot;:memory:&quot;</span>)</span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>DBI<span class="sc">::</span><span class="fu">dbExecute</span>(con, <span class="st">&quot;</span></span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="st">  CREATE VIEW markers AS</span></span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="st">  SELECT * FROM read_parquet(&#39;results/db/marker_sets/*_markers.parquet&#39;)</span></span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="st">&quot;</span>)</span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>result <span class="ot">&lt;-</span> DBI<span class="sc">::</span><span class="fu">dbGetQuery</span>(con, <span class="st">&quot;</span></span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="st">  SELECT COUNT(*) as n_markers, MIN(POS) as min_pos, MAX(POS) as max_pos</span></span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="st">  FROM markers</span></span>
-<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="st">  WHERE population = &#39;complete&#39; AND maf = 0.05</span></span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="st">  GROUP BY CHROM</span></span>
-<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="st">  ORDER BY CHROM</span></span>
-<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>ms_id <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(<span class="st">&quot;complete&quot;</span>, <span class="fl">0.05</span>)<span class="sc">$</span>hash</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>con <span class="ot">&lt;-</span> DBI<span class="sc">::</span><span class="fu">dbConnect</span>(duckdb<span class="sc">::</span><span class="fu">duckdb</span>(), <span class="st">&quot;:memory:&quot;</span>)</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>DBI<span class="sc">::</span><span class="fu">dbExecute</span>(con, <span class="st">&quot;</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="st">  CREATE VIEW markers AS</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="st">  SELECT * FROM read_parquet(&#39;results/db/markers/marker_sets/*_markers.parquet&#39;)</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="st">&quot;</span>)</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>result <span class="ot">&lt;-</span> DBI<span class="sc">::</span><span class="fu">dbGetQuery</span>(con, glue<span class="sc">::</span><span class="fu">glue</span>(<span class="st">&quot;  # glue interpolates {ms_id}</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="st">  SELECT COUNT(*) as n_markers, MIN(POS) as min_pos, MAX(POS) as max_pos</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="st">  FROM markers</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="st">  WHERE marker_set_id = &#39;{ms_id}&#39;</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="st">  GROUP BY CHROM</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="st">  ORDER BY CHROM</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="st">&quot;</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
+<section id="genotype-matrices" class="level2">
+<h2 class="anchored" data-anchor-id="genotype-matrices">Genotype Matrices</h2>
+<p>A genotype matrix stores the LD-pruned variant calls for a given population and MAF threshold. Genotype matrices are written once during <a href="./qtl-detection-assessment.html#db_migration_write_genotype_matrix">database ingestion</a> and are available for future offline variance-explained estimation.</p>
+<p>Genotype files are located in <code>markers/genotypes/</code> alongside the marker Parquet files in <code>markers/marker_sets/</code>. The <code>markers</code> DuckDB view uses a narrowed glob (<code>_markers.parquet$</code>) to exclude genotype files from marker queries.</p>
+<section id="data-source-1" class="level3">
+<h3 class="anchored" data-anchor-id="data-source-1">Data Source</h3>
+<p>Genotype data originates from the wide-format TSV produced by <code>BCFTOOLS_CREATE_GENOTYPE_MATRIX</code>. The TSV has one column per strain plus <code>CHROM</code>, <code>POS</code>, <code>REF</code>, and <code>ALT</code> columns. The write function:</p>
+<ul>
+<li>Drops <code>REF</code> and <code>ALT</code> (redundant with the markers file)</li>
+<li>Pivots from wide format to long format via <code>data.table::melt()</code></li>
+<li>Applies strict biallelic encoding: <code>−1</code> (hom ref), <code>1</code> (hom alt), <code>NA</code> (heterozygous or missing)</li>
+</ul>
+<p><strong>Source:</strong> <code>R/database.R::write_genotype_matrix()</code></p>
+</section>
+<section id="genotype-matrix-schema" class="level3">
+<h3 class="anchored" data-anchor-id="genotype-matrix-schema">Genotype Matrix Schema</h3>
+<p><strong>File:</strong> <code>{base_dir}/markers/genotypes/{marker_set_id}_genotypes.parquet</code></p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 34%">
+<col style="width: 40%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Column</th>
+<th>Arrow Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>marker_set_id</code></td>
+<td><code>utf8</code></td>
+<td>20-char SHA-256 hash (join key to markers)</td>
+</tr>
+<tr class="even">
+<td><code>CHROM</code></td>
+<td><code>utf8</code></td>
+<td>Chromosome identifier</td>
+</tr>
+<tr class="odd">
+<td><code>POS</code></td>
+<td><code>int32</code></td>
+<td>Genomic position (bp)</td>
+</tr>
+<tr class="even">
+<td><code>strain</code></td>
+<td><code>utf8</code></td>
+<td>Strain name</td>
+</tr>
+<tr class="odd">
+<td><code>allele</code></td>
+<td><code>float64</code></td>
+<td><code>−1.0</code> (hom ref), <code>1.0</code> (hom alt), <code>NA</code> (het/missing)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Key:</strong> (<code>marker_set_id</code>, <code>CHROM</code>, <code>POS</code>, <code>strain</code>) uniquely identifies a row.</p>
+<p>This fixed 5-column schema avoids dynamic Arrow schemas when strain panels vary across populations. At production scale (7,000 markers × 200 strains) the long-format file contains ~1.4 million rows; CHROM and strain have low cardinality and compress well with Parquet dictionary encoding.</p>
+<p><strong>Source:</strong> <code>R/database.R::genotype_matrix_schema()</code>, <code>R/database.R::write_genotype_matrix()</code>, <code>R/database.R::read_genotype_matrix()</code></p>
 </section>
 </section>
 <section id="mappings" class="level2">
 <h2 class="anchored" data-anchor-id="mappings">Mappings</h2>
 <p>A mapping stores the per-marker association statistics from a single GWAS run. Each mapping corresponds to one combination of simulation parameters and mapping method. Mappings are written during <a href="./qtl-detection-assessment.html#db_migration_write_gwa_to_db">database ingestion</a> and queried during QTL analysis and assessment.</p>
-<section id="data-source-1" class="level3">
-<h3 class="anchored" data-anchor-id="data-source-1">Data Source</h3>
+<section id="data-source-2" class="level3">
+<h3 class="anchored" data-anchor-id="data-source-2">Data Source</h3>
 <p>Mapping data originates from GCTA GWA output files:</p>
 <table class="caption-top table">
 <colgroup>
@@ -4233,14 +4324,24 @@ vertical-align: -.125em;
 </thead>
 <tbody>
 <tr class="odd">
+<td><code>marker_set_id</code></td>
+<td><code>utf8</code></td>
+<td>FK → <code>markers</code> and <code>marker_set_metadata</code></td>
+</tr>
+<tr class="even">
+<td><code>trait_id</code></td>
+<td><code>utf8</code></td>
+<td>FK → <code>trait_metadata</code> (direct parent)</td>
+</tr>
+<tr class="odd">
+<td><code>mapping_id</code></td>
+<td><code>utf8</code></td>
+<td>20-char SHA-256 hash (partition key; FK → <code>mappings_metadata</code>)</td>
+</tr>
+<tr class="even">
 <td><code>marker</code></td>
 <td><code>utf8</code></td>
 <td>Variant identifier in <code>CHROM:POS</code> format</td>
-</tr>
-<tr class="even">
-<td><code>mapping_id</code></td>
-<td><code>utf8</code></td>
-<td>Unique mapping identifier (see format below)</td>
 </tr>
 <tr class="odd">
 <td><code>AF1</code></td>
@@ -4262,70 +4363,39 @@ vertical-align: -.125em;
 <td><code>float64</code></td>
 <td>P-value from association test</td>
 </tr>
-<tr class="odd">
-<td><code>var.exp</code></td>
-<td><code>float64</code></td>
-<td>Variance explained (<code>NA</code> for the inline DB path)</td>
-</tr>
-<tr class="even">
-<td><code>nqtl</code></td>
-<td><code>int32</code></td>
-<td>Number of simulated causal QTLs</td>
-</tr>
-<tr class="odd">
-<td><code>rep</code></td>
-<td><code>int32</code></td>
-<td>Simulation replicate number</td>
-</tr>
-<tr class="even">
-<td><code>h2</code></td>
-<td><code>float64</code></td>
-<td>Simulated heritability</td>
-</tr>
-<tr class="odd">
-<td><code>effect</code></td>
-<td><code>utf8</code></td>
-<td>Effect size distribution (e.g. <code>&quot;gamma&quot;</code>, <code>&quot;0.2-0.3&quot;</code>)</td>
-</tr>
-<tr class="even">
-<td><code>algorithm</code></td>
-<td><code>utf8</code></td>
-<td>Mapping algorithm (see below)</td>
-</tr>
-<tr class="odd">
-<td><code>pca</code></td>
-<td><code>boolean</code></td>
-<td>Whether PCA covariate was included</td>
-</tr>
-<tr class="even">
-<td><code>population</code></td>
-<td><code>utf8</code></td>
-<td>Population/strain set identifier</td>
-</tr>
-<tr class="odd">
-<td><code>maf</code></td>
-<td><code>float64</code></td>
-<td>MAF threshold</td>
-</tr>
-<tr class="even">
-<td><code>trait</code></td>
-<td><code>utf8</code></td>
-<td>Trait identifier (<code>&quot;{nqtl}_{rep}_{h2}&quot;</code>)</td>
-</tr>
 </tbody>
 </table>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Simulation parameters (<code>nqtl</code>, <code>rep</code>, <code>h2</code>, <code>effect</code>, <code>algorithm</code>, <code>pca</code>, <code>population</code>, <code>maf</code>) are no longer stored per data row. They are recoverable without divergence risk via FK joins to <code>mappings_metadata</code> (on <code>mapping_id</code>) and <code>marker_set_metadata</code> (on <code>marker_set_id</code>). This eliminates redundant constant-per-mapping columns from the ~millions-of-rows data files.</p>
+</div>
+</div>
 <p><strong>Source:</strong> <code>R/database.R::mappings_schema()</code>, <code>R/database.R::write_mapping_partitioned()</code></p>
 </section>
 <section id="mapping-id-format" class="level3">
 <h3 class="anchored" data-anchor-id="mapping-id-format">Mapping ID Format</h3>
-<p>The <code>mapping_id</code> is a deterministic string constructed from simulation and mapping parameters:</p>
-<pre><code>{nqtl}_{rep}_{h2}_{maf}_{effect}_{population}_{algorithm}_{PCA|noPCA}</code></pre>
-<p><strong>Examples:</strong></p>
-<ul>
-<li><code>5_1_0.2_0.05_gamma_complete_LMM-EXACT-INBRED_PCA</code></li>
-<li><code>2_3_0.8_0.05_0.2-0.3_complete_LMM-EXACT-LOCO_noPCA</code></li>
-</ul>
-<p><strong>Source:</strong> <code>R/database.R::generate_mapping_id()</code></p>
+<p>Each ID in the three-level hierarchy is a deterministic <strong>20-character SHA-256</strong> prefix computed from a canonical input string:</p>
+<pre><code>marker_set_id  = SHA-256(&quot;v=1|population={pop}|maf={maf:.10f}&quot;)[1:20]
+  └── trait_id = SHA-256(&quot;v=1|parent={marker_set_hash}|nqtl={n}|effect={e}|rep={r}|h2={h2:.10f}&quot;)[1:20]
+        └── mapping_id = SHA-256(&quot;v=1|parent={trait_hash}|algorithm={algorithm}|pca={TRUE|FALSE}&quot;)[1:20]</code></pre>
+<p><strong>Golden values (pinned 2026-02-27):</strong> (<code>&quot;ce100&quot;</code> is used here as the population; the hash would differ for <code>&quot;complete&quot;</code> or any other string.)</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">generate_marker_set_id</span>(<span class="st">&quot;ce100&quot;</span>, <span class="fl">0.05</span>)<span class="sc">$</span>hash</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="co"># → &quot;879ca1a75fc7fb5183e7&quot;</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="fu">generate_trait_id</span>(<span class="st">&quot;879ca1a75fc7fb5183e7&quot;</span>, <span class="dv">5</span>, <span class="st">&quot;gamma&quot;</span>, <span class="dv">1</span>, <span class="fl">0.8</span>)<span class="sc">$</span>hash</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co"># → &quot;2aa558d92d805fb85ee8&quot;</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="fu">generate_mapping_id</span>(<span class="st">&quot;2aa558d92d805fb85ee8&quot;</span>, <span class="st">&quot;inbred&quot;</span>, <span class="cn">TRUE</span>)<span class="sc">$</span>hash</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="co"># → &quot;5b9eecbb85032068d7e4&quot;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><strong>Source:</strong> <code>R/database.R::generate_marker_set_id()</code>, <code>R/database.R::generate_trait_id()</code>, <code>R/database.R::generate_mapping_id()</code></p>
 </section>
 <section id="algorithm-values" class="level3">
 <h3 class="anchored" data-anchor-id="algorithm-values">Algorithm Values</h3>
@@ -4341,12 +4411,12 @@ vertical-align: -.125em;
 <tbody>
 <tr class="odd">
 <td><code>inbred</code></td>
-<td><code>LMM-EXACT-INBRED</code></td>
+<td><code>inbred</code></td>
 <td><code>--fastGWA-mlm-exact</code></td>
 </tr>
 <tr class="even">
 <td><code>loco</code></td>
-<td><code>LMM-EXACT-LOCO</code></td>
+<td><code>loco</code></td>
 <td><code>--mlma-loco</code></td>
 </tr>
 </tbody>
@@ -4371,35 +4441,14 @@ vertical-align: -.125em;
 </tbody>
 </table>
 </section>
-<section id="af1-dual-storage" class="level3">
-<h3 class="anchored" data-anchor-id="af1-dual-storage">AF1 Dual Storage</h3>
-<p>Allele frequency (<code>AF1</code>) is stored in both marker sets and mappings because:</p>
-<ul>
-<li><strong>Marker sets</strong> sourced from <code>.bim</code> files do <strong>not</strong> contain allele frequency (<code>AF1 = NA</code>)</li>
-<li><strong>Mappings</strong> sourced from GWA output files <strong>do</strong> contain allele frequency</li>
-</ul>
-<p>At query time, the two are resolved with <code>COALESCE(m.AF1, mk.AF1)</code>, preferring the mapping-level value. This is implemented in <code>R/queries.R::query_for_threshold_analysis()</code>:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  m.marker, m.P, m.BETA, m.SE,</span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  mk.CHROM, mk.POS,</span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">COALESCE</span>(m.AF1, mk.AF1) <span class="kw">AS</span> AF1</span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> mappings m</span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="kw">LEFT</span> <span class="kw">JOIN</span> markers mk</span>
-<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>  <span class="kw">ON</span> m.marker <span class="op">=</span> mk.marker</span>
-<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>  <span class="kw">AND</span> m.population <span class="op">=</span> mk.population</span>
-<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>  <span class="kw">AND</span> m.maf <span class="op">=</span> mk.maf</span>
-<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="kw">WHERE</span> m.mapping_id <span class="op">=</span> <span class="st">&#39;{mapping_id}&#39;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
 <section id="hive-partitioning" class="level3">
 <h3 class="anchored" data-anchor-id="hive-partitioning">Hive Partitioning</h3>
 <p>Mappings use Hive-style directory partitioning:</p>
 <pre><code>mappings/
  └── population=complete/
-     ├── mapping_id=5_1_0.2_0.05_gamma_complete_LMM-EXACT-INBRED_PCA/
+     ├── mapping_id=5b9eecbb85032068d7e4/   # inbred + PCA
      │   └── data.parquet
-     ├── mapping_id=5_1_0.2_0.05_gamma_complete_LMM-EXACT-INBRED_noPCA/
-     │   └── data.parquet
-     └── mapping_id=5_1_0.2_0.05_gamma_complete_LMM-EXACT-LOCO_PCA/
+     └── mapping_id=a3f7d2e1c9b04f8e2d1a/   # inbred + noPCA
          └── data.parquet</code></pre>
 <p>This structure enables:</p>
 <ul>
@@ -4424,6 +4473,11 @@ vertical-align: -.125em;
 <h3 class="anchored" data-anchor-id="mappings-metadata-schema">Mappings Metadata Schema</h3>
 <p><strong>File:</strong> <code>{base_dir}/mappings_metadata.parquet</code></p>
 <table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 34%">
+<col style="width: 40%">
+</colgroup>
 <thead>
 <tr class="header">
 <th>Column</th>
@@ -4435,7 +4489,27 @@ vertical-align: -.125em;
 <tr class="odd">
 <td><code>mapping_id</code></td>
 <td><code>utf8</code></td>
-<td>Unique mapping identifier</td>
+<td>20-char SHA-256 hash (primary key)</td>
+</tr>
+<tr class="even">
+<td><code>mapping_hash_string</code></td>
+<td><code>utf8</code></td>
+<td>Human-readable hash input string (metadata only)</td>
+</tr>
+<tr class="odd">
+<td><code>trait_id</code></td>
+<td><code>utf8</code></td>
+<td>FK → trait metadata (direct parent)</td>
+</tr>
+<tr class="even">
+<td><code>marker_set_id</code></td>
+<td><code>utf8</code></td>
+<td>FK → marker set metadata (grandparent; for query convenience)</td>
+</tr>
+<tr class="odd">
+<td><code>hash_schema_version</code></td>
+<td><code>utf8</code></td>
+<td><code>&quot;v=1&quot;</code></td>
 </tr>
 <tr class="even">
 <td><code>population</code></td>
@@ -4470,7 +4544,7 @@ vertical-align: -.125em;
 <tr class="even">
 <td><code>algorithm</code></td>
 <td><code>utf8</code></td>
-<td>Mapping algorithm</td>
+<td>Mapping algorithm (<code>&quot;inbred&quot;</code> or <code>&quot;loco&quot;</code>)</td>
 </tr>
 <tr class="odd">
 <td><code>pca</code></td>
@@ -4478,26 +4552,21 @@ vertical-align: -.125em;
 <td>Whether PCA covariate was included</td>
 </tr>
 <tr class="even">
-<td><code>trait</code></td>
-<td><code>utf8</code></td>
-<td>Trait identifier</td>
-</tr>
-<tr class="odd">
 <td><code>n_markers</code></td>
 <td><code>int32</code></td>
 <td>Number of markers in this mapping</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>source_file</code></td>
 <td><code>utf8</code></td>
 <td>Original partition directory name</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>processed_at</code></td>
 <td><code>timestamp[us]</code></td>
-<td>When the metadata was aggregated</td>
+<td>When metadata was aggregated</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>processing_version</code></td>
 <td><code>utf8</code></td>
 <td>Pipeline version string</td>
@@ -4508,12 +4577,205 @@ vertical-align: -.125em;
 <p><strong>Source:</strong> <code>R/database.R::metadata_schema()</code>, <code>modules/db_migration/aggregate_metadata/resources/usr/bin/aggregate_metadata.R</code></p>
 </section>
 </section>
+<section id="trait-data" class="level2">
+<h2 class="anchored" data-anchor-id="trait-data">Trait Data</h2>
+<p>Phase 5 added three per-trait data stores to the database. Together with the genotype matrix, these tables contain everything needed to estimate variance-explained offline without re-running the pipeline.</p>
+<p>Trait data is written by <code>DB_MIGRATION_WRITE_TRAIT_DATA</code> from <code>GCTA_SIMULATE_PHENOTYPES</code> output (pre-mode-crossing, so each trait is written exactly once). These writes are fire-and-forget storage operations with no downstream dependents within the pipeline.</p>
+<section id="trait-ids" class="level3">
+<h3 class="anchored" data-anchor-id="trait-ids">Trait IDs</h3>
+<p>Traits are identified by a <strong>deterministic 20-character SHA-256 hash</strong> derived from the parent marker set hash and simulation parameters:</p>
+<pre><code>trait_id = SHA-256(&quot;v=1|parent={marker_set_hash}|nqtl={n}|effect={e}|rep={r}|h2={h2:.10f}&quot;)[1:20]</code></pre>
+<p>The caller must first compute the marker set ID and pass its hash as the parent. No Groovy counterpart exists — the Nextflow <code>.multiMap</code> block passes raw parameters to the R script, which computes <code>trait_id</code> internally. This eliminates cross-language hash divergence.</p>
+<p><strong>Properties:</strong></p>
+<ul>
+<li><strong>Resume-safe:</strong> identical parameters → identical <code>trait_id</code> across pipeline <code>-resume</code> → Nextflow caches the write processes</li>
+<li><strong>Debuggable:</strong> <code>trait_id</code> can be reconstructed from parameters alone, without scanning the database</li>
+<li><strong>Unique:</strong> any script can call <code>generate_trait_id(ms_hash, ...)</code> to locate stored data without a directory scan</li>
+</ul>
+<p><strong>Source:</strong> <code>R/database.R::generate_trait_id()</code></p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>ms_id    <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(<span class="st">&quot;complete&quot;</span>, <span class="fl">0.05</span>)</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>trait    <span class="ot">&lt;-</span> <span class="fu">generate_trait_id</span>(ms_id<span class="sc">$</span>hash, <span class="at">nqtl =</span> <span class="dv">5</span>, <span class="at">effect =</span> <span class="st">&quot;gamma&quot;</span>, <span class="at">rep =</span> <span class="dv">1</span>, <span class="at">h2 =</span> <span class="fl">0.8</span>)</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>trait_id <span class="ot">&lt;-</span> trait<span class="sc">$</span>hash   <span class="co"># 20-char hex string</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="trait-metadata-schema" class="level3">
+<h3 class="anchored" data-anchor-id="trait-metadata-schema">Trait Metadata Schema</h3>
+<p><strong>File:</strong> <code>{base_dir}/traits/{trait_id}.parquet</code></p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 34%">
+<col style="width: 40%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Column</th>
+<th>Arrow Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>trait_id</code></td>
+<td><code>utf8</code></td>
+<td>20-char SHA-256 hash (primary key)</td>
+</tr>
+<tr class="even">
+<td><code>trait_hash_string</code></td>
+<td><code>utf8</code></td>
+<td>Human-readable hash input string (metadata only)</td>
+</tr>
+<tr class="odd">
+<td><code>marker_set_id</code></td>
+<td><code>utf8</code></td>
+<td>FK → marker set metadata (parent link)</td>
+</tr>
+<tr class="even">
+<td><code>nqtl</code></td>
+<td><code>int32</code></td>
+<td>Number of simulated causal QTLs</td>
+</tr>
+<tr class="odd">
+<td><code>rep</code></td>
+<td><code>int32</code></td>
+<td>Simulation replicate number</td>
+</tr>
+<tr class="even">
+<td><code>h2</code></td>
+<td><code>float64</code></td>
+<td>Simulated heritability</td>
+</tr>
+<tr class="odd">
+<td><code>maf</code></td>
+<td><code>float64</code></td>
+<td>MAF threshold</td>
+</tr>
+<tr class="even">
+<td><code>effect</code></td>
+<td><code>utf8</code></td>
+<td>Effect size distribution (e.g. <code>&quot;gamma&quot;</code>)</td>
+</tr>
+<tr class="odd">
+<td><code>population</code></td>
+<td><code>utf8</code></td>
+<td>Population/strain group identifier</td>
+</tr>
+<tr class="even">
+<td><code>created_at</code></td>
+<td><code>utf8</code></td>
+<td>ISO 8601 write timestamp</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Key:</strong> <code>trait_id</code> uniquely identifies each record. Re-running with the same parameters writes to the same path; <code>overwrite = TRUE</code> replaces the file cleanly.</p>
+<p><strong>Source:</strong> <code>R/database.R::trait_metadata_schema()</code>, <code>R/database.R::write_trait_metadata()</code>, <code>R/database.R::read_trait_metadata()</code></p>
+</section>
+<section id="causal-variants-schema" class="level3">
+<h3 class="anchored" data-anchor-id="causal-variants-schema">Causal Variants Schema</h3>
+<p><strong>File:</strong> <code>{base_dir}/traits/causal_variants/{trait_id}_causal.parquet</code></p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Column</th>
+<th>Arrow Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>QTL</code></td>
+<td><code>utf8</code></td>
+<td>QTL label from GCTA <code>.par</code> file</td>
+</tr>
+<tr class="even">
+<td><code>CHROM</code></td>
+<td><code>utf8</code></td>
+<td>Chromosome</td>
+</tr>
+<tr class="odd">
+<td><code>POS</code></td>
+<td><code>int32</code></td>
+<td>Genomic position (bp)</td>
+</tr>
+<tr class="even">
+<td><code>RefAllele</code></td>
+<td><code>utf8</code></td>
+<td>Reference allele</td>
+</tr>
+<tr class="odd">
+<td><code>Frequency</code></td>
+<td><code>float64</code></td>
+<td>Allele frequency of the causal variant</td>
+</tr>
+<tr class="even">
+<td><code>Effect</code></td>
+<td><code>float64</code></td>
+<td>Simulated effect size</td>
+</tr>
+</tbody>
+</table>
+<p>Causal variant records are loaded from the GCTA <code>.par</code> file via <code>assessment.R::load_causal_variants()</code>.</p>
+<p><strong>Source:</strong> <code>R/database.R::write_causal_variants()</code>, <code>R/database.R::read_causal_variants_data()</code></p>
+</section>
+<section id="phenotype-schema" class="level3">
+<h3 class="anchored" data-anchor-id="phenotype-schema">Phenotype Schema</h3>
+<p><strong>File:</strong> <code>{base_dir}/traits/phenotypes/{trait_id}_phenotype.parquet</code></p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Column</th>
+<th>Arrow Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>strain</code></td>
+<td><code>utf8</code></td>
+<td>Strain name (FID column from <code>.phen</code> file)</td>
+</tr>
+<tr class="even">
+<td><code>phenotype</code></td>
+<td><code>float64</code></td>
+<td>Simulated phenotype value</td>
+</tr>
+</tbody>
+</table>
+<div class="callout callout-style-default callout-important callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Important
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>Pre-upscaled values.</strong> The stored phenotype is the direct output of <code>GCTA_SIMULATE_PHENOTYPES</code>, captured <em>before</em> <code>PLINK_UPDATE_BY_H2</code> → <code>PYTHON_CHECK_VP</code>. The <code>check_vp.py</code> script may multiply values by 1000× when Vp &lt; 1e-6, so phenotype values stored here <em>may differ</em> from the values used in the actual GWAS mapping. For future variance-explained estimation this is immaterial: the ANOVA SS ratio (SS<sub>between</sub> / SS<sub>total</sub>) is scale-invariant.</p>
+</div>
+</div>
+<p><strong>Source:</strong> <code>R/database.R::phenotype_schema()</code>, <code>R/database.R::write_phenotype_data()</code>, <code>R/database.R::read_phenotype_data()</code></p>
+</section>
+<section id="offline-variance-explained-estimation" class="level3">
+<h3 class="anchored" data-anchor-id="offline-variance-explained-estimation">Offline Variance-Explained Estimation</h3>
+<p>With all four data stores populated, variance explained can be estimated for any trait without re-running the pipeline:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>ms_id    <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(group, maf)</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>trait_id <span class="ot">&lt;-</span> <span class="fu">generate_trait_id</span>(ms_id<span class="sc">$</span>hash, nqtl, effect, rep, h2)<span class="sc">$</span>hash</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>geno   <span class="ot">&lt;-</span> <span class="fu">read_genotype_matrix</span>(group, maf, base_dir)         <span class="co"># CHROM, POS, strain, allele</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>pheno  <span class="ot">&lt;-</span> <span class="fu">read_phenotype_data</span>(trait_id, base_dir)            <span class="co"># strain, phenotype</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>causal <span class="ot">&lt;-</span> <span class="fu">read_causal_variants_data</span>(trait_id, base_dir)      <span class="co"># QTL, CHROM, POS, Effect, ...</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="co"># ANOVA SS method (matching legacy Assess_Sims.R):</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="co">#   var_exp = SS_between / SS_total per marker</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Join geno + pheno on strain, filter to causal positions, compute SS ratio.</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
 <section id="query-patterns" class="level2">
 <h2 class="anchored" data-anchor-id="query-patterns">Query Patterns</h2>
 <p>The database is accessed through DuckDB via helper functions in <code>R/queries.R</code>. All queries are read-only; writes go through <code>R/database.R</code>.</p>
 <section id="connection-setup" class="level3">
 <h3 class="anchored" data-anchor-id="connection-setup">Connection Setup</h3>
-<p><code>open_mapping_db()</code> creates an in-memory DuckDB connection and registers three views:</p>
+<p><code>open_mapping_db()</code> creates an in-memory DuckDB connection and registers four views:</p>
 <table class="caption-top table">
 <colgroup>
 <col style="width: 22%">
@@ -4530,8 +4792,8 @@ vertical-align: -.125em;
 <tbody>
 <tr class="odd">
 <td><code>markers</code></td>
-<td><code>marker_sets/*.parquet</code></td>
-<td>All marker set files</td>
+<td><code>markers/marker_sets/*_markers.parquet</code></td>
+<td>All marker set files (excludes genotype files)</td>
 </tr>
 <tr class="even">
 <td><code>mappings</code></td>
@@ -4545,7 +4807,7 @@ vertical-align: -.125em;
 </tr>
 <tr class="even">
 <td><code>marker_set_metadata</code></td>
-<td><code>marker_sets/marker_set_metadata.parquet</code></td>
+<td><code>marker_set_metadata.parquet</code></td>
 <td>EIGEN values and marker counts</td>
 </tr>
 </tbody>
@@ -4602,6 +4864,36 @@ vertical-align: -.125em;
 <td><code>R/queries.R</code></td>
 <td>Database-wide statistics (file counts, sizes, populations)</td>
 </tr>
+<tr class="even">
+<td><code>generate_marker_set_id()</code></td>
+<td><code>R/database.R</code></td>
+<td>Compute deterministic 20-char SHA-256 marker set ID from population and MAF</td>
+</tr>
+<tr class="odd">
+<td><code>generate_trait_id()</code></td>
+<td><code>R/database.R</code></td>
+<td>Compute deterministic 20-char SHA-256 trait ID from marker set hash and simulation parameters</td>
+</tr>
+<tr class="even">
+<td><code>read_genotype_matrix()</code></td>
+<td><code>R/database.R</code></td>
+<td>Read long-format genotype matrix for a (population, MAF) combination</td>
+</tr>
+<tr class="odd">
+<td><code>read_trait_metadata()</code></td>
+<td><code>R/database.R</code></td>
+<td>Read per-trait metadata record by <code>trait_id</code></td>
+</tr>
+<tr class="even">
+<td><code>read_causal_variants_data()</code></td>
+<td><code>R/database.R</code></td>
+<td>Read causal variant parameters by <code>trait_id</code></td>
+</tr>
+<tr class="odd">
+<td><code>read_phenotype_data()</code></td>
+<td><code>R/database.R</code></td>
+<td>Read per-strain phenotype values by <code>trait_id</code></td>
+</tr>
 </tbody>
 </table>
 <p>The <code>query_for_threshold_analysis()</code> function is the primary entry point used by <code>analyze_qtl.R</code> and <code>assess_sims.R</code>. It joins mappings with markers to resolve chromosome coordinates and allele frequencies, and validates <code>CHROM:POS</code> uniqueness per mapping.</p>
@@ -4609,16 +4901,16 @@ vertical-align: -.125em;
 <section id="connection-caching" class="level3">
 <h3 class="anchored" data-anchor-id="connection-caching">Connection Caching</h3>
 <p>For batch operations, <code>get_db_connection()</code> provides a cached DuckDB connection that persists across multiple queries. The cache is keyed by <code>base_dir</code> and automatically reconnects if the connection becomes stale.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Single query (creates and closes connection)</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>data <span class="ot">&lt;-</span> <span class="fu">query_for_threshold_analysis</span>(mapping_id, base_dir)</span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Batch operation (reuses cached connection)</span></span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>con <span class="ot">&lt;-</span> <span class="fu">get_db_connection</span>(base_dir, <span class="at">use_cache =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (id <span class="cf">in</span> mapping_ids) {</span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>  data <span class="ot">&lt;-</span> <span class="fu">query_for_threshold_analysis</span>(id, base_dir, <span class="at">con =</span> con)</span>
-<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>  <span class="co"># ... process data</span></span>
-<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="fu">close_cached_connection</span>(base_dir)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Single query (creates and closes connection)</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>data <span class="ot">&lt;-</span> <span class="fu">query_for_threshold_analysis</span>(mapping_id, base_dir)</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Batch operation (reuses cached connection)</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>con <span class="ot">&lt;-</span> <span class="fu">get_db_connection</span>(base_dir, <span class="at">use_cache =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (id <span class="cf">in</span> mapping_ids) {</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>  data <span class="ot">&lt;-</span> <span class="fu">query_for_threshold_analysis</span>(id, base_dir, <span class="at">con =</span> con)</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>  <span class="co"># ... process data</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a><span class="fu">close_cached_connection</span>(base_dir)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 
 
 </section>

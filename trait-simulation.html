@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-02-18">
+<meta name="dcterms.date" content="2026-03-01">
 
 <title>Phase 2: Trait Simulation – nemascan-sims-nf</title>
 <style>
@@ -3968,7 +3968,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">February 18, 2026</p>
+      <p class="date">March 1, 2026</p>
     </div>
   </div>
   
@@ -4193,6 +4193,30 @@ vertical-align: -.125em;
 </tr>
 </tbody>
 </table>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Note</span>Database migration: <code>DB_MIGRATION_WRITE_TRAIT_DATA</code>
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>The <code>.phen</code> and <code>.par</code> outputs are captured by the DB path before the mode-crossing (<code>GCTA_MAKE_GRM</code>). <code>DB_MIGRATION_WRITE_TRAIT_DATA</code> stores trait metadata, causal variants, and pre-upscaled phenotype values in the database for future offline variance-explained estimation. The phenotype values passed to <code>PLINK_UPDATE_BY_H2</code> and ultimately to GWAS mapping may differ (upscaled by <code>check_vp.py</code>), but the ANOVA SS ratio used for offline estimation is scale-invariant.</p>
+<p><strong>Trait ID generation:</strong> Each simulated trait is assigned a deterministic 20-character SHA-256 hash identifier (<code>trait_id</code>). The ID is the second level of the canonical three-level hash hierarchy used throughout the database:</p>
+<pre><code>marker_set_id  (SHA-256 of &quot;v=1|population=...|maf=...&quot;)
+  └── trait_id (SHA-256 of &quot;v=1|parent={marker_set_hash}|nqtl=...|effect=...|rep=...|h2=...&quot;)
+        └── mapping_id (SHA-256 of &quot;v=1|parent={trait_hash}|algorithm=...|pca=...&quot;)</code></pre>
+<p>The <code>trait_id</code> is computed in <code>write_trait_data.R</code> as:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>ms_id    <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(opt<span class="sc">$</span>group, <span class="fu">as.numeric</span>(opt<span class="sc">$</span>maf))</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>trait    <span class="ot">&lt;-</span> <span class="fu">generate_trait_id</span>(ms_id<span class="sc">$</span>hash, opt<span class="sc">$</span>nqtl, opt<span class="sc">$</span>effect, opt<span class="sc">$</span>rep, opt<span class="sc">$</span>h2)</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>trait_id <span class="ot">&lt;-</span> trait<span class="sc">$</span>hash  <span class="co"># 20-character lowercase hex string</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The hash is derived from this input string, where <code>h2</code> and <code>maf</code> are serialized with <code>sprintf(&quot;%.10f&quot;, as.numeric(...))</code> and <code>nqtl</code>/<code>rep</code> are serialized with <code>as.integer()</code>:</p>
+<pre><code>v=1|parent={marker_set_hash}|nqtl={nqtl}|effect={effect}|rep={rep}|h2={h2}</code></pre>
+<p>The human-readable <code>trait_hash_string</code> and the parent <code>marker_set_id</code> are stored once in the trait metadata file (within the <code>traits/</code> directory). The short 20-character <code>trait_id</code> hash serves as the join key in data files and is passed as the parent hash when generating downstream <code>mapping_id</code> values in Phase 3.</p>
+</div>
+</div>
 </section>
 <section id="example-.par-output" class="level3">
 <h3 class="anchored" data-anchor-id="example-.par-output">Example <code>.par</code> output</h3>
@@ -4237,18 +4261,18 @@ NIC274 NIC274 -22.5104</code></pre>
 <p><strong>Source:</strong> <code>modules/plink/update_by_h2/main.nf</code></p>
 <p>Integrates the simulated phenotype values into the PLINK binary fileset and renames the output files to include all simulation parameters. This produces the phenotype-annotated PLINK files used by Phase 3 (GWAS Mapping).</p>
 <p><strong>Command:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">plink</span> <span class="at">--bfile</span> TO_SIMS <span class="dt">\</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--make-bed</span> <span class="dt">\</span></span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--snps-only</span> <span class="dt">\</span></span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--biallelic-only</span> <span class="dt">\</span></span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--maf</span> <span class="va">${maf}</span> <span class="dt">\</span></span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--set-missing-var-ids</span> @:# <span class="dt">\</span></span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--geno</span> <span class="dt">\</span></span>
-<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--recode</span> <span class="dt">\</span></span>
-<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--out</span> TO_SIMS_<span class="va">${nqtl}</span>_<span class="va">${rep}</span>_<span class="va">${h2}</span>_<span class="va">${maf}</span>_<span class="va">${effect}</span>_<span class="va">${group}</span> <span class="dt">\</span></span>
-<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">--allow-extra-chr</span> <span class="dt">\</span></span>
-<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">--allow-no-sex</span> <span class="dt">\</span></span>
-<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">--pheno</span> <span class="va">${nqtl}</span>_<span class="va">${rep}</span>_<span class="va">${h2}</span>_<span class="va">${maf}</span>_<span class="va">${effect}</span>_<span class="va">${group}</span>_sims.pheno</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ex">plink</span> <span class="at">--bfile</span> TO_SIMS <span class="dt">\</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--make-bed</span> <span class="dt">\</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--snps-only</span> <span class="dt">\</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--biallelic-only</span> <span class="dt">\</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--maf</span> <span class="va">${maf}</span> <span class="dt">\</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--set-missing-var-ids</span> @:# <span class="dt">\</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--geno</span> <span class="dt">\</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--recode</span> <span class="dt">\</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--out</span> TO_SIMS_<span class="va">${nqtl}</span>_<span class="va">${rep}</span>_<span class="va">${h2}</span>_<span class="va">${maf}</span>_<span class="va">${effect}</span>_<span class="va">${group}</span> <span class="dt">\</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">--allow-extra-chr</span> <span class="dt">\</span></span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">--allow-no-sex</span> <span class="dt">\</span></span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">--pheno</span> <span class="va">${nqtl}</span>_<span class="va">${rep}</span>_<span class="va">${h2}</span>_<span class="va">${maf}</span>_<span class="va">${effect}</span>_<span class="va">${group}</span>_sims.pheno</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <table class="caption-top table">
 <thead>
 <tr class="header">
