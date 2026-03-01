@@ -47,15 +47,12 @@ if (!grepl(expected_prefix, actual_basename)) {
              "but got:", actual_basename))
 }
 
-# Compute trait ID in R (no cross-language hash — addresses B2)
-trait_id <- generate_trait_id(
-  group  = opt$group,
-  maf    = opt$maf,
-  nqtl   = opt$nqtl,
-  effect = opt$effect,
-  rep    = opt$rep,
-  h2     = opt$h2
-)
+# Compute marker set ID (parent of trait)
+ms_id <- generate_marker_set_id(opt$group, as.numeric(opt$maf))
+
+# Compute trait ID (child of marker set)
+trait    <- generate_trait_id(ms_id$hash, opt$nqtl, opt$effect, opt$rep, opt$h2)
+trait_id <- trait$hash
 
 message("Writing trait data: trait_id=", trait_id,
         " group=", opt$group, " nqtl=", opt$nqtl,
@@ -63,7 +60,9 @@ message("Writing trait data: trait_id=", trait_id,
 
 # Write trait metadata
 write_trait_metadata(
-  trait_id   = trait_id,
+  trait_id          = trait_id,
+  trait_hash_string = trait$hash_string,
+  marker_set_id     = ms_id$hash,
   nqtl       = opt$nqtl,
   rep        = opt$rep,
   h2         = opt$h2,

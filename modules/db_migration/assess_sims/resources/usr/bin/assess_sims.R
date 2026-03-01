@@ -57,7 +57,6 @@ source(file.path(r_source_dir, "analysis.R"))
 source(file.path(r_source_dir, "assessment.R"))
 
 # Construct mapping params
-algorithm <- if (opt$mode == "inbred") "LMM-EXACT-INBRED" else "LMM-EXACT-LOCO"
 pca <- opt$type == "pca"
 
 params <- list(
@@ -67,7 +66,7 @@ params <- list(
   effect = opt$effect,
   rep = as.integer(opt$rep),
   h2 = as.numeric(opt$h2),
-  algorithm = algorithm,
+  algorithm = opt$mode,   # "inbred" or "loco" — canonical form per Step 1
   pca = pca,
   trait = paste(opt$nqtl, opt$rep, opt$h2, sep = "_"),
   threshold_method = toupper(opt$threshold),
@@ -78,7 +77,10 @@ params <- list(
   snp_grouping = opt$snp_grouping
 )
 
-mapping_id <- generate_mapping_id(params)
+ms_id      <- generate_marker_set_id(params$population, params$maf)
+trait      <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
+mapping    <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
+mapping_id <- mapping$hash
 log_msg(paste("Assessing mapping:", mapping_id))
 
 # Step 1: Read QTL regions from analyze_qtl.R output

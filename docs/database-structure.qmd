@@ -13,9 +13,9 @@ The DB path stores pipeline outputs in a Parquet database queried at analysis
 time via DuckDB. The database contains five data domains:
 
 1. **Marker sets** &mdash; static variant data from LD-pruned PLINK files, one
-   file per (population, MAF) combination
+   file per marker set (identified by `marker_set_id`)
 2. **Genotype matrices** &mdash; long-format genotype data (CHROM, POS, strain,
-   allele) co-located in `marker_sets/`, one file per (population, MAF)
+   allele) located in `markers/genotypes/`, one file per marker set
 3. **Mappings** &mdash; per-marker association statistics from GCTA GWAS output,
    Hive-partitioned by population and mapping ID
 4. **Trait data** &mdash; per-trait metadata, causal variant parameters, and
@@ -25,21 +25,23 @@ time via DuckDB. The database contains five data domains:
 
 ```
 {outputDir}/db/
- ├── marker_sets/
- │   ├── {population}_{maf}_markers.parquet      ◄── marker data
- │   ├── {population}_{maf}_genotypes.parquet    ◄── genotype matrix, long format
- │   └── marker_set_metadata.parquet             ◄── EIGEN + marker counts
+ ├── markers/
+ │   ├── marker_sets/
+ │   │   └── {marker_set_id}_markers.parquet     ◄── marker data
+ │   └── genotypes/
+ │       └── {marker_set_id}_genotypes.parquet   ◄── genotype matrix, long format
  ├── mappings/
  │   └── population={pop}/
  │       └── mapping_id={id}/
  │           └── data.parquet                    ◄── GWA statistics
  ├── traits/
- │   └── {trait_id}.parquet                      ◄── trait metadata
- ├── causal_variants/
- │   └── {trait_id}_causal.parquet               ◄── causal variant parameters
- ├── phenotypes/
- │   └── {trait_id}_phenotype.parquet            ◄── pre-upscaled phenotype values
- └── mappings_metadata.parquet                   ◄── mapping summary table
+ │   ├── {trait_id}.parquet                      ◄── trait metadata
+ │   ├── causal_variants/
+ │   │   └── {trait_id}_causal.parquet           ◄── causal variant parameters
+ │   └── phenotypes/
+ │       └── {trait_id}_phenotype.parquet        ◄── pre-upscaled phenotype values
+ ├── mappings_metadata.parquet                   ◄── mapping summary table
+ └── marker_set_metadata.parquet                 ◄── EIGEN + marker counts
 ```
 
 All Parquet files use Snappy compression. Schemas are defined as Arrow schema
@@ -63,29 +65,23 @@ Marker data originates from two upstream processes:
 | PLINK `.bim` file (`PLINK_RECODE_VCF`) | `marker`, `CHROM`, `POS`, `A1`, `A2` |
 | EIGEN independent tests file (`LOCAL_COMPILE_EIGENS`) | `n_independent_tests` (metadata only) |
 
-The `.bim` file does not contain allele frequencies, so `AF1` is set to `NA` in
-the marker set. Allele frequencies are available per-mapping from the raw GWA
-output and are resolved at query time via `COALESCE(m.AF1, mk.AF1)`.
-
 **Source:** `R/io.R::read_bim_file()`
 
 
 ### Markers Schema
 
-**File:** `{base_dir}/marker_sets/{population}_{maf}_markers.parquet`
+**File:** `{base_dir}/markers/marker_sets/{marker_set_id}_markers.parquet`
 
 | Column | Arrow Type | Description |
 |--------|-----------|-------------|
+| `marker_set_id` | `utf8` | 20-char SHA-256 hash identifying the marker set |
 | `marker` | `utf8` | Variant identifier in `CHROM:POS` format (e.g. `1:157580`) |
 | `CHROM` | `utf8` | Chromosome (numeric string: `"1"`, `"2"`, ..., `"6"`) |
 | `POS` | `int32` | Genomic position (bp) |
 | `A1` | `utf8` | Allele 1 (minor allele from PLINK) |
 | `A2` | `utf8` | Allele 2 (major allele from PLINK) |
-| `AF1` | `float64` | Allele frequency of A1 (`NA` when sourced from `.bim`) |
-| `population` | `utf8` | Population/strain set identifier (e.g. `"complete"`) |
-| `maf` | `float64` | MAF threshold used to generate this marker set |
 
-**Key:** (`population`, `maf`) uniquely identifies a marker set.
+**Key:** `marker_set_id` uniquely identifies a marker set.
 Within a marker set, `marker` (equivalently `CHROM` + `POS`) is unique.
 
 **Source:** `R/database.R::markers_schema()`, `R/database.R::write_marker_set()`
@@ -93,18 +89,21 @@ Within a marker set, `marker` (equivalently `CHROM` + `POS`) is unique.
 
 ### Marker Set Metadata Schema
 
-**File:** `{base_dir}/marker_sets/marker_set_metadata.parquet`
+**File:** `{base_dir}/marker_set_metadata.parquet`
 
 | Column | Arrow Type | Description |
 |--------|-----------|-------------|
+| `marker_set_id` | `utf8` | 20-char SHA-256 hash (primary key) |
+| `marker_set_hash_string` | `utf8` | Human-readable hash input string |
+| `hash_schema_version` | `utf8` | `"v=1"` — increment if hash construction changes |
 | `population` | `utf8` | Population/strain set identifier |
 | `maf` | `float64` | MAF threshold |
-| `n_markers` | `int32` | Total number of markers in this set |
-| `n_independent_tests` | `float64` | Number of independent tests from EIGEN decomposition |
-| `eigen_source_file` | `utf8` | Filename of the EIGEN independent tests file |
-| `created_at` | `timestamp[us]` | Timestamp when this record was written |
+| `n_markers` | `int32` | Total number of markers |
+| `n_independent_tests` | `float64` | Independent tests from EIGEN decomposition |
+| `eigen_source_file` | `utf8` | EIGEN source filename |
+| `created_at` | `timestamp[us]` | Write timestamp |
 
-**Key:** (`population`, `maf`) uniquely identifies a record.
+**Key:** `marker_set_id` uniquely identifies a record.
 
 This table is used by `get_threshold_params()` to retrieve marker counts and
 EIGEN values for significance threshold calculation without reading the full
@@ -121,18 +120,19 @@ marker Parquet files.
 markers <- read_marker_set("complete", 0.05, base_dir = "results/db")
 
 # Via DuckDB (used internally by open_mapping_db)
+ms_id <- generate_marker_set_id("complete", 0.05)$hash
 con <- DBI::dbConnect(duckdb::duckdb(), ":memory:")
 DBI::dbExecute(con, "
   CREATE VIEW markers AS
-  SELECT * FROM read_parquet('results/db/marker_sets/*_markers.parquet')
+  SELECT * FROM read_parquet('results/db/markers/marker_sets/*_markers.parquet')
 ")
-result <- DBI::dbGetQuery(con, "
+result <- DBI::dbGetQuery(con, glue::glue("  # glue interpolates {ms_id}
   SELECT COUNT(*) as n_markers, MIN(POS) as min_pos, MAX(POS) as max_pos
   FROM markers
-  WHERE population = 'complete' AND maf = 0.05
+  WHERE marker_set_id = '{ms_id}'
   GROUP BY CHROM
   ORDER BY CHROM
-")
+"))
 ```
 
 
@@ -143,9 +143,9 @@ MAF threshold. Genotype matrices are written once during
 [database ingestion](qtl-detection-assessment.qmd#db_migration_write_genotype_matrix)
 and are available for future offline variance-explained estimation.
 
-Genotype files are co-located in `marker_sets/` alongside the marker Parquet
-files. The `markers` DuckDB view uses a narrowed glob (`_markers.parquet$`) to
-exclude genotype files from marker queries.
+Genotype files are located in `markers/genotypes/` alongside the marker Parquet
+files in `markers/marker_sets/`. The `markers` DuckDB view uses a narrowed glob
+(`_markers.parquet$`) to exclude genotype files from marker queries.
 
 
 ### Data Source
@@ -164,18 +164,19 @@ Genotype data originates from the wide-format TSV produced by
 
 ### Genotype Matrix Schema
 
-**File:** `{base_dir}/marker_sets/{population}_{maf}_genotypes.parquet`
+**File:** `{base_dir}/markers/genotypes/{marker_set_id}_genotypes.parquet`
 
 | Column | Arrow Type | Description |
 |--------|-----------|-------------|
+| `marker_set_id` | `utf8` | 20-char SHA-256 hash (join key to markers) |
 | `CHROM` | `utf8` | Chromosome identifier |
 | `POS` | `int32` | Genomic position (bp) |
 | `strain` | `utf8` | Strain name |
 | `allele` | `float64` | `−1.0` (hom ref), `1.0` (hom alt), `NA` (het/missing) |
 
-**Key:** (`CHROM`, `POS`, `strain`) uniquely identifies a row.
+**Key:** (`marker_set_id`, `CHROM`, `POS`, `strain`) uniquely identifies a row.
 
-This fixed 4-column schema avoids dynamic Arrow schemas when strain panels vary
+This fixed 5-column schema avoids dynamic Arrow schemas when strain panels vary
 across populations. At production scale (7,000 markers × 200 strains) the
 long-format file contains ~1.4 million rows; CHROM and strain have low
 cardinality and compress well with Parquet dictionary encoding.
@@ -225,29 +226,21 @@ before writing.
 
 | Column | Arrow Type | Description |
 |--------|-----------|-------------|
+| `marker_set_id` | `utf8` | FK → `markers` and `marker_set_metadata` |
+| `trait_id` | `utf8` | FK → `trait_metadata` (direct parent) |
+| `mapping_id` | `utf8` | 20-char SHA-256 hash (partition key; FK → `mappings_metadata`) |
 | `marker` | `utf8` | Variant identifier in `CHROM:POS` format |
-| `mapping_id` | `utf8` | Unique mapping identifier (see format below) |
 | `AF1` | `float64` | Allele frequency from GWA output |
 | `BETA` | `float64` | Effect size estimate |
 | `SE` | `float64` | Standard error of effect estimate |
 | `P` | `float64` | P-value from association test |
-| `nqtl` | `int32` | Number of simulated causal QTLs |
-| `rep` | `int32` | Simulation replicate number |
-| `h2` | `float64` | Simulated heritability |
-| `effect` | `utf8` | Effect size distribution (e.g. `"gamma"`, `"0.2-0.3"`) |
-| `algorithm` | `utf8` | Mapping algorithm (see below) |
-| `pca` | `boolean` | Whether PCA covariate was included |
-| `population` | `utf8` | Population/strain set identifier |
-| `maf` | `float64` | MAF threshold |
-| `trait` | `utf8` | Trait identifier (`"{nqtl}_{rep}_{h2}"`) |
 
 ::: {.callout-note}
-`var.exp` was removed from the mappings schema in Phase 5. It was always `NA`
-in the DB path because genotype matrices were not available at write time. Raw
-data for offline variance-explained estimation is now stored in the `traits/`,
-`causal_variants/`, and `phenotypes/` directories. Assessment output continues
-to report `interval.var.exp = NA` for the DB path; the legacy path is
-unchanged.
+Simulation parameters (`nqtl`, `rep`, `h2`, `effect`, `algorithm`, `pca`,
+`population`, `maf`) are no longer stored per data row. They are recoverable
+without divergence risk via FK joins to `mappings_metadata` (on `mapping_id`)
+and `marker_set_metadata` (on `marker_set_id`). This eliminates redundant
+constant-per-mapping columns from the ~millions-of-rows data files.
 :::
 
 **Source:** `R/database.R::mappings_schema()`,
@@ -256,19 +249,31 @@ unchanged.
 
 ### Mapping ID Format
 
-The `mapping_id` is a deterministic string constructed from simulation and
-mapping parameters:
+Each ID in the three-level hierarchy is a deterministic **20-character
+SHA-256** prefix computed from a canonical input string:
 
 ```
-{nqtl}_{rep}_{h2}_{maf}_{effect}_{population}_{algorithm}_{PCA|noPCA}
+marker_set_id  = SHA-256("v=1|population={pop}|maf={maf:.10f}")[1:20]
+  └── trait_id = SHA-256("v=1|parent={marker_set_hash}|nqtl={n}|effect={e}|rep={r}|h2={h2:.10f}")[1:20]
+        └── mapping_id = SHA-256("v=1|parent={trait_hash}|algorithm={algorithm}|pca={TRUE|FALSE}")[1:20]
 ```
 
-**Examples:**
+**Golden values (pinned 2026-02-27):** (`"ce100"` is used here as the
+population; the hash would differ for `"complete"` or any other string.)
 
-- `5_1_0.2_0.05_gamma_complete_LMM-EXACT-INBRED_PCA`
-- `2_3_0.8_0.05_0.2-0.3_complete_LMM-EXACT-LOCO_noPCA`
+```r
+generate_marker_set_id("ce100", 0.05)$hash
+# → "879ca1a75fc7fb5183e7"
 
-**Source:** `R/database.R::generate_mapping_id()`
+generate_trait_id("879ca1a75fc7fb5183e7", 5, "gamma", 1, 0.8)$hash
+# → "2aa558d92d805fb85ee8"
+
+generate_mapping_id("2aa558d92d805fb85ee8", "inbred", TRUE)$hash
+# → "5b9eecbb85032068d7e4"
+```
+
+**Source:** `R/database.R::generate_marker_set_id()`,
+`R/database.R::generate_trait_id()`, `R/database.R::generate_mapping_id()`
 
 
 ### Algorithm Values
@@ -277,8 +282,8 @@ The `algorithm` column encodes the GCTA mapping method:
 
 | Nextflow `mode` | Database `algorithm` | GCTA Method |
 |-----------------|---------------------|-------------|
-| `inbred` | `LMM-EXACT-INBRED` | `--fastGWA-mlm-exact` |
-| `loco` | `LMM-EXACT-LOCO` | `--mlma-loco` |
+| `inbred` | `inbred` | `--fastGWA-mlm-exact` |
+| `loco` | `loco` | `--mlma-loco` |
 
 The `pca` boolean tracks the Nextflow `type` parameter:
 
@@ -288,32 +293,6 @@ The `pca` boolean tracks the Nextflow `type` parameter:
 | `nopca` | `FALSE` |
 
 
-### AF1 Dual Storage
-
-Allele frequency (`AF1`) is stored in both marker sets and mappings because:
-
-- **Marker sets** sourced from `.bim` files do **not** contain allele frequency
-  (`AF1 = NA`)
-- **Mappings** sourced from GWA output files **do** contain allele frequency
-
-At query time, the two are resolved with `COALESCE(m.AF1, mk.AF1)`, preferring
-the mapping-level value. This is implemented in
-`R/queries.R::query_for_threshold_analysis()`:
-
-```sql
-SELECT
-  m.marker, m.P, m.BETA, m.SE,
-  mk.CHROM, mk.POS,
-  COALESCE(m.AF1, mk.AF1) AS AF1
-FROM mappings m
-LEFT JOIN markers mk
-  ON m.marker = mk.marker
-  AND m.population = mk.population
-  AND m.maf = mk.maf
-WHERE m.mapping_id = '{mapping_id}'
-```
-
-
 ### Hive Partitioning
 
 Mappings use Hive-style directory partitioning:
@@ -321,11 +300,9 @@ Mappings use Hive-style directory partitioning:
 ```
 mappings/
  └── population=complete/
-     ├── mapping_id=5_1_0.2_0.05_gamma_complete_LMM-EXACT-INBRED_PCA/
+     ├── mapping_id=5b9eecbb85032068d7e4/   # inbred + PCA
      │   └── data.parquet
-     ├── mapping_id=5_1_0.2_0.05_gamma_complete_LMM-EXACT-INBRED_noPCA/
-     │   └── data.parquet
-     └── mapping_id=5_1_0.2_0.05_gamma_complete_LMM-EXACT-LOCO_PCA/
+     └── mapping_id=a3f7d2e1c9b04f8e2d1a/   # inbred + noPCA
          └── data.parquet
 ```
 
@@ -366,19 +343,22 @@ writes complete, enabling fast lookups without scanning the full Parquet files.
 
 | Column | Arrow Type | Description |
 |--------|-----------|-------------|
-| `mapping_id` | `utf8` | Unique mapping identifier |
+| `mapping_id` | `utf8` | 20-char SHA-256 hash (primary key) |
+| `mapping_hash_string` | `utf8` | Human-readable hash input string (metadata only) |
+| `trait_id` | `utf8` | FK → trait metadata (direct parent) |
+| `marker_set_id` | `utf8` | FK → marker set metadata (grandparent; for query convenience) |
+| `hash_schema_version` | `utf8` | `"v=1"` |
 | `population` | `utf8` | Population/strain set identifier |
 | `maf` | `float64` | MAF threshold |
 | `nqtl` | `int32` | Number of simulated causal QTLs |
 | `rep` | `int32` | Simulation replicate number |
 | `h2` | `float64` | Simulated heritability |
 | `effect` | `utf8` | Effect size distribution |
-| `algorithm` | `utf8` | Mapping algorithm |
+| `algorithm` | `utf8` | Mapping algorithm (`"inbred"` or `"loco"`) |
 | `pca` | `boolean` | Whether PCA covariate was included |
-| `trait` | `utf8` | Trait identifier |
 | `n_markers` | `int32` | Number of markers in this mapping |
 | `source_file` | `utf8` | Original partition directory name |
-| `processed_at` | `timestamp[us]` | When the metadata was aggregated |
+| `processed_at` | `timestamp[us]` | When metadata was aggregated |
 | `processing_version` | `utf8` | Pipeline version string |
 
 **Key:** `mapping_id` uniquely identifies each record.
@@ -401,17 +381,17 @@ downstream dependents within the pipeline.
 
 ### Trait IDs
 
-Traits are identified by a **deterministic 12-character MD5 hash** of the
-simulation parameters:
+Traits are identified by a **deterministic 20-character SHA-256 hash** derived
+from the parent marker set hash and simulation parameters:
 
 ```
-trait_id = MD5("{group}_{maf}_{nqtl}_{effect}_{rep}_{h2}")[1:12]
+trait_id = SHA-256("v=1|parent={marker_set_hash}|nqtl={n}|effect={e}|rep={r}|h2={h2:.10f}")[1:20]
 ```
 
-The hash is computed exclusively in R via `generate_trait_id()` using
-`digest::digest(serialize = FALSE)`. No Groovy counterpart exists — the
-Nextflow `.multiMap` block passes raw parameters to the R script, which
-computes `trait_id` internally. This eliminates cross-language hash divergence.
+The caller must first compute the marker set ID and pass its hash as the
+parent. No Groovy counterpart exists — the Nextflow `.multiMap` block passes
+raw parameters to the R script, which computes `trait_id` internally. This
+eliminates cross-language hash divergence.
 
 **Properties:**
 
@@ -419,20 +399,15 @@ computes `trait_id` internally. This eliminates cross-language hash divergence.
   pipeline `-resume` → Nextflow caches the write processes
 - **Debuggable:** `trait_id` can be reconstructed from parameters alone,
   without scanning the database
-- **Unique:** any script can call `generate_trait_id(params)` to locate stored
-  data without a directory scan
+- **Unique:** any script can call `generate_trait_id(ms_hash, ...)` to locate
+  stored data without a directory scan
 
 **Source:** `R/database.R::generate_trait_id()`
 
 ```r
-trait_id <- generate_trait_id(
-  group  = "complete",
-  maf    = 0.05,
-  nqtl   = 5,
-  effect = "gamma",
-  rep    = 1,
-  h2     = 0.8
-)
+ms_id    <- generate_marker_set_id("complete", 0.05)
+trait    <- generate_trait_id(ms_id$hash, nqtl = 5, effect = "gamma", rep = 1, h2 = 0.8)
+trait_id <- trait$hash   # 20-char hex string
 ```
 
 
@@ -442,7 +417,9 @@ trait_id <- generate_trait_id(
 
 | Column | Arrow Type | Description |
 |--------|-----------|-------------|
-| `trait_id` | `utf8` | Deterministic MD5 hash (12 hex characters) |
+| `trait_id` | `utf8` | 20-char SHA-256 hash (primary key) |
+| `trait_hash_string` | `utf8` | Human-readable hash input string (metadata only) |
+| `marker_set_id` | `utf8` | FK → marker set metadata (parent link) |
 | `nqtl` | `int32` | Number of simulated causal QTLs |
 | `rep` | `int32` | Simulation replicate number |
 | `h2` | `float64` | Simulated heritability |
@@ -460,7 +437,7 @@ parameters writes to the same path; `overwrite = TRUE` replaces the file cleanly
 
 ### Causal Variants Schema
 
-**File:** `{base_dir}/causal_variants/{trait_id}_causal.parquet`
+**File:** `{base_dir}/traits/causal_variants/{trait_id}_causal.parquet`
 
 | Column | Arrow Type | Description |
 |--------|-----------|-------------|
@@ -480,7 +457,7 @@ Causal variant records are loaded from the GCTA `.par` file via
 
 ### Phenotype Schema
 
-**File:** `{base_dir}/phenotypes/{trait_id}_phenotype.parquet`
+**File:** `{base_dir}/traits/phenotypes/{trait_id}_phenotype.parquet`
 
 | Column | Arrow Type | Description |
 |--------|-----------|-------------|
@@ -506,7 +483,8 @@ With all four data stores populated, variance explained can be estimated for
 any trait without re-running the pipeline:
 
 ```r
-trait_id <- generate_trait_id(group, maf, nqtl, effect, rep, h2)
+ms_id    <- generate_marker_set_id(group, maf)
+trait_id <- generate_trait_id(ms_id$hash, nqtl, effect, rep, h2)$hash
 
 geno   <- read_genotype_matrix(group, maf, base_dir)         # CHROM, POS, strain, allele
 pheno  <- read_phenotype_data(trait_id, base_dir)            # strain, phenotype
@@ -531,10 +509,10 @@ views:
 
 | View | Source | Description |
 |------|--------|-------------|
-| `markers` | `marker_sets/*_markers.parquet` | All marker set files (excludes genotype files) |
+| `markers` | `markers/marker_sets/*_markers.parquet` | All marker set files (excludes genotype files) |
 | `mappings` | `mappings/**/*.parquet` (Hive) | All mapping partitions |
 | `metadata` | `mappings_metadata.parquet` | Mapping summary table |
-| `marker_set_metadata` | `marker_sets/marker_set_metadata.parquet` | EIGEN values and marker counts |
+| `marker_set_metadata` | `marker_set_metadata.parquet` | EIGEN values and marker counts |
 
 
 ### Key Query Functions
@@ -548,7 +526,8 @@ views:
 | `get_metadata()` | `R/queries.R` | Read the mappings metadata summary table |
 | `list_populations()` | `R/queries.R` | List available populations from partition directories |
 | `db_stats()` | `R/queries.R` | Database-wide statistics (file counts, sizes, populations) |
-| `generate_trait_id()` | `R/database.R` | Compute deterministic 12-char MD5 trait ID from simulation parameters |
+| `generate_marker_set_id()` | `R/database.R` | Compute deterministic 20-char SHA-256 marker set ID from population and MAF |
+| `generate_trait_id()` | `R/database.R` | Compute deterministic 20-char SHA-256 trait ID from marker set hash and simulation parameters |
 | `read_genotype_matrix()` | `R/database.R` | Read long-format genotype matrix for a (population, MAF) combination |
 | `read_trait_metadata()` | `R/database.R` | Read per-trait metadata record by `trait_id` |
 | `read_causal_variants_data()` | `R/database.R` | Read causal variant parameters by `trait_id` |

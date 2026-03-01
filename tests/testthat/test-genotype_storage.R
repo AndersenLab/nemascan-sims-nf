@@ -31,7 +31,7 @@ test_that("write_genotype_matrix output has correct schema columns", {
   write_genotype_matrix(tsv, "test_pop", 0.05, db_dir)
   result <- read_genotype_matrix("test_pop", 0.05, db_dir)
 
-  expect_setequal(names(result), c("CHROM", "POS", "strain", "allele"))
+  expect_setequal(names(result), c("marker_set_id", "CHROM", "POS", "strain", "allele"))
 })
 
 test_that("write_genotype_matrix drops REF and ALT columns", {
@@ -140,8 +140,38 @@ test_that("output Parquet has correct Arrow types", {
   tbl <- arrow::read_parquet(path, as_data_frame = FALSE)
   schema <- tbl$schema
 
+  expect_equal(schema$GetFieldByName("marker_set_id")$type, arrow::utf8())
   expect_equal(schema$GetFieldByName("CHROM")$type, arrow::utf8())
   expect_equal(schema$GetFieldByName("POS")$type, arrow::int32())
   expect_equal(schema$GetFieldByName("strain")$type, arrow::utf8())
   expect_equal(schema$GetFieldByName("allele")$type, arrow::float64())
+})
+
+test_that("write_genotype_matrix marker_set_id matches generate_marker_set_id hash", {
+  db_dir <- create_temp_db()
+  init_database(db_dir)
+  tsv <- fixture_path("test_genotype_matrix.tsv")
+
+  write_genotype_matrix(tsv, "test_pop", 0.05, db_dir)
+  result <- read_genotype_matrix("test_pop", 0.05, db_dir)
+
+  expected_hash <- generate_marker_set_id("test_pop", 0.05)$hash
+  expect_true(all(result$marker_set_id == expected_hash),
+              label = "all marker_set_id values match expected hash")
+})
+
+
+# ── Directory structure ───────────────────────────────────────────────────────
+
+test_that("genotype parquet file is in markers/genotypes/ dir", {
+  db_dir <- create_temp_db()
+  init_database(db_dir)
+  tsv <- fixture_path("test_genotype_matrix.tsv")
+
+  write_genotype_matrix(tsv, "test_pop", 0.05, db_dir)
+
+  markers_dir <- file.path(db_dir, "markers", "genotypes")
+  geno_files <- list.files(markers_dir, pattern = "_genotypes\\.parquet$")
+  expect_gt(length(geno_files), 0L,
+            label = "genotype parquet file is in markers/genotypes/ dir")
 })

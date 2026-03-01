@@ -6,30 +6,44 @@ test_that("mappings_schema excludes N and log10p, includes AF1", {
   expect_false("log10p" %in% field_names)
 })
 
-test_that("prepare_mapping_data handles missing var.exp gracefully", {
-  df <- read_raw_gwa_file(fixture_path("test.fastGWA"), verbose = FALSE)
-  params <- list(nqtl = 5L, rep = 1L, h2 = 0.8, maf = 0.05, effect = "gamma",
-                 population = "test_pop", algorithm = "INBRED", pca = TRUE)
-  result <- prepare_mapping_data(df, params)
-  # var.exp should not be in the result (not in raw GWA, not in available_cols)
-  # OR if it is added as NA, that's also acceptable
-  if ("var.exp" %in% names(result)) {
-    expect_true(all(is.na(result$var.exp)))
-  }
-  # AF1 should be present
-  expect_true("AF1" %in% names(result))
-  # N and log10p should NOT be present
-  expect_false("N" %in% names(result))
-  expect_false("log10p" %in% names(result))
+test_that("mappings_schema has exactly 8 fields", {
+  s <- mappings_schema()
+  expect_equal(length(names(s)), 8L)
 })
 
-test_that("generate_mapping_id includes explicit PCA/noPCA suffix", {
-  params_pca  <- list(nqtl = 5, rep = 1, h2 = 0.8, maf = 0.05, effect = "gamma",
-                      population = "pop", algorithm = "INBRED", pca = TRUE)
-  params_nopca <- modifyList(params_pca, list(pca = FALSE))
-  id_pca  <- generate_mapping_id(params_pca)
-  id_nopca <- generate_mapping_id(params_nopca)
-  expect_match(id_pca, "_PCA$")
-  expect_match(id_nopca, "_noPCA$")
-  expect_false(id_pca == id_nopca)
+test_that("mappings_schema contains FK columns marker_set_id, trait_id, mapping_id", {
+  s <- mappings_schema()
+  field_names <- names(s)
+  expect_true("marker_set_id" %in% field_names)
+  expect_true("trait_id" %in% field_names)
+  expect_true("mapping_id" %in% field_names)
 })
+
+test_that("mappings_schema does not contain redundant per-row constant columns", {
+  s <- mappings_schema()
+  field_names <- names(s)
+  expect_false("nqtl" %in% field_names)
+  expect_false("algorithm" %in% field_names)
+  expect_false("population" %in% field_names)
+  expect_false("trait" %in% field_names)
+  expect_false("maf" %in% field_names)
+  expect_false("h2" %in% field_names)
+  expect_false("effect" %in% field_names)
+  expect_false("pca" %in% field_names)
+  expect_false("rep" %in% field_names)
+})
+
+test_that("metadata_schema does not contain trait column", {
+  s <- metadata_schema()
+  expect_false("trait" %in% names(s))
+})
+
+test_that("metadata_schema contains hash FK columns", {
+  s <- metadata_schema()
+  field_names <- names(s)
+  expect_true("mapping_hash_string" %in% field_names)
+  expect_true("trait_id" %in% field_names)
+  expect_true("marker_set_id" %in% field_names)
+  expect_true("hash_schema_version" %in% field_names)
+})
+

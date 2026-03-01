@@ -25,17 +25,20 @@ test_that("database root directory exists and has expected subdirectories", {
   skip_if_no_db()
   expect_true(dir.exists(db_dir))
   expect_true(dir.exists(file.path(db_dir, "markers")))
+  expect_true(dir.exists(file.path(db_dir, "markers", "marker_sets")))
+  expect_true(dir.exists(file.path(db_dir, "markers", "genotypes")))
   expect_true(dir.exists(file.path(db_dir, "mappings")))
 })
 
 test_that("marker set parquet files exist", {
   skip_if_no_db()
-  markers_dir <- file.path(db_dir, "markers")
+  markers_dir <- file.path(db_dir, "markers", "marker_sets")
   marker_files <- list.files(markers_dir, pattern = "_markers\\.parquet$")
   expect_gt(length(marker_files), 0, label = "at least one marker set file")
 
-  # Check expected file for test profile
-  expected_file <- paste0(expected_population, "_0.05_markers.parquet")
+  # Derive expected filename from hash
+  expected_hash <- generate_marker_set_id(expected_population, 0.05)$hash
+  expected_file <- paste0(expected_hash, "_markers.parquet")
   expect_true(
     expected_file %in% marker_files,
     label = paste("expected marker set file:", expected_file)
@@ -76,7 +79,8 @@ test_that("marker_set_metadata.parquet has required columns and valid data", {
   ms_meta <- arrow::read_parquet(file.path(db_dir, "marker_set_metadata.parquet"))
 
   # Required columns
-  expected_cols <- c("population", "maf", "n_markers", "n_independent_tests",
+  expected_cols <- c("marker_set_id", "marker_set_hash_string", "hash_schema_version",
+                     "population", "maf", "n_markers", "n_independent_tests",
                      "eigen_source_file", "created_at")
   expect_true(all(expected_cols %in% names(ms_meta)),
               label = paste("marker_set_metadata columns:",
@@ -98,18 +102,20 @@ test_that("marker set parquet has correct schema", {
   skip_if_no_db()
   ms <- read_marker_set(expected_population, 0.05, db_dir)
 
-  expected_cols <- c("marker", "CHROM", "POS", "A1", "A2", "AF1",
-                     "population", "maf")
+  expected_cols <- c("marker_set_id", "marker", "CHROM", "POS", "A1", "A2")
   expect_true(all(expected_cols %in% names(ms)))
   expect_gt(nrow(ms), 0)
+  # marker_set_hash_string must NOT be in the data file (metadata only)
+  expect_false("marker_set_hash_string" %in% names(ms),
+               label = "marker_set_hash_string absent from data file")
+  expect_false("AF1" %in% names(ms), label = "AF1 absent from marker data schema")
+  expect_false("population" %in% names(ms), label = "population absent from marker data schema")
+  expect_false("maf" %in% names(ms), label = "maf absent from marker data schema")
 
   # CHROM should be character
   expect_type(ms$CHROM, "character")
   # POS should be integer
   expect_type(ms$POS, "integer")
-  # AF1 should be NA for .bim-sourced marker sets
-  expect_true(all(is.na(ms$AF1)),
-              label = "AF1 should be NA for bim-sourced markers")
 })
 
 # ── Mappings Metadata ────────────────────────────────────────────────────────
@@ -125,11 +131,33 @@ test_that("mappings_metadata.parquet has required columns", {
   present <- expected_cols[expected_cols %in% names(meta)]
   # Allow some optional columns (source_file, processed_at, processing_version
   # may come from aggregate_metadata.R which uses slightly different column set)
-  core_cols <- c("mapping_id", "population", "maf", "nqtl", "rep",
+  core_cols <- c("mapping_id", "mapping_hash_string", "trait_id",
+                 "marker_set_id", "hash_schema_version",
+                 "population", "maf", "nqtl", "rep",
                  "h2", "effect", "algorithm", "pca", "n_markers")
   expect_true(all(core_cols %in% names(meta)),
               label = paste("missing core columns:",
                             paste(setdiff(core_cols, names(meta)), collapse = ", ")))
+})
+
+test_that("hash_string columns are present in metadata files and absent from data files", {
+  skip_if_no_db()
+
+  # mapping_hash_string must be in mappings_metadata, absent from data partitions
+  meta <- get_metadata(db_dir)
+  expect_true("mapping_hash_string" %in% names(meta),
+              label = "mapping_hash_string present in mappings_metadata.parquet")
+
+  data_files <- list.files(file.path(db_dir, "mappings"),
+                           pattern = "data\\.parquet$",
+                           recursive = TRUE, full.names = TRUE)
+  if (length(data_files) > 0) {
+    first_data <- arrow::read_parquet(data_files[1])
+    expect_false("mapping_hash_string" %in% names(first_data),
+                 label = "mapping_hash_string absent from mapping data.parquet")
+    expect_false("mapping_id" %in% names(first_data),
+                 label = "mapping_id absent from mapping data.parquet (partition key only)")
+  }
 })
 
 test_that("mappings_metadata has correct row count for test profile", {
@@ -147,7 +175,7 @@ test_that("algorithm values are valid", {
   skip_if_no_db()
   meta <- get_metadata(db_dir)
 
-  valid_algorithms <- c("LMM-EXACT-INBRED", "LMM-EXACT-LOCO")
+  valid_algorithms <- c("inbred", "loco")
   expect_true(all(meta$algorithm %in% valid_algorithms),
               label = paste("unexpected algorithms:",
                             paste(setdiff(unique(meta$algorithm), valid_algorithms),
@@ -167,22 +195,12 @@ test_that("PCA flags are correct", {
   expect_true(any(meta$pca == FALSE), label = "at least one noPCA mapping")
 })
 
-test_that("mapping IDs follow expected naming convention", {
+test_that("mapping IDs are 20-character lowercase hex hashes", {
   skip_if_no_db()
   meta <- get_metadata(db_dir)
 
-  # IDs should end with _PCA or _noPCA
-  pca_ids <- meta$mapping_id[meta$pca == TRUE]
-  nopca_ids <- meta$mapping_id[meta$pca == FALSE]
-
-  if (length(pca_ids) > 0) {
-    expect_true(all(grepl("_PCA$", pca_ids)),
-                label = "PCA mapping IDs should end with _PCA")
-  }
-  if (length(nopca_ids) > 0) {
-    expect_true(all(grepl("_noPCA$", nopca_ids)),
-                label = "noPCA mapping IDs should end with _noPCA")
-  }
+  expect_true(all(grepl("^[0-9a-f]{20}$", meta$mapping_id)),
+              label = "all mapping IDs should be 20-char lowercase hex")
 })
 
 # ── Database Queryability ────────────────────────────────────────────────────

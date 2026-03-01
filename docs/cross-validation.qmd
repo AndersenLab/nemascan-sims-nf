@@ -62,11 +62,13 @@ This produces two assessment TSVs in the output directory:
 ### 2. Run the automated test suite
 
 The test file `tests/testthat/test-assessment_cross_validation.R` asserts that
-all three concordance scores are 1.0 for every mapping entry. It runs as part
-of the standard test suite:
+all three concordance scores are 1.0 for every mapping entry. It also verifies
+that `generate_mapping_id()` is deterministic: the same simulation parameters
+always produce the same 20-character hex `mapping_id` across repeated
+invocations. It runs as part of the standard test suite:
 
 ```bash
-TEST_EXISTING_ASSESSMENT=/path/to/simulation_assessment_results.tsv \
+TEST_LEGACY_ASSESSMENT=/path/to/simulation_assessment_results.tsv \
 TEST_DB_ASSESSMENT=/path/to/db_simulation_assessment_results.tsv \
 Rscript tests/run_tests.R
 ```
@@ -75,7 +77,7 @@ If using the `tests/collect_test_data.sh` helper:
 
 ```bash
 bash tests/collect_test_data.sh
-TEST_EXISTING_ASSESSMENT=tests/integration_data/simulation_assessment_results.tsv \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/simulation_assessment_results.tsv \
 TEST_DB_ASSESSMENT=tests/integration_data/db_simulation_assessment_results.tsv \
 Rscript tests/run_tests.R
 ```
@@ -91,7 +93,7 @@ and per-QTL interval detail. To render it after a pipeline run:
 
 ```bash
 quarto render tests/notebooks/assessment_cross_validation.qmd \
-  -P existing_assessment:/path/to/simulation_assessment_results.tsv \
+  -P legacy_assessment:/path/to/simulation_assessment_results.tsv \
   -P db_assessment:/path/to/db_simulation_assessment_results.tsv \
   -P db_dir:/path/to/db
 ```
@@ -99,7 +101,7 @@ quarto render tests/notebooks/assessment_cross_validation.qmd \
 Or set environment variables and render without `-P` flags:
 
 ```bash
-export TEST_EXISTING_ASSESSMENT=/path/to/simulation_assessment_results.tsv
+export TEST_LEGACY_ASSESSMENT=/path/to/simulation_assessment_results.tsv
 export TEST_DB_ASSESSMENT=/path/to/db_simulation_assessment_results.tsv
 export TEST_DB_DIR=/path/to/db
 quarto render tests/notebooks/assessment_cross_validation.qmd
@@ -129,7 +131,7 @@ The notebook can be adapted to compare any two assessment TSVs that share the
 parameter configurations:
 
 1. Copy the notebook to a working directory.
-2. Set `existing_assessment_path` and `db_assessment_path` to point to the two
+2. Set `legacy_assessment_path` and `db_assessment_path` to point to the two
    TSVs being compared (the variable names reflect the original DB-vs-legacy
    use case but accept any conforming TSV).
 3. Render with Quarto as described above.
