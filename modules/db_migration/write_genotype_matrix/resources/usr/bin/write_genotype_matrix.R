@@ -3,7 +3,7 @@
 # Write genotype matrix to database in long-format Parquet
 #
 # Input: wide-format TSV from BCFTOOLS_CREATE_GENOTYPE_MATRIX
-# Output: long-format Parquet in {db_dir}/markers/{population}_{maf}_genotypes.parquet
+# Output: long-format Parquet in {db_dir}/markers/genotypes/{marker_set_id}_genotypes.parquet
 
 suppressPackageStartupMessages({
   library(optparse)

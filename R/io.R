@@ -48,10 +48,11 @@ read_raw_gwa_file <- function(file_path, verbose = TRUE) {
 #' Read PLINK .bim file for marker set creation
 #'
 #' Reads 6-column no-header .bim format and creates marker identifiers.
-#' AF1 is set to NA since allele frequency is not available in .bim files.
+#' AF1 is not included — allele frequency is not available in .bim files
+#' and is not part of the markers schema (stored per-mapping in mappings only).
 #'
 #' @param bim_path Path to .bim file
-#' @return Dataframe with columns: marker, CHROM, POS, A1, A2, AF1
+#' @return Dataframe with columns: marker, CHROM, POS, A1, A2
 read_bim_file <- function(bim_path) {
   df <- data.table::fread(bim_path, header = FALSE,
     col.names = c("CHROM", "SNP", "cM", "POS", "A1", "A2"))
@@ -60,8 +61,7 @@ read_bim_file <- function(bim_path) {
       CHROM = as.character(CHROM),
       marker = paste(CHROM, POS, sep = ":")
     ) %>%
-    dplyr::select(marker, CHROM, POS, A1, A2) %>%
-    dplyr::mutate(AF1 = NA_real_)  # AF1 unavailable from .bim (see AF1 design note)
+    dplyr::select(marker, CHROM, POS, A1, A2)
 }
 
 

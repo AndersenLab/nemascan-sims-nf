@@ -73,7 +73,7 @@ if (!exists("legacy_assessment_path") || legacy_assessment_path == "") {
   legacy_assessment_path <- if (params$legacy_assessment != "") {
     params$legacy_assessment
   } else {
-    Sys.getenv("TEST_legacy_ASSESSMENT", unset = "")
+    Sys.getenv("TEST_LEGACY_ASSESSMENT", unset = "")
   }
 }
 
