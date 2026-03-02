@@ -127,21 +127,42 @@ This is a manual step &mdash; the site is not automatically rebuilt on push.
 
 ## Running Tests
 
-### Unit Tests
+### Test Tiers
 
-Unit tests use static fixtures and do not require pipeline output:
+The test suite has three tiers with different requirements:
+
+| Tier | Files | Requirements | Skips automatically when |
+|------|-------|-------------|--------------------------|
+| Unit | all `test-*.R` except integration/cross-val | Static fixtures only; no pipeline run needed | — |
+| Integration | `test-db_structure.R`, `test-cross_validation.R` | Pipeline output (`TEST_DB_DIR`, `TEST_WORK_DIR`) | Env vars unset |
+| Cross-validation | `test-assessment_cross_validation.R` | Both DB and legacy output | `TEST_LEGACY_ASSESSMENT` unset |
+
+Run all tiers with a single command; integration and cross-validation tests
+skip automatically when their environment variables are absent:
 
 ```bash
 Rscript tests/run_tests.R
 ```
 
-Tests are organized by functional area in `tests/testthat/`. Phase 5 added two
-new test files:
+### Unit Tests
+
+Unit tests use static fixtures and do not require pipeline output. Tests are
+organized by functional area in `tests/testthat/`:
 
 | File | What it tests |
 |------|--------------|
+| `test-library_check.R` | R library file existence and function availability after sourcing `setup.R` |
+| `test-read_raw_gwa.R` | `read_raw_gwa_file()` for `.fastGWA` and `.mlma` formats; column normalization; LOCO deduplication |
+| `test-read_bim.R` | `read_bim_file()` parses `.bim` format; column names; `CHROM:POS` marker construction |
 | `test-genotype_storage.R` | Round-trip `write_genotype_matrix()` / `read_genotype_matrix()`; schema validation (CHROM, POS, strain, allele); existence checks; verifies genotype files are excluded from the `markers` DuckDB view |
-| `test-trait_storage.R` | `generate_trait_id()` determinism (same params → same ID), uniqueness (different params → different IDs), character class (`[0-9a-f]{12}`), and golden-value hash; round-trips for `write_trait_metadata()`, `write_causal_variants()`, `write_phenotype_data()`; `overwrite = TRUE` retry behavior; `phenotype_exists()` existence check |
+| `test-trait_storage.R` | `generate_trait_id()` determinism (same params → same ID), uniqueness (different params → different IDs), and golden-value hash; round-trips for `write_trait_metadata()`, `write_causal_variants()`, `write_phenotype_data()`; `overwrite = TRUE` retry behavior; `phenotype_exists()` existence check |
+| `test-significance.R` | BF and EIGEN significance thresholds; verifies significance calls are identical whether log10p is computed on-the-fly or stored |
+| `test-write_gwa_to_db.R` | GWA data writes to Parquet DB with correct schema and values; partition path correctness |
+| `test-hash_generation.R` | `generate_marker_set_id()`, `generate_trait_id()`, `generate_mapping_id()` golden-value hashes; SHA-256 stability across calls |
+| `test-safe_log10p.R` | `safe_log10p()` clamping at `LOG10P_MAX`; vector handling; known ground-truth values |
+| `test-module_sourcing.R` | All `db_migration` module R scripts reference `R_SOURCE_DIR` and are readable |
+| `test-assessment.R` | `R/assessment.R` functions: `load_causal_variants()`, QTL detection, `designate_qtl()` categories |
+| `test-schema_changes.R` | `mappings_schema()` field count (8), required FK columns, exclusion of `N` and `log10p` |
 
 #### Test Fixtures
 
@@ -149,19 +170,29 @@ new test files:
 
 | File | Description |
 |------|-------------|
-| `test_genotype_matrix.tsv` | 5 markers × 3 strains, wide-format TSV with `−1`/`1`/`NA` encoding — includes a heterozygous (NA) case to verify encoding is preserved |
-| `test_sims.phen` | 3-strain phenotype file in GCTA `.phen` format (space-delimited: FID IID value, no header) |
+| `test_genotype_matrix.tsv` | 5 markers × 3 strains, wide-format TSV with `-1`/`1`/`NA` encoding — includes a heterozygous (NA) case to verify encoding is preserved |
+| `test_sims.phen` | 3-strain phenotype file in GCTA `.phen` format (FID IID value, space-delimited, no header) |
+| `test_sims.par` | GCTA causal variant parameter file (`.par` format) with 4 causal variants; used by `test-assessment.R` |
+| `test.bim` | PLINK `.bim` marker file with 50 markers; used by `test-read_bim.R` |
+| `test.mlma` | Raw GCTA `.mlma` output (LOCO mode); used by `test-read_raw_gwa.R` |
+| `test.fastGWA` | Raw GCTA `.fastGWA` output (inbred mode); used by `test-read_raw_gwa.R` and `test-write_gwa_to_db.R` |
+| `test_loco_dedup.mlma` | Deduplicated LOCO `.mlma` for duplicate-marker handling tests |
+| `test_eigen.txt` | Eigenvalue count for significance threshold computation; used by `test-significance.R` |
+| `test_mapping.tsv` | Processed mapping with precomputed `log10p` column; used by `test-significance.R` and `test-safe_log10p.R` |
 
 ### Integration Tests
 
 Integration tests require pipeline output collected by `tests/collect_test_data.sh`:
 
 ```bash
-# Run pipeline and collect outputs
+# Run pipeline (requires Docker) and collect outputs
 bash tests/collect_test_data.sh
 
-# Or collect from a previous run
+# Collect from a previous run (no pipeline re-run)
 bash tests/collect_test_data.sh --collect-only
+
+# Remove previous results before running
+bash tests/collect_test_data.sh --clean
 
 # Run integration tests with collected data
 TEST_DB_DIR=tests/integration_data/db \
@@ -171,8 +202,28 @@ TEST_DB_ASSESSMENT=tests/integration_data/db_simulation_assessment_results.tsv \
 Rscript tests/run_tests.R
 ```
 
-Integration test files skip automatically when the required environment
-variables are not set.
+The default pipeline run inside `collect_test_data.sh` uses `-profile test,docker`,
+so Docker must be available for a local integration test collection run. Integration
+test files skip automatically when the required environment variables are not set.
+
+### Cross-Validation Tests
+
+Two test files compare the DB assessment path against the legacy R path:
+
+- **`test-assessment_cross_validation.R`** — compares
+  `db_simulation_assessment_results.tsv` (DB path) against
+  `simulation_assessment_results.tsv` (legacy path). Computes three
+  concordance scores per replicate: detection concordance, designation
+  concordance, and interval overlap (Jaccard). Requires both
+  `TEST_LEGACY_ASSESSMENT` and `TEST_DB_ASSESSMENT`.
+
+- **`test-cross_validation.R`** — compares DB Parquet contents against raw GWA
+  files in the Nextflow work directory to verify round-trip accuracy. Requires
+  `TEST_DB_DIR` and `TEST_WORK_DIR`.
+
+Both tests skip automatically unless all required env vars are set. Both
+require `--legacy_assess` to have been passed when collecting test data (so
+that the legacy output files exist alongside the DB output).
 
 
 ## Pipeline Stub Runs
@@ -188,6 +239,88 @@ nextflow run main.nf -profile test_variable -stub-run
 
 # With legacy assessment path
 nextflow run main.nf -profile test --legacy_assess -stub-run
+```
+
+
+## HPC Execution (Rockfish)
+
+The `rockfish` profile targets the Rockfish cluster at Johns Hopkins, using
+SLURM for job scheduling and Singularity for containers.
+
+### Environment Setup
+
+```bash
+export NXF_VER=24.10.4
+export NXF_SINGULARITY_CACHEDIR=/vast/eande106/singularity
+```
+
+### Prerequisites
+
+- Nextflow `>=24.10.0,<25.0.0` (pinned via `NXF_VER`)
+- SLURM account `eande106`; partition `parallel` (default) and `bigmem` (legacy
+  QTL detection only)
+- Singularity images cached at `/vast/eande106/singularity` (configured via
+  `singularity.cacheDir` in `conf/rockfish.config`)
+
+### Running the Pipeline on Rockfish
+
+```bash
+NXF_VER=24.10.4 nextflow run main.nf \
+  -profile rockfish \
+  --strainfile strains.tsv \
+  --vcf 20231213
+```
+
+The `rockfish` profile sets `executor = 'slurm'`, enables Singularity with
+`autoMounts = true`, and applies per-process CPU/RAM/time/retry settings. Key
+process resources from `conf/rockfish.config`:
+
+| Process group | CPUs | Memory | Time | Max retries |
+|--------------|------|--------|------|-------------|
+| bcftools/plink extraction | 4 | 40 GB | 1 h | 3 |
+| Eigen computation (`r_find_genotype_matrix_eigen`) | 2 | 60 GB | 30 min | 3 |
+| GWA (simulate, GRM, map) | 4 | 20 GB | 10 min | 3 |
+| DB migration (write marker set) | 2 | 8 GB | 30 min | 3 |
+| DB migration (other) | 1 | 2–8 GB | 5–20 min | 2–3 |
+| `r_get_gcta_intervals` (bigmem) | 1 | — | 4 h × attempt | 5 |
+
+### Collecting Integration Test Data on Rockfish
+
+Run the pipeline on the cluster, then use `--collect-only` on the login node
+to gather outputs without re-running:
+
+```bash
+# After the pipeline completes on SLURM:
+bash tests/collect_test_data.sh --collect-only
+```
+
+Copy `tests/integration_data/` to your local machine, then run the integration
+tests locally:
+
+```bash
+TEST_DB_DIR=tests/integration_data/db \
+TEST_WORK_DIR=tests/.nf-work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+Note: `TEST_WORK_DIR` points to the Nextflow work directory. If collecting
+from a remote cluster, `test-cross_validation.R` (which reads raw GWA files
+from the work directory) must be run on the cluster or the work directory
+must also be copied locally.
+
+### Stub Runs on Rockfish
+
+Stub runs bypass SLURM submission and verify process wiring without executing
+real computations:
+
+```bash
+NXF_VER=24.10.4 nextflow run main.nf \
+  -profile rockfish \
+  --strainfile strains.tsv \
+  --vcf 20231213 \
+  -stub-run
 ```
 
 
