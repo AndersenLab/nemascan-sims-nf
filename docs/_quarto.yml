@@ -19,7 +19,11 @@ website:
       - text: "Cross-Validation"
         href: cross-validation.qmd
       - text: "Development"
-        href: development.qmd
+        menu:
+          - text: "Development"
+            href: development.qmd
+          - text: "Changelog"
+            href: changelog.qmd
 
 format:
   html:
