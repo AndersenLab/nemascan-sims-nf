@@ -182,6 +182,19 @@ organized by functional area in `tests/testthat/`:
 
 ### Integration Tests
 
+Integration tests validate that the full pipeline produces correct output end-to-end.
+Unit tests check individual R functions with synthetic fixtures; integration tests use
+actual pipeline output to catch bugs that only appear with real GCTA output — edge cases
+in file format parsing, Hive partition path construction, DuckDB view registration, and
+Nextflow channel wiring.
+
+- **`test-db_structure.R`** — verifies the Parquet database written by the `DB_MIGRATION_*`
+  modules has the expected directory structure, metadata files, and schema-conformant data
+  queryable via DuckDB.
+- **`test-cross_validation.R`** — compares what was written to the Parquet DB against the
+  raw `.fastGWA`/`.mlma` files in the Nextflow work directory to verify round-trip fidelity
+  (no dropped rows, truncated values, or mangled column types).
+
 Integration tests require pipeline output collected by `tests/collect_test_data.sh`:
 
 ```bash
