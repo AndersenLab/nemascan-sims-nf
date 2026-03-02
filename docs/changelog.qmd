@@ -1,0 +1,194 @@
+---
+title: "Changelog"
+subtitle: "Release history and notable changes"
+date: last-modified
+format:
+  html:
+    embed-resources: true
+---
+
+All notable changes to `nemascan-sims-nf` are recorded here. The project does
+not use version tags; entries are organized by development phase and date.
+
+
+## [Unreleased] — March 2026
+
+### Added
+- `mappings_metadata.parquet` sidecar file written to the database root by
+  `DB_MIGRATION_AGGREGATE_METADATA` — provides a single queryable index of all
+  mapping runs without scanning every Hive partition. (2026-03-02)
+
+
+## Phase 5 — Database Integration
+
+### PR #98 — Hash-based IDs (2026-03-01)
+
+Replaced sequential or filename-derived identifiers with deterministic 12-character
+MD5 hex IDs, making all IDs stable across `-resume` runs.
+
+#### Added
+- `generate_trait_id(group, maf, nqtl, effect, rep, h2)` — MD5 hash of
+  concatenated parameters; used as the primary key for all per-trait Parquet
+  files (`traits/`, `causal_variants/`, `phenotypes/`).
+- `generate_mapping_id(trait_id, mode, type)` — MD5 hash used as the Hive
+  partition key under `mappings/population={pop}/mapping_id={id}/`.
+- `generate_marker_set_id(population, maf)` — SHA-256 hash written to
+  `marker_set_metadata.parquet` and used in the marker-set file names.
+- Unit tests for all three hash functions in `test-hash_generation.R`, with
+  golden-value assertions to catch silent hash drift.
+
+#### Changed
+- Mappings Parquet schema reduced to core columns; accessible metadata
+  (population, MAF, effect, nQTL, h2, replicate) is no longer duplicated in
+  the mappings table — it is retrievable via the trait ID foreign key.
+- Allele frequency (`AF`) column removed from the marker-set schema.
+- Algorithm names standardized to `loco` / `inbred` across all pipeline paths
+  (both DB and legacy) to replace inconsistent earlier labels.
+- Trait storage tests updated to cover hash-based ID determinism and
+  round-trip write/read.
+
+#### Fixed
+- Query functions updated to remove the defunct `AF` join that referenced a
+  column no longer in the schema.
+- Trait `id` generation corrected to use the hash framework (previously
+  still used a non-hash method after the schema change).
+
+
+### PR #97 — Automated Cross-Validation Tests (2026-02-27)
+
+#### Added
+- `test-assessment_cross_validation.R` — compares `db_simulation_assessment_results.tsv`
+  (DB path) against `simulation_assessment_results.tsv` (legacy path), computing
+  per-replicate detection concordance, designation concordance, and interval
+  overlap (Jaccard score).
+- `test-cross_validation.R` — round-trip check comparing Parquet DB contents
+  against raw `.fastGWA`/`.mlma` files in the Nextflow work directory.
+
+
+### PR #96 — Phase 5: Genotype & Trait Storage (2026-02-21)
+
+Extended the Parquet database to capture the full data needed for offline
+variance-explained estimation and richer downstream queries.
+
+#### Added
+- **Genotype matrix storage** — `write_genotype_matrix()` / `read_genotype_matrix()`
+  in `R/database.R`; long-format Parquet files (`{pop}_{maf}_genotypes.parquet`)
+  written to `marker_sets/`.
+- **`DB_MIGRATION_WRITE_GENOTYPE_MATRIX`** Nextflow module (`modules/db_migration/write_genotype_matrix/`).
+- **Trait data storage** — three write functions (`write_trait_metadata()`,
+  `write_causal_variants()`, `write_phenotype_data()`) and corresponding Parquet
+  schemas in `R/database.R`.
+- **`DB_MIGRATION_WRITE_TRAIT_DATA`** Nextflow module (`modules/db_migration/write_trait_data/`);
+  uses `.merge()` to align `GCTA_SIMULATE_PHENOTYPES` output channels by emission
+  order.
+- Phenotype stored in `phenotypes/` is the pre-upscaling GCTA `.phen` output
+  (before `check_vp.py`), making the ANOVA SS ratio for offline variance-explained
+  scale-invariant.
+- Unit tests in `test-genotype_storage.R` and `test-trait_storage.R`.
+- Test fixture: `tests/fixtures/test_genotype_matrix.tsv` (5 markers × 3 strains)
+  and `tests/fixtures/test_sims.phen` (3-strain GCTA `.phen` file).
+
+#### Changed
+- `var.exp` column removed from `mappings_schema()` and `prepare_mapping_data()`;
+  it was always `NA` in the DB path. Raw data for offline estimation is now
+  available in `traits/`, `causal_variants/`, and `phenotypes/`.
+- All DB write functions default to `overwrite = TRUE` to handle non-atomic
+  `arrow::write_parquet()` writes — a crashed task leaves a partial file;
+  retry with `overwrite = TRUE` replaces it cleanly.
+- Narrow glob `_markers\\.parquet$` used in `R/queries.R` to exclude genotype
+  files from the `markers` DuckDB view (genotype files share the `marker_sets/`
+  directory but have a different schema).
+- Database integration workflow made the default path; legacy R assessment is
+  now opt-in via `--legacy_assess`.
+
+
+### PR #95 — Documentation Site (2026-02-18)
+
+#### Added
+- Quarto website in `docs/` published to GitHub Pages at
+  `https://andersenlab.github.io/nemascan-sims-nf/`.
+- One page per pipeline phase: Marker Set Generation, Trait Simulation, GWAS
+  Mapping, QTL Detection & Assessment, Database Structure.
+- Development guide covering local rendering, publishing, testing, HPC
+  execution, and project structure.
+
+
+### PR #93 — Cross-Validation Framework (2026-02-17)
+
+#### Added
+- `cross-validation.qmd` documentation page explaining concordance methodology.
+- Cross-validation assessment script computing concordance scores (detection,
+  designation, interval overlap) between the DB path and legacy R path.
+
+
+## Phase 4 — DB-Path QTL Analysis & Assessment
+
+### 2026-02-13
+
+The database-integrated QTL detection and simulation assessment path was
+introduced, enabling end-to-end analysis without exporting intermediate TSV files.
+
+#### Added
+- `DB_MIGRATION_ANALYZE_QTL` and `DB_MIGRATION_ASSESS_SIMS` Nextflow modules.
+- `R/qtl_database.R` and `R/sim_performance.R` — database-native QTL grouping
+  and simulation performance scoring.
+- `R/assessment.R` — shared assessment logic sourced directly by
+  `db_migration/assess_sims` and the legacy `Assess_Sims.R` scripts.
+- Modular helpers split `R_GET_GCTA_INTERVALS` (legacy) into two processes:
+  QTL identification and simulation performance assessment.
+- Warning emitted when duplicated markers are detected during loading (expected
+  only when migrating legacy processed-mapping TSV files).
+
+
+## Phase 3 — Database Foundation
+
+### Phases 1–3 (prior to 2026-02-13)
+
+Core Parquet database infrastructure: marker-set ingestion, GWA statistics
+storage, and DuckDB query layer.
+
+#### Added
+- `DB_MIGRATION_WRITE_MARKER_SET` module — writes `{pop}_{maf}_markers.parquet`
+  and `marker_set_metadata.parquet`; emits `val true` on `done` to gate
+  downstream GWA writes.
+- `DB_MIGRATION_WRITE_GWA_TO_DB` module — Hive-partitioned GWA Parquet files
+  under `mappings/population={pop}/mapping_id={id}/`; gated behind a
+  `.collect()` barrier ensuring marker schemas exist first.
+- `R/database.R`, `R/queries.R`, `R/analysis.R` — shared R library for
+  Parquet I/O, DuckDB views, and log₁₀P computation.
+- `safe_log10p()` in `R/analysis.R` — log₁₀P computed at query time, never
+  stored; clamped at `LOG10P_MAX`.
+
+
+## Early Pipeline Development (April–May 2025)
+
+Initial Nextflow pipeline scaffold and iterative stabilization.
+
+### PR #30 (2025-05-04) — Phenotype Simulation Fix
+- Corrected `GCTA_SIMULATE_PHENOTYPES` output file name and argument parsing.
+
+### PR #29 (2025-05-04) — nQTL and Effect Size Inputs
+- Added `nqtl` and `effect` as explicit pipeline parameters passed to the
+  causal variant selection step.
+
+### PR #25 (2025-05-01) — Mitochondrial Chromosome Handling
+- Fixed null-handling for `mito_name` parameter so optional mitochondrial
+  exclusion works correctly.
+
+### PR #17 (2025-04-18) — Meta-tag Check
+- Fixed `metaid` typo causing process metadata lookup failure.
+
+### PR #8 (2025-04-11) — Replace `FIND` with `GET` Processes
+- Renamed VCF-strain extraction process for consistency with NemaScan
+  module naming conventions.
+
+### PR #2 — Default Strain Set (2025-04-04)
+- Added `data/test/` strain list; pipeline defaults to test strain set when
+  `--strainfile` is not provided.
+
+### PR #1 — Resource Allocation (2025-04-04)
+- First draft of per-process CPU/RAM/time resource configuration.
+
+### Initial Commit (2025-03-26)
+- First working pipeline scaffold: marker set generation, GCTA simulation,
+  GWAS mapping, and legacy R-based QTL detection and assessment.
