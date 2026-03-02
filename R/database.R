@@ -1458,3 +1458,50 @@ write_mapping_partitioned <- function(df, params, ms_id, trait_id, base_dir = "d
 
   invisible(partition_path)
 }
+
+
+#' Write per-mapping metadata sidecar
+#'
+#' Writes a single-row metadata parquet to {partition_path}/meta.parquet.
+#' Contains all metadata_schema() columns. Called by write_gwa_to_db.R
+#' in parallel; safe because each mapping writes to its own directory.
+#'
+#' @param params List with population, maf, nqtl, effect, rep, h2, algorithm, pca
+#' @param ms_id  Marker set ID object from generate_marker_set_id()
+#' @param trait_id Trait ID object from generate_trait_id()
+#' @param n_markers Integer, number of markers in the mapping
+#' @param base_dir Database root directory
+write_mapping_metadata <- function(params, ms_id, trait_id, n_markers, base_dir = "data/db") {
+  config   <- .make_db_config(base_dir)
+  mapping  <- generate_mapping_id(trait_id$hash, params$algorithm, params$pca)
+  part_dir <- get_partition_path(params$population, mapping$hash, base_dir)
+  dir.create(part_dir, recursive = TRUE, showWarnings = FALSE)
+
+  meta <- data.frame(
+    mapping_id          = mapping$hash,
+    mapping_hash_string = mapping$hash_string,
+    trait_id            = trait_id$hash,
+    marker_set_id       = ms_id$hash,
+    hash_schema_version = "v=1",
+    population          = params$population,
+    maf                 = as.numeric(params$maf),
+    nqtl                = as.integer(params$nqtl),
+    rep                 = as.integer(params$rep),
+    h2                  = as.numeric(params$h2),
+    effect              = params$effect,
+    algorithm           = params$algorithm,
+    pca                 = as.logical(params$pca),
+    n_markers           = as.integer(n_markers),
+    source_file         = "",
+    processed_at        = Sys.time(),
+    processing_version  = "2.1.0-nf",
+    stringsAsFactors    = FALSE
+  )
+
+  arrow::write_parquet(
+    arrow::as_arrow_table(meta, schema = metadata_schema()),
+    sink = file.path(part_dir, "meta.parquet"),
+    compression = config$compression
+  )
+  invisible(file.path(part_dir, "meta.parquet"))
+}

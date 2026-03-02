@@ -102,6 +102,32 @@ test_that("marker set creation from bim file works end-to-end", {
   expect_equal(tp$eigen_threshold, -log10(0.05 / 1234))
 })
 
+test_that("write_mapping_metadata() creates meta.parquet with required columns", {
+  db_dir <- create_temp_db()
+  init_database(db_dir)
+
+  params <- list(nqtl = 5L, rep = 1L, h2 = 0.8, maf = 0.05, effect = "gamma",
+                 population = "test_pop", algorithm = "inbred", pca = TRUE)
+  ms_id   <- generate_marker_set_id(params$population, params$maf)
+  trait   <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
+  mapping <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
+
+  write_mapping_metadata(params, ms_id, trait, n_markers = 500L, base_dir = db_dir)
+
+  part_dir  <- get_partition_path("test_pop", mapping$hash, db_dir)
+  meta_path <- file.path(part_dir, "meta.parquet")
+  expect_true(file.exists(meta_path))
+
+  meta <- as.data.frame(arrow::read_parquet(meta_path))
+  expect_equal(meta$maf,       0.05)
+  expect_equal(meta$algorithm, "inbred")
+  expect_equal(meta$pca,       TRUE)
+  expect_equal(meta$nqtl,      5L)
+  expect_equal(meta$n_markers, 500L)
+  expect_equal(meta$mapping_id, mapping$hash)
+  expect_true("mapping_hash_string" %in% names(meta))
+})
+
 test_that("overwrite = TRUE replaces existing marker set on retry", {
   db_dir <- create_temp_db()
   init_database(db_dir)

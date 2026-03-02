@@ -28,60 +28,82 @@ if (!dir.exists(r_source_dir)) {
 source(file.path(r_source_dir, "utils.R"))
 source(file.path(r_source_dir, "database.R"))
 
-# Find all mapping parquet files
+# Find all meta sidecar files (one per mapping, written by write_gwa_to_db.R)
 mappings_dir <- file.path(base_dir, "mappings")
-parquet_files <- list.files(
+meta_files <- list.files(
   mappings_dir,
-  pattern = "data\\.parquet$",
+  pattern = "meta\\.parquet$",
   full.names = TRUE,
   recursive = TRUE
 )
 
-cat("Found", length(parquet_files), "mapping parquet files\n")
+cat("Found", length(meta_files), "mapping metadata sidecars\n")
 
-if (length(parquet_files) == 0) {
-  cat("No parquet files found - nothing to aggregate\n")
-  writeLines("No mappings found", "aggregation_summary.txt")
-  quit(status = 0)
+if (length(meta_files) == 0) {
+  # Fallback: -resume runs skip WRITE_GWA_TO_DB (cached), so no meta.parquet
+  # sidecars are written. Fall back to the legacy data.parquet scan.
+  # Simulation parameters (maf, nqtl, h2, etc.) cannot be recovered from
+  # data.parquet — they will be NA in the output. DB_MIGRATION_ANALYZE_QTL
+  # will still fail for those mappings. Re-run without -resume to fix.
+  warning(
+    "No meta.parquet sidecars found — falling back to data.parquet scan. ",
+    "Simulation parameters (maf, nqtl, h2, etc.) will be NA. ",
+    "Re-run without -resume to generate complete metadata."
+  )
+  data_files <- list.files(
+    mappings_dir,
+    pattern = "data\\.parquet$",
+    full.names = TRUE,
+    recursive = TRUE
+  )
+  if (length(data_files) == 0) {
+    cat("No data.parquet or meta.parquet files found. Nothing to aggregate.\n")
+    writeLines("No mappings found", "aggregation_summary.txt")
+    quit(status = 0)
+  }
+  metadata_list <- lapply(data_files, function(f) {
+    tryCatch({
+      df <- as.data.frame(arrow::read_parquet(
+        f, col_select = c("mapping_id", "marker_set_id", "trait_id")
+      ))
+      df <- df[!duplicated(df$mapping_id), , drop = FALSE]
+      df$n_markers           <- nrow(as.data.frame(arrow::read_parquet(f)))
+      df$processed_at        <- Sys.time()
+      df$processing_version  <- "2.1.0-nf"
+      # Simulation parameters not recoverable from data.parquet
+      df$maf                 <- NA_real_
+      df$nqtl                <- NA_integer_
+      df$rep                 <- NA_integer_
+      df$h2                  <- NA_real_
+      df$effect              <- NA_character_
+      df$algorithm           <- NA_character_
+      df$pca                 <- NA
+      df$population          <- NA_character_
+      df$hash_schema_version <- NA_character_
+      df$mapping_hash_string <- NA_character_
+      df$source_file         <- NA_character_
+      df
+    }, error = function(e) { warning(paste("Failed to read:", f, "-", e$message)); NULL })
+  })
+} else {
+  # Primary path: combine all sidecars — each is already a complete metadata row
+  metadata_list <- lapply(meta_files, function(f) {
+    tryCatch(
+      as.data.frame(arrow::read_parquet(f)),
+      error = function(e) { warning(paste("Failed to read:", f, "-", e$message)); NULL }
+    )
+  })
 }
 
-# Extract metadata from each parquet file (read just one row for efficiency)
-metadata_list <- lapply(parquet_files, function(pq_file) {
-  tryCatch({
-    # Read first row to get FK columns (metadata params now in mappings_metadata.parquet)
-    df <- arrow::read_parquet(pq_file) %>%
-      head(1) %>%
-      select(any_of(c(
-        "mapping_id", "marker_set_id", "trait_id"
-      )))
-
-    # Get marker count from full file
-    n_markers <- arrow::read_parquet(pq_file) %>% nrow()
-
-    df %>%
-      mutate(
-        n_markers = n_markers,
-        source_file = basename(dirname(dirname(pq_file))),
-        processed_at = Sys.time(),
-        processing_version = "2.1.0-nf"
-      )
-  }, error = function(e) {
-    warning(paste("Failed to read:", pq_file, "-", e$message))
-    NULL
-  })
-})
-
-# Remove failed reads and combine
 metadata_list <- Filter(Negate(is.null), metadata_list)
-cat("Successfully read", length(metadata_list), "parquet files\n")
+cat("Successfully read", length(metadata_list), "metadata entries\n")
 
 if (length(metadata_list) == 0) {
-  cat("No valid parquet files - nothing to aggregate\n")
+  cat("No valid metadata files - nothing to aggregate\n")
   writeLines("No valid mappings found", "aggregation_summary.txt")
   quit(status = 0)
 }
 
-# Combine into single dataframe
 metadata_df <- bind_rows(metadata_list)
 
 # Write metadata parquet
@@ -89,13 +111,40 @@ metadata_path <- file.path(base_dir, "mappings_metadata.parquet")
 arrow::write_parquet(metadata_df, metadata_path, compression = "snappy")
 cat("Wrote metadata to:", metadata_path, "\n")
 
-# Write summary
-summary_text <- paste0(
-  "Aggregation complete\n",
-  "Total mappings: ", nrow(metadata_df), "\n",
-  "Unique mapping IDs: ", length(unique(metadata_df$mapping_id)), "\n"
+# Write aggregation summary to the declared process output file.
+# Warnings written only to stderr are captured in .command.err in the work
+# directory but are NOT visible in the Nextflow run log for processes that
+# exit 0. Writing to aggregation_summary.txt ensures operators can see them
+# after the run without digging into work directories.
+summary_lines <- c(
+  paste("Aggregation complete"),
+  paste("Total mappings:", nrow(metadata_df)),
+  paste("Unique mapping IDs:", length(unique(metadata_df$mapping_id)))
 )
-writeLines(summary_text, "aggregation_summary.txt")
+
+# Orphan detection: partitions with data.parquet but no meta.parquet.
+# Indicates write_gwa_to_db crashed after writing data but before writing
+# the sidecar. Only meaningful in the primary path — in the fallback, no
+# meta.parquet exists at all and every partition would appear orphaned.
+if (length(meta_files) > 0) {
+  data_dirs <- unique(dirname(list.files(
+    mappings_dir, pattern = "data\\.parquet$", full.names = TRUE, recursive = TRUE
+  )))
+  meta_dirs <- unique(dirname(meta_files))
+  orphan_dirs <- setdiff(data_dirs, meta_dirs)
+
+  if (length(orphan_dirs) > 0) {
+    orphan_msg <- paste0(
+      "WARN: ", length(orphan_dirs), " orphaned partition(s) ",
+      "(data.parquet without meta.parquet):\n",
+      paste(orphan_dirs, collapse = "\n")
+    )
+    warning(orphan_msg)
+    summary_lines <- c(summary_lines, orphan_msg)
+  }
+}
+
+writeLines(summary_lines, "aggregation_summary.txt")
 
 cat("\nAggregation complete:\n")
 cat("  Total mappings:", nrow(metadata_df), "\n")
