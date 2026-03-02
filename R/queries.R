@@ -53,12 +53,12 @@ open_mapping_db <- function(base_dir = "data/db", read_only = TRUE) {
   n_sources <- 0
 
   if (dir.exists(mappings_dir)) {
-    partition_files <- list.files(mappings_dir, pattern = "\\.parquet$",
+    partition_files <- list.files(mappings_dir, pattern = "data\\.parquet$",
                                    recursive = TRUE, full.names = TRUE)
     n_sources <- length(partition_files)
 
     if (n_sources > 0) {
-      glob_pattern <- file.path(mappings_dir, "**", "*.parquet")
+      glob_pattern <- file.path(mappings_dir, "**", "data.parquet")
       DBI::dbExecute(con, glue::glue("
         CREATE VIEW mappings AS
         SELECT * FROM read_parquet('{glob_pattern}', hive_partitioning = true, union_by_name = true)
@@ -642,7 +642,7 @@ db_stats <- function(base_dir = "data/db") {
 
   mappings_dir <- file.path(config$base_dir, config$mappings_dir)
   partition_files <- if (dir.exists(mappings_dir)) {
-    list.files(mappings_dir, pattern = "\\.parquet$", recursive = TRUE, full.names = TRUE)
+    list.files(mappings_dir, pattern = "data\\.parquet$", recursive = TRUE, full.names = TRUE)
   } else {
     character()
   }

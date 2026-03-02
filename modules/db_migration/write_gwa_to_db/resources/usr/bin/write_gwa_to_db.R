@@ -89,4 +89,13 @@ write_mapping_partitioned(
   base_dir = opt$base_dir
 )
 
+write_mapping_metadata(
+  params    = params,
+  ms_id     = ms_id,
+  trait_id  = trait,
+  n_markers = nrow(gwa_df),
+  base_dir  = opt$base_dir
+)
+log_msg(paste("Metadata sidecar written for mapping:", mapping$hash))
+
 log_msg(paste("Mapping written successfully:", mapping$hash))
