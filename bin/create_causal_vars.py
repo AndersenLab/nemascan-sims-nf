@@ -82,6 +82,16 @@ if __name__ == "__main__":
     # Read in annotated strain_set variants
     strain_var = load_strain_set_variants(strain_set_variant_file)
 
+    # Pool size guard: fail fast with an informative message rather than a cryptic
+    # numpy traceback when np.random.choice receives n_var > pool size.
+    n_pool = len(strain_var)
+    if n_var > n_pool:
+        print(
+            f"Error: requested nqtl={n_var} but CV pool contains only {n_pool} variants. "
+            f"Reduce --nqtl or relax --cv_maf / --cv_ld thresholds."
+        )
+        sys.exit(1)
+
     # Select Causal variants for orthogroups
     causal_vars = select_variants(strain_var, n_var)
     print("Selected Causal Variants")
