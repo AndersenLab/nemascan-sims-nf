@@ -98,10 +98,13 @@ open_mapping_db <- function(base_dir = "data/db", read_only = TRUE) {
 #'
 #' @param population Population identifier
 #' @param maf MAF threshold
+#' @param species Species identifier (e.g. "c_elegans")
+#' @param vcf_release_id VCF release date string (e.g. "20220216")
+#' @param ms_ld LD R² pruning threshold
 #' @param base_dir Database root directory
 #' @return Dataframe with marker data
-query_markers <- function(population, maf, base_dir = "data/db") {
-  read_marker_set(population, maf, base_dir)
+query_markers <- function(population, maf, species, vcf_release_id, ms_ld, base_dir = "data/db") {
+  read_marker_set(population, maf, species, vcf_release_id, ms_ld, base_dir)
 }
 
 
