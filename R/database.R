@@ -530,10 +530,13 @@ get_markers_path <- function(population, maf, species, vcf_release_id, ms_ld, ba
 #'
 #' @param population Population identifier
 #' @param maf MAF threshold
+#' @param species Species identifier (e.g. "c_elegans")
+#' @param vcf_release_id VCF release date string (e.g. "20220216")
+#' @param ms_ld LD R² pruning threshold
 #' @param base_dir Database root directory
 #' @return TRUE if marker set exists
-marker_set_exists <- function(population, maf, base_dir = "data/db") {
-  file.exists(get_markers_path(population, maf, base_dir))
+marker_set_exists <- function(population, maf, species, vcf_release_id, ms_ld, base_dir = "data/db") {
+  file.exists(get_markers_path(population, maf, species, vcf_release_id, ms_ld, base_dir))
 }
 
 
@@ -665,10 +668,13 @@ get_genotype_matrix_path <- function(population, maf, species, vcf_release_id, m
 #'
 #' @param population Population identifier
 #' @param maf MAF threshold
+#' @param species Species identifier (e.g. "c_elegans")
+#' @param vcf_release_id VCF release date string (e.g. "20220216")
+#' @param ms_ld LD R² pruning threshold
 #' @param base_dir Database root directory
 #' @return TRUE if genotype matrix exists
-genotype_matrix_exists <- function(population, maf, base_dir = "data/db") {
-  file.exists(get_genotype_matrix_path(population, maf, base_dir))
+genotype_matrix_exists <- function(population, maf, species, vcf_release_id, ms_ld, base_dir = "data/db") {
+  file.exists(get_genotype_matrix_path(population, maf, species, vcf_release_id, ms_ld, base_dir))
 }
 
 
@@ -1129,6 +1135,7 @@ get_n_independent_tests <- function(population, maf, base_dir = "data/db") {
 update_marker_set_eigen <- function(population, maf, n_independent_tests,
                                      eigen_source_file = NA_character_,
                                      base_dir = "data/db") {
+  stop("update_marker_set_eigen() is deprecated — use write_marker_set() directly (write_marker_set.R module).")
 
   existing <- read_marker_set_metadata(population, maf, base_dir)
 
@@ -1209,6 +1216,8 @@ get_mappings_path <- function(population, base_dir = "data/db") {
 #' @return Invisibly returns the output file path
 write_mapping_to_db <- function(df, source_file, base_dir = "data/db",
                                  overwrite = TRUE) {
+  stop("write_mapping_to_db() is deprecated — use the write_gwa_to_db.R module (modules/db_migration/write_gwa_to_db).")
+
   config <- .make_db_config(base_dir)
   init_database(base_dir)
 
