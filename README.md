@@ -1,18 +1,19 @@
 ## Usage
 
-nextflow andersenlab/nemascan-sim-nf --strainfile /path/to/strainfile --vcf /path/to/vcf -output-dir my-results
+nextflow andersenlab/nemascan-sim-nf --strainfile /path/to/strainfile -output-dir my-results
 
 Mandatory argument (General):
 
-    --strainfile      File               A TSV file with two columns: the first is a name for the strain set and the second is a comma-separated strain list without spaces
-    --vcf             File               Generally a CaeNDR release date (i.e. 20231213). Can also provide a user-specified VCF with index in same folder
+    --strainfile      File               A 6-column tab-separated file (with required header row) specifying strain groups.
+                                         See Strainfile Format below.
 
 Optional arguments (General):
 
     --nqtl            File               A CSV file with the number of QTL to simulate per phenotype, one value per line (Default is located: data/simulate_nqtl.csv)
     --h2              File               A CSV file with phenotype heritability, one value per line (Default is located: data/simulate_h2.csv)
     --reps             Integer            The number of replicates to simulate per number of QTL and heritability (Default: 2)
-    --maf             File               A CSV file where each line is a minor allele frequency threshold to test for simulations (Default: data/simulate_maf.csv)
+    --cv_maf          Decimal            MAF threshold for causal variant pool (Default: same as each row's ms_maf)
+    --cv_ld           Decimal            LD R² pruning threshold for causal variant pool (Default: 0.8)
     --effect          File               A CSV file where each line is an effect size range (e.g. 0.2-0.3) to test for simulations (Default: data/simulate_effect_sizes.csv)
     --qtlloc          File               A BED file with three columns: chromosome name (numeric 1-6), start postion, end postion. The genomic range specified is where markers will be pulled from to simulate QTL (Default: null [which defaults to using the whole genome to randomly simulate a QTL])
     --sthresh         String             Significance threshold for QTL - Options: BF - for bonferroni correction, EIGEN - for SNV eigen value correction, or another number e.g. 4
@@ -21,6 +22,43 @@ Optional arguments (General):
     --sparse_cut      Decimal            Any off-diagonal value in the genetic relatedness matrix greater than this is set to 0 (Default: 0.05)
     --simulate_qtlloc Boolean            Whether to simulate QTLs in specific genomic regions (Default: false)
     -output-dir       String             Name of folder that will contain the results (Default: Simulations_{date})
+
+## Strainfile Format
+
+Tab-separated, with a required header row:
+
+| Column | Required | Description |
+|--------|----------|-------------|
+| `group` | yes | Unique strain set identifier |
+| `species` | yes | `c_elegans`, `c_briggsae`, or `c_tropicalis` |
+| `vcf` | yes | CaeNDR release date (e.g. `20220216`) or absolute VCF file path |
+| `ms_maf` | yes | MAF threshold for GWA marker SNP selection (e.g. `0.05`) |
+| `ms_ld` | yes | LD R² pruning threshold for marker SNP selection (e.g. `0.8`) |
+| `strains` | yes | Comma-separated strain list |
+
+Example:
+
+```
+group	species	vcf	ms_maf	ms_ld	strains
+ce.test.200strains	c_elegans	20220216	0.05	0.8	AB1,CB4852,...
+cb.test.50strains	c_briggsae	/path/to/cb.vcf.gz	0.05	0.8	CB1,CB2,...
+```
+
+**Line endings:** Strainfiles must use Unix line endings (LF, `\n`). Windows line endings (CRLF)
+will corrupt the last column header to `strains\r`, causing a silent parse failure where the
+`strains` column is not found. Convert with `dos2unix strainfile.txt` before use.
+
+## Marker Set ID
+
+Each pipeline run stores a 20-character SHA-256 `marker_set_id` in all simulation results DB
+records, computed from `(group, vcf_release_id, species, ms_maf, ms_ld)` via
+`generate_marker_set_id()` in `R/database.R`. This ID can be used to group or filter results
+by marker set configuration and enables safe merging of outputs across runs.
+
+> ⚠ **Note:** The marker set ID does **not** encode `cv_maf` or `cv_ld`. Do not merge results
+> from runs with different CV parameters into the same database table without adding
+> `cv_maf`/`cv_ld` columns to distinguish them — such records would appear identical by
+> `marker_set_id` but reflect different causal variant pool configurations.
 
 # Simulations
 
