@@ -13,6 +13,9 @@ option_list <- list(
   make_option("--group",            type = "character"),
   make_option("--maf",              type = "character"),
   make_option("--genotype_matrix",  type = "character"),
+  make_option("--species",          type = "character"),
+  make_option("--vcf_release_id",   type = "character"),
+  make_option("--ms_ld",            type = "double"),
   make_option("--base_dir",         type = "character")
 )
 
@@ -28,11 +31,15 @@ source(file.path(r_source_dir, "database.R"))
 init_database(opt$base_dir)
 
 # Write genotype matrix
+# ⚠ cv_maf/cv_ld are NOT included in marker_set_id — see README Marker Set ID section
 message("Writing genotype matrix: ", opt$group, "_", opt$maf)
 write_genotype_matrix(
-  genotype_tsv = opt$genotype_matrix,
-  population   = opt$group,
-  maf          = opt$maf,
-  base_dir     = opt$base_dir
+  genotype_tsv   = opt$genotype_matrix,
+  population     = opt$group,
+  maf            = opt$maf,
+  species        = opt$species,
+  vcf_release_id = opt$vcf_release_id,
+  ms_ld          = as.numeric(opt$ms_ld),
+  base_dir       = opt$base_dir
 )
 message("Done: genotype matrix written")
