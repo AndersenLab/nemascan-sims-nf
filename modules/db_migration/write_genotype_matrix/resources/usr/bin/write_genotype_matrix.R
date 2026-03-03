@@ -21,8 +21,18 @@ option_list <- list(
 
 opt <- parse_args(OptionParser(option_list = option_list))
 
-# Source R functions
-r_source_dir <- Sys.getenv("R_SOURCE_DIR")
+# Validate required args
+required <- c("group", "maf", "genotype_matrix", "species", "vcf_release_id", "ms_ld", "base_dir")
+missing <- required[!required %in% names(opt) | sapply(opt[required], is.null)]
+if (length(missing) > 0) {
+  stop(paste("Missing required arguments:", paste(missing, collapse = ", ")))
+}
+
+# Source R library via R_SOURCE_DIR (set by Nextflow process script block)
+r_source_dir <- Sys.getenv("R_SOURCE_DIR", unset = "")
+if (r_source_dir == "") {
+  stop("R_SOURCE_DIR environment variable must be set")
+}
 source(file.path(r_source_dir, "utils.R"))
 source(file.path(r_source_dir, "io.R"))
 source(file.path(r_source_dir, "database.R"))
