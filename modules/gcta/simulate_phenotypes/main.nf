@@ -5,7 +5,13 @@ process GCTA_SIMULATE_PHENOTYPES {
 
     input:
     tuple val(group), val(maf), val(nqtl), val(effect), val(rep), path(causal_variants)
-    tuple val(group), val(maf), path("TO_SIMS.bed"), path("TO_SIMS.bim"), path("TO_SIMS.fam"), path("TO_SIMS.map"), path("TO_SIMS.nosex"), path("TO_SIMS.ped"), path("TO_SIMS.log"), path(gm), path(n_indep_tests)
+    tuple val(group), val(maf),
+          path("CV_TO_SIMS.bed"),  path("CV_TO_SIMS.bim"),  path("CV_TO_SIMS.fam"),
+          path("CV_TO_SIMS.map"),  path("CV_TO_SIMS.nosex"), path("CV_TO_SIMS.ped"), path("CV_TO_SIMS.log")
+    tuple val(group), val(maf),
+          path("TO_SIMS.bed"),     path("TO_SIMS.bim"),      path("TO_SIMS.fam"),
+          path("TO_SIMS.map"),     path("TO_SIMS.nosex"),    path("TO_SIMS.ped"),    path("TO_SIMS.log"),
+          path(gm), path(n_indep_tests)
     each h2
 
     output:
@@ -20,7 +26,7 @@ process GCTA_SIMULATE_PHENOTYPES {
     script:
     def args = task.ext.args ?: ''
     """
-    gcta64 --bfile TO_SIMS \\
+    gcta64 --bfile CV_TO_SIMS \\
          --simu-qt \\
          --simu-causal-loci ${causal_variants} \\
          --simu-hsq ${h2} \\
@@ -39,6 +45,13 @@ process GCTA_SIMULATE_PHENOTYPES {
     """
     touch ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen
     touch ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par
+    touch CV_TO_SIMS.bed
+    touch CV_TO_SIMS.bim
+    touch CV_TO_SIMS.fam
+    touch CV_TO_SIMS.map
+    touch CV_TO_SIMS.nosex
+    touch CV_TO_SIMS.ped
+    touch CV_TO_SIMS.log
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
