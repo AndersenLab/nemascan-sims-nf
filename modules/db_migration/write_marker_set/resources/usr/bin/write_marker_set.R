@@ -6,22 +6,27 @@
 # directly (not processed mapping TSVs).
 #
 # Usage: write_marker_set.R --group <group> --maf <maf> --bim <bim_file>
-#                            --eigen <eigen_file> --base_dir <db_dir>
+#                            --eigen <eigen_file> --species <species>
+#                            --vcf_release_id <vcf_release_id> --ms_ld <ms_ld>
+#                            --base_dir <db_dir>
 
 library(optparse)
 
 option_list <- list(
-  make_option("--group", type = "character", help = "Population/strain group identifier"),
-  make_option("--maf", type = "character", help = "MAF threshold"),
-  make_option("--bim", type = "character", help = "Path to PLINK .bim file"),
-  make_option("--eigen", type = "character", help = "Path to EIGEN independent tests file"),
-  make_option("--base_dir", type = "character", help = "Database output directory")
+  make_option("--group",          type = "character", help = "Population/strain group identifier"),
+  make_option("--maf",            type = "character", help = "MAF threshold"),
+  make_option("--bim",            type = "character", help = "Path to PLINK .bim file"),
+  make_option("--eigen",          type = "character", help = "Path to EIGEN independent tests file"),
+  make_option("--species",        type = "character", help = "Species (c_elegans, c_briggsae, c_tropicalis)"),
+  make_option("--vcf_release_id", type = "character", help = "VCF release date (e.g. 20220216)"),
+  make_option("--ms_ld",          type = "double",    help = "LD R² threshold for marker SNP selection"),
+  make_option("--base_dir",       type = "character", help = "Database output directory")
 )
 
 opt <- parse_args(OptionParser(option_list = option_list))
 
 # Validate required args
-required <- c("group", "maf", "bim", "eigen", "base_dir")
+required <- c("group", "maf", "bim", "eigen", "species", "vcf_release_id", "ms_ld", "base_dir")
 missing <- required[!required %in% names(opt) | sapply(opt[required], is.null)]
 if (length(missing) > 0) {
   stop(paste("Missing required arguments:", paste(missing, collapse = ", ")))
@@ -45,11 +50,15 @@ log_msg(paste("Reading EIGEN file:", opt$eigen))
 n_indep_tests <- read_eigen_file(opt$eigen)
 
 # Write marker set to database
+# ⚠ cv_maf/cv_ld are NOT included in marker_set_id — see README Marker Set ID section
 log_msg(paste("Writing marker set:", opt$group, opt$maf))
 write_marker_set(
   df = markers_df,
   population = opt$group,
   maf = as.numeric(opt$maf),
+  species = opt$species,
+  vcf_release_id = opt$vcf_release_id,
+  ms_ld = as.numeric(opt$ms_ld),
   base_dir = opt$base_dir,
   overwrite = TRUE,
   n_independent_tests = n_indep_tests,
