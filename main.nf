@@ -216,7 +216,13 @@ workflow {
         }
         .set { ch_sf }
 
-    ch_marker_set_params = ch_sf.marker_set_params
+    // ch_sf.marker_set_params is a queue channel — fan out with .tap{} before
+    // 3 subscribers consume it (write_marker_set, write_genotype_matrix, write_gwa_to_db).
+    // Without this, DSL2 distributes emissions round-robin among competing readers.
+    ch_sf.marker_set_params
+        .tap { ch_marker_set_params_for_ms }
+        .tap { ch_marker_set_params_for_gm }
+        .set { ch_marker_set_params_for_gwa }
 
     ch_vcf_per_group = ch_sf.vcf_per_group
         .map { meta, species, vcf, strains ->
@@ -315,7 +321,7 @@ workflow {
         .join(BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix, by: [0, 1])
         .join(LOCAL_COMPILE_EIGENS.out.tests, by: [0, 1])
         .combine(ch_cv_plink_for_combine, by: 0)
-    // Resulting tuple (19 elements):
+    // Resulting tuple (18 elements):
     //   [group, ms_maf, ms_bed, ms_bim, ms_fam, ms_map, ms_nosex, ms_ped, ms_log,
     //    gm, n_indep_tests,
     //    cv_bed, cv_bim, cv_fam, cv_map, cv_nosex, cv_ped, cv_log]
@@ -515,14 +521,14 @@ workflow {
     // Join by (group, maf) — 1:1 since all three channels emit once per key
     ch_marker_set_inputs = ch_bim_for_marker
         .join(LOCAL_COMPILE_EIGENS.out.tests, by: [0, 1])
-        .join(ch_marker_set_params, by: [0, 1])
+        .join(ch_marker_set_params_for_ms, by: [0, 1])
     // Result: tuple(group, maf, bim, n_indep_tests, species, vcf_release_id, ms_ld)
 
     DB_MIGRATION_WRITE_MARKER_SET(ch_marker_set_inputs, db_output_dir)
 
     // WRITE_GENOTYPE_MATRIX — join(by:[0,1]) is 1:1 per group
     ch_gm_inputs = BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix
-        .join(ch_marker_set_params, by: [0, 1])
+        .join(ch_marker_set_params_for_gm, by: [0, 1])
     // Result: tuple(group, maf, genotype_matrix, species, vcf_release_id, ms_ld)
 
     DB_MIGRATION_WRITE_GENOTYPE_MATRIX(ch_gm_inputs, db_output_dir)
@@ -570,7 +576,7 @@ workflow {
     //
     // combine(by:[0,1]) is N:1 per (group, maf): N GWA results × 1 marker set params entry
     ch_gwa_db_inputs = ch_db_params
-        .combine(ch_marker_set_params, by: [0, 1])
+        .combine(ch_marker_set_params_for_gwa, by: [0, 1])
     // Result: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, species, vcf_release_id, ms_ld)
 
     DB_MIGRATION_WRITE_GWA_TO_DB(
