@@ -44,9 +44,11 @@ def extractVcfReleaseId(String vcf) {
 
 // resolveVcf: resolves the strainfile vcf column to an accessible path or URL.
 //   - 8-digit date → constructs CaeNDR URL per species
-//   - Other string (e.g. absolute path) → returned as-is
+//   - Relative path (does not start with / or http) → prefixed with projectDir
+//     (supports test strainfiles that use paths like data/test/test.vcf.gz)
+//   - Absolute path or http(s) URL → returned as-is
 // Called during channel construction (head-node phase) — errors surface before SLURM submission.
-def resolveVcf(String vcf, String species) {
+def resolveVcf(String vcf, String species, String projectDir) {
     if (vcf ==~ /^\d{8}$/) {
         switch (species) {
             case 'c_elegans':    return "https://caendr.org/download/WI.${vcf}.hard-filter.isotype.vcf.gz"
@@ -59,7 +61,10 @@ def resolveVcf(String vcf, String species) {
                 )
         }
     }
-    return vcf  // path passthrough — species not needed for local files
+    if (!vcf.startsWith('/') && !vcf.startsWith('http')) {
+        return "${projectDir}/${vcf}"  // relative path → absolute (test profile support)
+    }
+    return vcf  // absolute path passthrough
 }
 
 workflow {
@@ -215,7 +220,7 @@ workflow {
 
     ch_vcf_per_group = ch_sf.vcf_per_group
         .map { meta, species, vcf, strains ->
-            def vcf_path = resolveVcf(vcf, species)
+            def vcf_path = resolveVcf(vcf, species, workflow.projectDir.toString())
             [meta, file(vcf_path), file("${vcf_path}.tbi"), strains]
         }
 
