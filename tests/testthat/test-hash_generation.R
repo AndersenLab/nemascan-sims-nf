@@ -1,77 +1,113 @@
-# Golden values computed 2026-02-27 after implementing SHA-256 hash functions.
-# ms_hash   <- generate_marker_set_id("ce100", 0.05)$hash          → "879ca1a75fc7fb5183e7"
-# trait_hash <- generate_trait_id(ms_hash, 5, "gamma", 1, 0.8)$hash → "2aa558d92d805fb85ee8"
-# map_hash   <- generate_mapping_id(trait_hash, "inbred", TRUE)$hash → "5b9eecbb85032068d7e4"
+# Golden values computed 2026-03-03 after extending generate_marker_set_id to v=2.
+# ms_hash   <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)$hash → "db39e634ef0bfa76e1bd"
+# trait_hash <- generate_trait_id(ms_hash, 5, "gamma", 1, 0.8)$hash                       → "aadfdfe371a917896ad6"
+# map_hash   <- generate_mapping_id(trait_hash, "inbred", TRUE)$hash                       → "c7e06e757cd1102e6092"
 
-ms_hash    <- "879ca1a75fc7fb5183e7"
-trait_hash <- "2aa558d92d805fb85ee8"
-map_hash   <- "5b9eecbb85032068d7e4"
+ms_hash    <- "db39e634ef0bfa76e1bd"
+trait_hash <- "aadfdfe371a917896ad6"
+map_hash   <- "c7e06e757cd1102e6092"
 
 # ==============================================================================
 # generate_marker_set_id()
 # ==============================================================================
 
 test_that("generate_marker_set_id returns list with hash and hash_string", {
-  result <- generate_marker_set_id("ce100", 0.05)
+  result <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)
   expect_type(result, "list")
   expect_true("hash" %in% names(result))
   expect_true("hash_string" %in% names(result))
 })
 
 test_that("generate_marker_set_id hash is 20-char lowercase hex", {
-  result <- generate_marker_set_id("ce100", 0.05)
+  result <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)
   expect_match(result$hash, "^[0-9a-f]{20}$")
 })
 
-test_that("generate_marker_set_id hash_string starts with v=1| and contains required fields", {
-  result <- generate_marker_set_id("ce100", 0.05)
-  expect_true(startsWith(result$hash_string, "v=1|"))
+test_that("generate_marker_set_id hash_string starts with v=2| and contains required fields", {
+  result <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)
+  expect_true(startsWith(result$hash_string, "v=2|"))
   expect_true(grepl("population=", result$hash_string))
   expect_true(grepl("maf=", result$hash_string))
+  expect_true(grepl("species=", result$hash_string))
+  expect_true(grepl("vcf_release_id=", result$hash_string))
+  expect_true(grepl("ms_ld=", result$hash_string))
 })
 
 test_that("generate_marker_set_id float serialization uses 10 decimal places", {
-  result <- generate_marker_set_id("ce100", 0.05)
+  result <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)
   expect_true(grepl("maf=0.0500000000", result$hash_string))
+  expect_true(grepl("ms_ld=0.8000000000", result$hash_string))
 })
 
 test_that("generate_marker_set_id is deterministic", {
-  h1 <- generate_marker_set_id("ce100", 0.05)$hash
-  h2 <- generate_marker_set_id("ce100", 0.05)$hash
+  h1 <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)$hash
+  h2 <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)$hash
   expect_equal(h1, h2)
 })
 
 test_that("generate_marker_set_id is sensitive to population", {
-  h_ce100 <- generate_marker_set_id("ce100", 0.05)$hash
-  h_ce96  <- generate_marker_set_id("ce96",  0.05)$hash
+  h_ce100 <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)$hash
+  h_ce96  <- generate_marker_set_id("ce.96",   0.05, "c_elegans", "20220216", 0.8)$hash
   expect_false(h_ce100 == h_ce96)
 })
 
 test_that("generate_marker_set_id is sensitive to maf", {
-  h_05 <- generate_marker_set_id("ce100", 0.05)$hash
-  h_01 <- generate_marker_set_id("ce100", 0.01)$hash
+  h_05 <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)$hash
+  h_01 <- generate_marker_set_id("ce.test", 0.01, "c_elegans", "20220216", 0.8)$hash
   expect_false(h_05 == h_01)
 })
 
+test_that("generate_marker_set_id is sensitive to species", {
+  h_ce <- generate_marker_set_id("ce.test", 0.05, "c_elegans",  "20220216", 0.8)$hash
+  h_cb <- generate_marker_set_id("ce.test", 0.05, "c_briggsae", "20220216", 0.8)$hash
+  expect_false(h_ce == h_cb)
+})
+
+test_that("generate_marker_set_id is sensitive to vcf_release_id", {
+  h1 <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)$hash
+  h2 <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20210121", 0.8)$hash
+  expect_false(h1 == h2)
+})
+
+test_that("generate_marker_set_id is sensitive to ms_ld", {
+  h_08 <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)$hash
+  h_05 <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.5)$hash
+  expect_false(h_08 == h_05)
+})
+
 test_that("generate_marker_set_id normalizes population to lowercase", {
-  h_upper <- generate_marker_set_id("CE100", 0.05)$hash
-  h_lower <- generate_marker_set_id("ce100", 0.05)$hash
+  h_upper <- generate_marker_set_id("CE.TEST", 0.05, "c_elegans", "20220216", 0.8)$hash
+  h_lower <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)$hash
+  expect_equal(h_upper, h_lower)
+})
+
+test_that("generate_marker_set_id normalizes species to lowercase", {
+  h_upper <- generate_marker_set_id("ce.test", 0.05, "C_ELEGANS", "20220216", 0.8)$hash
+  h_lower <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)$hash
   expect_equal(h_upper, h_lower)
 })
 
 test_that("generate_marker_set_id trims whitespace from population", {
-  h_spaces <- generate_marker_set_id("  ce100  ", 0.05)$hash
-  h_clean  <- generate_marker_set_id("ce100", 0.05)$hash
+  h_spaces <- generate_marker_set_id("  ce.test  ", 0.05, "c_elegans", "20220216", 0.8)$hash
+  h_clean  <- generate_marker_set_id("ce.test",     0.05, "c_elegans", "20220216", 0.8)$hash
   expect_equal(h_spaces, h_clean)
 })
 
 test_that("generate_marker_set_id canonical form stores lowercase population", {
-  result <- generate_marker_set_id("CE100", 0.05)
-  expect_true(grepl("population=ce100", result$hash_string))
+  result <- generate_marker_set_id("CE.TEST", 0.05, "c_elegans", "20220216", 0.8)
+  expect_true(grepl("population=ce.test", result$hash_string))
 })
 
-test_that("generate_marker_set_id golden value", {
-  expect_equal(generate_marker_set_id("ce100", 0.05)$hash, ms_hash)
+test_that("generate_marker_set_id canonical form stores lowercase species", {
+  result <- generate_marker_set_id("ce.test", 0.05, "C_ELEGANS", "20220216", 0.8)
+  expect_true(grepl("species=c_elegans", result$hash_string))
+})
+
+test_that("generate_marker_set_id v=2 golden value", {
+  result <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)
+  expect_equal(result$hash, ms_hash)
+  expect_equal(result$hash_string,
+    "v=2|population=ce.test|maf=0.0500000000|species=c_elegans|vcf_release_id=20220216|ms_ld=0.8000000000")
 })
 
 # ==============================================================================
@@ -143,9 +179,9 @@ test_that("generate_trait_id is sensitive to h2", {
 })
 
 test_that("generate_trait_id is sensitive to parent marker_set_hash", {
-  other_ms <- generate_marker_set_id("ce96", 0.05)$hash
-  h_ce100  <- generate_trait_id(ms_hash,    5, "gamma", 1, 0.8)$hash
-  h_ce96   <- generate_trait_id(other_ms,   5, "gamma", 1, 0.8)$hash
+  other_ms <- generate_marker_set_id("ce.96", 0.05, "c_elegans", "20220216", 0.8)$hash
+  h_ce100  <- generate_trait_id(ms_hash,  5, "gamma", 1, 0.8)$hash
+  h_ce96   <- generate_trait_id(other_ms, 5, "gamma", 1, 0.8)$hash
   expect_false(h_ce100 == h_ce96)
 })
 
@@ -267,24 +303,24 @@ test_that("generate_mapping_id golden value", {
 # ==============================================================================
 
 test_that("get_markers_path returns path ending in {20-char-hex}_markers.parquet", {
-  result <- get_markers_path("ce100", 0.05, "data/db")
+  result <- get_markers_path("ce.test", 0.05, "c_elegans", "20220216", 0.8, "data/db")
   expect_match(result, "[0-9a-f]{20}_markers\\.parquet$")
 })
 
 test_that("get_markers_path path includes markers/marker_sets subdir", {
-  result <- get_markers_path("ce100", 0.05, "data/db")
+  result <- get_markers_path("ce.test", 0.05, "c_elegans", "20220216", 0.8, "data/db")
   expect_true(grepl("markers/marker_sets", result, fixed = TRUE))
 })
 
 test_that("get_markers_path is deterministic", {
-  p1 <- get_markers_path("ce100", 0.05, "data/db")
-  p2 <- get_markers_path("ce100", 0.05, "data/db")
+  p1 <- get_markers_path("ce.test", 0.05, "c_elegans", "20220216", 0.8, "data/db")
+  p2 <- get_markers_path("ce.test", 0.05, "c_elegans", "20220216", 0.8, "data/db")
   expect_equal(p1, p2)
 })
 
 test_that("get_markers_path produces different paths for different params", {
-  p_ce100 <- get_markers_path("ce100", 0.05, "data/db")
-  p_ce96  <- get_markers_path("ce96",  0.05, "data/db")
+  p_ce100 <- get_markers_path("ce.test", 0.05, "c_elegans", "20220216", 0.8, "data/db")
+  p_ce96  <- get_markers_path("ce.96",   0.05, "c_elegans", "20220216", 0.8, "data/db")
   expect_false(p_ce100 == p_ce96)
 })
 
