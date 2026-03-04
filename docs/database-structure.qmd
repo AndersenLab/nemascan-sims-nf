@@ -50,10 +50,12 @@ objects in `R/database.R`.
 
 ## Marker Sets
 
-A marker set represents the LD-pruned variant panel for a given population and
-MAF threshold. Marker sets are written once during
+A marker set represents the LD-pruned variant panel for a given population, MAF
+threshold, species, VCF release, and LD pruning threshold. Marker sets are written
+once during
 [database ingestion](qtl-detection-assessment.qmd#db_migration_write_marker_set)
-and queried repeatedly during QTL analysis.
+and queried repeatedly during QTL analysis. The marker set identity is encoded in
+the `marker_set_id` v=2 hash.
 
 
 ### Data Source
@@ -62,7 +64,7 @@ Marker data originates from two upstream processes:
 
 | Source | Columns provided |
 |--------|-----------------|
-| PLINK `.bim` file (`PLINK_RECODE_VCF`) | `marker`, `CHROM`, `POS`, `A1`, `A2` |
+| PLINK `.bim` file (`PLINK_RECODE_MS_VCF`) | `marker`, `CHROM`, `POS`, `A1`, `A2` |
 | EIGEN independent tests file (`LOCAL_COMPILE_EIGENS`) | `n_independent_tests` (metadata only) |
 
 **Source:** `R/io.R::read_bim_file()`
@@ -95,9 +97,12 @@ Within a marker set, `marker` (equivalently `CHROM` + `POS`) is unique.
 |--------|-----------|-------------|
 | `marker_set_id` | `utf8` | 20-char SHA-256 hash (primary key) |
 | `marker_set_hash_string` | `utf8` | Human-readable hash input string |
-| `hash_schema_version` | `utf8` | `"v=1"` — increment if hash construction changes |
+| `hash_schema_version` | `utf8` | `"v=2"` — encodes population, maf, species, vcf_release_id, ms_ld |
 | `population` | `utf8` | Population/strain set identifier |
-| `maf` | `float64` | MAF threshold |
+| `maf` | `float64` | MAF threshold for marker SNP selection |
+| `species` | `utf8` | Species identifier (`c_elegans`, `c_briggsae`, etc.) |
+| `vcf_release_id` | `utf8` | 8-digit CaeNDR release date or VCF filename date |
+| `ms_ld` | `float64` | LD R² threshold used for marker SNP LD pruning |
 | `n_markers` | `int32` | Total number of markers |
 | `n_independent_tests` | `float64` | Independent tests from EIGEN decomposition |
 | `eigen_source_file` | `utf8` | EIGEN source filename |
@@ -253,23 +258,23 @@ Each ID in the three-level hierarchy is a deterministic **20-character
 SHA-256** prefix computed from a canonical input string:
 
 ```
-marker_set_id  = SHA-256("v=1|population={pop}|maf={maf:.10f}")[1:20]
+marker_set_id  = SHA-256("v=2|population={pop}|maf={maf:.10f}|species={species}|vcf_release_id={vcf_id}|ms_ld={ms_ld:.10f}")[1:20]
   └── trait_id = SHA-256("v=1|parent={marker_set_hash}|nqtl={n}|effect={e}|rep={r}|h2={h2:.10f}")[1:20]
         └── mapping_id = SHA-256("v=1|parent={trait_hash}|algorithm={algorithm}|pca={TRUE|FALSE}")[1:20]
 ```
 
-**Golden values (pinned 2026-02-27):** (`"ce100"` is used here as the
-population; the hash would differ for `"complete"` or any other string.)
+**Golden values (pinned 2026-03-03, v=2):** (`"ce.test"` population, `c_elegans`,
+release `20220216`, ms_ld `0.8` — values verified against `R/database.R` in S06.)
 
 ```r
-generate_marker_set_id("ce100", 0.05)$hash
-# → "879ca1a75fc7fb5183e7"
+generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)$hash
+# → "db39e634ef0bfa76e1bd"
 
-generate_trait_id("879ca1a75fc7fb5183e7", 5, "gamma", 1, 0.8)$hash
-# → "2aa558d92d805fb85ee8"
+generate_trait_id("db39e634ef0bfa76e1bd", 5, "gamma", 1, 0.8)$hash
+# → "aadfdfe371a917896ad6"
 
-generate_mapping_id("2aa558d92d805fb85ee8", "inbred", TRUE)$hash
-# → "5b9eecbb85032068d7e4"
+generate_mapping_id("aadfdfe371a917896ad6", "inbred", TRUE)$hash
+# → "c7e06e757cd1102e6092"
 ```
 
 **Source:** `R/database.R::generate_marker_set_id()`,
@@ -405,7 +410,7 @@ eliminates cross-language hash divergence.
 **Source:** `R/database.R::generate_trait_id()`
 
 ```r
-ms_id    <- generate_marker_set_id("complete", 0.05)
+ms_id    <- generate_marker_set_id("complete", 0.05, "c_elegans", "20220216", 0.8)
 trait    <- generate_trait_id(ms_id$hash, nqtl = 5, effect = "gamma", rep = 1, h2 = 0.8)
 trait_id <- trait$hash   # 20-char hex string
 ```
@@ -483,10 +488,10 @@ With all four data stores populated, variance explained can be estimated for
 any trait without re-running the pipeline:
 
 ```r
-ms_id    <- generate_marker_set_id(group, maf)
+ms_id    <- generate_marker_set_id(group, maf, species, vcf_release_id, ms_ld)
 trait_id <- generate_trait_id(ms_id$hash, nqtl, effect, rep, h2)$hash
 
-geno   <- read_genotype_matrix(group, maf, base_dir)         # CHROM, POS, strain, allele
+geno   <- read_genotype_matrix(group, maf, species, vcf_release_id, ms_ld, base_dir)  # CHROM, POS, strain, allele
 pheno  <- read_phenotype_data(trait_id, base_dir)            # strain, phenotype
 causal <- read_causal_variants_data(trait_id, base_dir)      # QTL, CHROM, POS, Effect, ...
 

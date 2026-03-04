@@ -149,28 +149,34 @@ storage operations — they have no downstream dependents within the pipeline:
 &nbsp;&bull;&nbsp; **Script:** `resources/usr/bin/write_marker_set.R`
 
 Writes the LD-pruned marker set and EIGEN independent tests count to the
-Parquet database. One invocation per (group, maf) combination.
+Parquet database. One invocation per marker set (unique combination of group,
+MAF, species, VCF release, and LD threshold).
 
 **Command:**
 
 ```bash
 write_marker_set.R --group ${group} --maf ${maf} --bim ${bim_file} \
-    --eigen ${n_indep_tests} --base_dir ${base_dir}
+    --eigen ${n_indep_tests} \
+    --species ${species} --vcf_release_id ${vcf_release_id} --ms_ld ${ms_ld} \
+    --base_dir ${base_dir}
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--group` | Population/strain group identifier |
 | `--maf` | MAF threshold used for this marker set |
-| `--bim` | Path to PLINK `.bim` file from `PLINK_RECODE_VCF` |
+| `--bim` | Path to PLINK `.bim` file from `PLINK_RECODE_MS_VCF` |
 | `--eigen` | Path to independent tests file from `LOCAL_COMPILE_EIGENS` |
+| `--species` | Species identifier (`c_elegans`, `c_briggsae`, etc.) |
+| `--vcf_release_id` | 8-digit CaeNDR release date extracted from strainfile `vcf` column |
+| `--ms_ld` | LD R² threshold used for marker SNP selection |
 | `--base_dir` | Database output directory |
 
 **R functions called:**
 
 | Function | Source | Purpose |
 |----------|--------|---------|
-| `generate_marker_set_id()` | `R/database.R` | Compute deterministic 20-char SHA-256 marker set ID from population and MAF |
+| `generate_marker_set_id()` | `R/database.R` | Compute deterministic 20-char SHA-256 marker set ID (v=2) from population, MAF, species, VCF release ID, and LD threshold |
 | `read_bim_file()` | `R/io.R` | Read PLINK `.bim` file into a marker dataframe |
 | `read_eigen_file()` | `R/io.R` | Read single-value EIGEN independent tests file |
 | `write_marker_set()` | `R/database.R` | Write marker Parquet file and metadata |
@@ -331,7 +337,7 @@ write_trait_data.R --group ${group} --maf ${maf} --nqtl ${nqtl} \
 | `write_causal_variants()` | `R/database.R` | Write causal variant positions and effects |
 | `write_phenotype_data()` | `R/database.R` | Write per-strain phenotype values |
 
-**Trait ID:** Computed via a two-step chain: `generate_marker_set_id(group, maf)` yields the parent 20-char SHA-256 marker-set hash; `generate_trait_id(marker_set_hash, nqtl, effect, rep, h2)` yields the trait hash. All IDs are 20-character truncated SHA-256 hashes. No Groovy counterpart. Stable across `-resume`.
+**Trait ID:** Computed via a two-step chain: `generate_marker_set_id(group, maf, species, vcf_release_id, ms_ld)` (v=2) yields the parent 20-char SHA-256 marker-set hash; `generate_trait_id(marker_set_hash, nqtl, effect, rep, h2)` yields the trait hash. All IDs are 20-character truncated SHA-256 hashes. No Groovy counterpart. Stable across `-resume`.
 
 **Cardinality:** 1 invocation per unique trait (nqtl × rep × h2 × maf × effect × group).
 

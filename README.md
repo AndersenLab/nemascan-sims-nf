@@ -64,11 +64,11 @@ by marker set configuration and enables safe merging of outputs across runs.
 
 ## Preparing marker sets
 
-The marker set generation phase transforms a multi-sample VCF into LD-pruned PLINK binary filesets and a numeric genotype matrix through four processes: `BCFTOOLS_EXTRACT_STRAINS`, `BCFTOOLS_RENAME_CHROMS`, `PLINK_RECODE_VCF`, and `BCFTOOLS_CREATE_GENOTYPE_MATRIX`. See the [Marker Set Generation](docs/marker-set-generation.qmd) documentation for detailed process descriptions, commands, and parameter references.
+The marker set generation phase transforms a multi-sample VCF into LD-pruned PLINK binary filesets and a numeric genotype matrix through five processes: `BCFTOOLS_EXTRACT_STRAINS`, `BCFTOOLS_RENAME_CHROMS`, `PLINK_RECODE_MS_VCF`, `PLINK_RECODE_CV_VCF`, and `BCFTOOLS_CREATE_GENOTYPE_MATRIX`. Two parallel PLINK runs produce the marker SNP set (`TO_SIMS.*`, used for GWA) and the causal variant pool (`CV_TO_SIMS.*`, used for causal variant selection). See the [Marker Set Generation](docs/marker-set-generation.qmd) documentation for detailed process descriptions, commands, and parameter references.
 
 ## Simulated traits
 
-The trait simulation phase selects causal variants, simulates quantitative phenotypes with GCTA, and prepares phenotype-annotated PLINK filesets through three processes: `PYTHON_SIMULATE_EFFECTS_GLOBAL`, `GCTA_SIMULATE_PHENOTYPES`, and `PLINK_UPDATE_BY_H2`. See the [Trait Simulation](docs/trait-simulation.qmd) documentation for detailed process descriptions, commands, and parameter references.
+The trait simulation phase selects causal variants, simulates quantitative phenotypes with GCTA, and prepares phenotype-annotated PLINK filesets through three processes: `PYTHON_SIMULATE_EFFECTS_GLOBAL`, `GCTA_SIMULATE_PHENOTYPES`, and `PLINK_UPDATE_BY_H2`. Causal variants are drawn from the CV pool (`PLINK_RECODE_CV_VCF` output, configurable via `--cv_maf` and `--cv_ld`), independently of the marker SNP set used for GWA mapping. See the [Trait Simulation](docs/trait-simulation.qmd) documentation for detailed process descriptions, commands, and parameter references.
 
 ## GWAS Mappings
 

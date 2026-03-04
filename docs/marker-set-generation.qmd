@@ -24,7 +24,8 @@ VCF
  ▼                                    │
  BCFTOOLS_RENAME_CHROMS ◄─────────────┘
  ▼
- PLINK_RECODE_VCF ──────────► PLINK binaries (.bed/.bim/.fam), markers.txt
+ PLINK_RECODE_MS_VCF ────────► TO_SIMS.* binaries + markers.txt (marker SNP set)
+ PLINK_RECODE_CV_VCF ────────► CV_TO_SIMS.* binaries (causal variant pool)
  │                                    │
  ▼                                    ▼
  (to Phase 2/3)          BCFTOOLS_CREATE_GENOTYPE_MATRIX ──► genotype matrix TSV
@@ -155,13 +156,23 @@ MtDNA   7
 | Output | `*_renamed.vcf.gz` + `.tbi` | VCF with numeric chromosome names |
 
 
-## 3. PLINK_RECODE_VCF
+## 3. PLINK_RECODE_MS_VCF / PLINK_RECODE_CV_VCF
 
-**Source:** `modules/plink/recode_vcf/main.nf`
+**Source:** `modules/plink/recode_vcf/main.nf` (aliased twice in `main.nf`)
 
-Performs LD pruning and produces PLINK binary filesets for downstream GCTA
-analysis. This process runs two sequential PLINK commands: first to identify
-LD-pruned variants, then to create the binary files using only those variants.
+The same module is imported under two alias names and called in parallel for
+each strain group:
+
+- **`PLINK_RECODE_MS_VCF`** — marker SNP set run. Uses per-group `ms_maf` and `ms_ld`
+  thresholds from the strainfile. Outputs `TO_SIMS.*` files used for GRM construction
+  and GWA mapping (Phase 3).
+- **`PLINK_RECODE_CV_VCF`** — causal variant pool run. Uses `params.cv_maf` (defaults to
+  the group's `ms_maf` if not set) and `params.cv_ld` thresholds. Outputs `CV_TO_SIMS.*`
+  files used for causal variant selection in Phase 2.
+
+Both runs perform LD pruning and produce PLINK binary filesets through two sequential
+PLINK commands: first to identify LD-pruned variants, then to create the binary files
+using only those variants.
 
 ### Command 1: LD pruning
 
@@ -171,7 +182,7 @@ plink --vcf recoded.vcf.gz \
     --biallelic-only \
     --maf ${maf} \
     --set-missing-var-ids @:# \
-    --indep-pairwise 50 10 0.8 \
+    --indep-pairwise 50 10 ${ld} \
     --geno \
     --not-chr ${mito_name} \
     --allow-extra-chr
@@ -186,7 +197,7 @@ retain) and `plink.prune.out` (variant IDs to remove).
 | `--biallelic-only` | Exclude multiallelic sites | [plink filter](https://www.cog-genomics.org/plink/1.9/filter#biallelic) |
 | `--maf ${maf}` | Remove variants below the minor allele frequency threshold | [plink filter](https://www.cog-genomics.org/plink/1.9/filter#maf) |
 | `--set-missing-var-ids @:#` | Assign IDs to variants missing an rsID, using `CHROM:POS` format | [plink data](https://www.cog-genomics.org/plink/1.9/data#set_missing_var_ids) |
-| `--indep-pairwise 50 10 0.8` | Sliding-window LD pruning: window=50 variants, step=10, r^2^ threshold=0.8 | [plink LD](https://www.cog-genomics.org/plink/1.9/ld#indep) |
+| `--indep-pairwise 50 10 ${ld}` | Sliding-window LD pruning: window=50 variants, step=10, r^2^ threshold from `ld` input (per-group `ms_ld` for the MS run; `cv_ld` for the CV run) | [plink LD](https://www.cog-genomics.org/plink/1.9/ld#indep) |
 | `--geno` | Exclude variants with missing genotype rates above the default threshold (0.1) | [plink filter](https://www.cog-genomics.org/plink/1.9/filter#missing) |
 | `--not-chr ${mito_name}` | Exclude the mitochondrial chromosome | [plink filter](https://www.cog-genomics.org/plink/1.9/filter#chr) |
 | `--allow-extra-chr` | Permit non-standard chromosome codes | [plink filter](https://www.cog-genomics.org/plink/1.9/filter#chr) |
@@ -233,22 +244,29 @@ marker list is used by `BCFTOOLS_CREATE_GENOTYPE_MATRIX` to subset the VCF.
 |-----------|------|-------------|
 | Input | `recoded.vcf.gz` + `.tbi` | Chromosome-renamed, strain-subset VCF |
 | Input | `mito_name` (val) | Numeric mitochondrial chromosome ID (looked up from `LOCAL_GET_CONTIG_INFO` mapping using the `--mito_name` parameter; e.g., `7` for MtDNA) |
-| Input | `maf` (val) | Minor allele frequency threshold |
-| Output | `TO_SIMS.bed/.bim/.fam` | PLINK binary fileset (used by GCTA for GRM and GWAS) |
-| Output | `TO_SIMS.map/.ped` | PLINK text-format fileset |
-| Output | `TO_SIMS.nosex/.log` | PLINK auxiliary outputs |
-| Output | `recoded.vcf.gz` + `.tbi` | Copy of the input VCF (passed through for downstream use) |
-| Output | `markers.txt` | Tab-separated list of retained markers (CHROM, POS) |
+| Input | `maf` (val) | Minor allele frequency threshold (`ms_maf` for the MS run; `cv_maf` or fallback `ms_maf` for the CV run) |
+| Input | `ld` (val) | LD R² pruning threshold (`ms_ld` for the MS run; `cv_ld` for the CV run) |
+| Output (MS run) | `TO_SIMS.bed/.bim/.fam` | PLINK binary fileset for GRM construction and GWA mapping (Phase 3) |
+| Output (MS run) | `TO_SIMS.map/.ped` | PLINK text-format fileset |
+| Output (MS run) | `TO_SIMS.nosex/.log` | PLINK auxiliary outputs |
+| Output (CV run) | `CV_TO_SIMS.bed/.bim/.fam` | PLINK binary fileset for causal variant selection (Phase 2) |
+| Output (CV run) | `CV_TO_SIMS.map/.ped` | PLINK text-format fileset |
+| Output (CV run) | `CV_TO_SIMS.nosex/.log` | PLINK auxiliary outputs |
+| Output (MS run) | `recoded.vcf.gz` + `.tbi` | Copy of the input VCF (passed through for downstream use) |
+| Output (MS run) | `markers.txt` | Tab-separated list of retained markers (CHROM, POS) |
 
 ::: {.callout-note}
-The `TO_SIMS.bim` file is consumed by `DB_MIGRATION_WRITE_MARKER_SET`, which
-writes the LD-pruned variant list to
-`{db}/markers/marker_sets/{marker_set_id}_markers.parquet`. `marker_set_id` is
-the 20-character SHA-256 hash of the population and MAF threshold, computed by
-`generate_marker_set_id()` in `R/database.R`. `DB_MIGRATION_WRITE_MARKER_SET`
-also requires `n_indep_tests` (number of independent tests from EIGEN analysis)
-before it can run; it stores this alongside the marker list in
-`marker_set_metadata.parquet`.
+The `TO_SIMS.bim` file (MS run output) is consumed by `DB_MIGRATION_WRITE_MARKER_SET`,
+which writes the LD-pruned marker list to
+`{db}/markers/marker_sets/{marker_set_id}_markers.parquet`. `marker_set_id` is the
+20-character SHA-256 hash (v=2) computed from `(population, maf, species, vcf_release_id,
+ms_ld)` by `generate_marker_set_id()` in `R/database.R`. `DB_MIGRATION_WRITE_MARKER_SET`
+also requires `n_indep_tests` (number of independent tests from EIGEN analysis) before it
+can run; it stores this alongside the marker list in `marker_set_metadata.parquet`.
+
+The `CV_TO_SIMS.*` binary (CV run output) is not written to the database. It is passed to
+Phase 2 (`PYTHON_SIMULATE_EFFECTS_GLOBAL`) for causal variant selection, then forwarded to
+`GCTA_SIMULATE_PHENOTYPES` as the `--bfile` source. Only the MS binary drives GWA mapping.
 :::
 
 
@@ -308,7 +326,7 @@ missing data (`NA`) rather than given an intermediate value.
 | Direction | File | Description |
 |-----------|------|-------------|
 | Input | `recoded.vcf.gz` + `.tbi` | Chromosome-renamed, strain-subset VCF |
-| Input | `markers.txt` | LD-pruned marker positions from `PLINK_RECODE_VCF` |
+| Input | `markers.txt` | LD-pruned marker positions from `PLINK_RECODE_MS_VCF` |
 | Output | `${group}_${maf}_Genotype_Matrix.tsv` | Tab-separated genotype matrix: rows are markers (CHROM, POS, REF, ALT), columns are strains |
 
 ::: {.callout-note}

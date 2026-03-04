@@ -14,6 +14,33 @@ not use version tags; entries are organized by development phase and date.
 ## [Unreleased] — March 2026
 
 ### Added
+- **Non-marker causal variants** (`feature/add-nonmarker-cvs`, 2026-03-03): causal variants
+  can now be drawn from a separately-configured variant pool rather than the marker SNP set.
+  Key changes:
+  - Strainfile format extended to 6 columns: `group`, `species`, `vcf`, `ms_maf`, `ms_ld`,
+    `strains`. Species, VCF source, and marker-set thresholds are now per-group in the
+    strainfile; `--vcf`, `--maf`, `--species`, `--vcf_release_id`, `--ms_maf`, and `--ms_ld`
+    CLI parameters removed.
+  - New CLI parameters `--cv_maf` (default: each group's `ms_maf`) and `--cv_ld` (default:
+    0.8) configure the causal variant pool MAF and LD thresholds independently of the marker
+    SNP set.
+  - Two parallel PLINK runs per group: `PLINK_RECODE_MS_VCF` (marker SNP set, drives GWA)
+    and `PLINK_RECODE_CV_VCF` (CV pool, drives causal variant selection). Mixed-species runs
+    supported in a single pipeline invocation.
+  - `PYTHON_SIMULATE_EFFECTS_GLOBAL` now selects causal variants from `CV_TO_SIMS.bim`
+    (CV pool BIM); `GCTA_SIMULATE_PHENOTYPES` now uses `--bfile CV_TO_SIMS`.
+  - Marker set ID upgraded to v=2: SHA-256 now encodes `population`, `maf`, `species`,
+    `vcf_release_id`, and `ms_ld`. CV parameters (`cv_maf`, `cv_ld`) are intentionally
+    excluded from the hash.
+  - `marker_set_metadata.parquet` gains three new columns: `species` (utf8),
+    `vcf_release_id` (utf8), `ms_ld` (float64).
+  - DB write scripts (`write_marker_set.R`, `write_genotype_matrix.R`, `write_gwa_to_db.R`)
+    and their Nextflow modules updated to accept and pass `--species`, `--vcf_release_id`,
+    `--ms_ld`.
+  - `aggregate_metadata.R` fallback path updated to emit `NA` for the three new columns
+    when no metadata sidecars exist.
+
+### Added
 - `mappings_metadata.parquet` sidecar file written to the database root by
   `DB_MIGRATION_AGGREGATE_METADATA` — provides a single queryable index of all
   mapping runs without scanning every Hive partition. (2026-03-02)
@@ -32,7 +59,7 @@ MD5 hex IDs, making all IDs stable across `-resume` runs.
   files (`traits/`, `causal_variants/`, `phenotypes/`).
 - `generate_mapping_id(trait_id, mode, type)` — MD5 hash used as the Hive
   partition key under `mappings/population={pop}/mapping_id={id}/`.
-- `generate_marker_set_id(population, maf)` — SHA-256 hash written to
+- `generate_marker_set_id(population, maf, species, vcf_release_id, ms_ld)` — SHA-256 hash (v=2) written to
   `marker_set_metadata.parquet` and used in the marker-set file names.
 - Unit tests for all three hash functions in `test-hash_generation.R`, with
   golden-value assertions to catch silent hash drift.
