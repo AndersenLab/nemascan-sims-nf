@@ -7,7 +7,8 @@ include { LOCAL_COMPILE_EIGENS            } from './modules/local/compile_eigens
 include { BCFTOOLS_RENAME_CHROMS          } from './modules/bcftools/rename_chroms/main'
 include { BCFTOOLS_EXTRACT_STRAINS        } from './modules/bcftools/extract_strains/main'
 include { BCFTOOLS_CREATE_GENOTYPE_MATRIX } from './modules/bcftools/create_genotype_matrix/main'
-include { PLINK_RECODE_VCF                } from './modules/plink/recode_vcf/main'
+include { PLINK_RECODE_VCF as PLINK_RECODE_MS_VCF } from './modules/plink/recode_vcf/main'
+include { PLINK_RECODE_VCF as PLINK_RECODE_CV_VCF } from './modules/plink/recode_vcf/main'
 include { PLINK_UPDATE_BY_H2              } from './modules/plink/update_by_h2/main'
 include { R_FIND_GENOTYPE_MATRIX_EIGEN    } from './modules/r/find_genotype_matrix_eigen/main'
 include { PYTHON_SIMULATE_EFFECTS_GLOBAL   } from './modules/python/simulate_effects_global/main'
@@ -29,12 +30,57 @@ include { DB_MIGRATION_ASSESS_SIMS            } from './modules/db_migration/ass
 include { DB_MIGRATION_WRITE_GENOTYPE_MATRIX  } from './modules/db_migration/write_genotype_matrix/main'
 include { DB_MIGRATION_WRITE_TRAIT_DATA       } from './modules/db_migration/write_trait_data/main'
 
+// extractVcfReleaseId: normalizes the strainfile vcf column to a stable 8-digit CaeNDR release date.
+// Called from inside a .multiMap{} closure — uses throw, not the NXF error keyword.
+def extractVcfReleaseId(String vcf) {
+    if (vcf ==~ /^\d{8}$/) return vcf
+    def matcher = new File(vcf).name =~ /(\d{8})/
+    if (matcher.find()) return matcher.group(1)
+    throw new IllegalArgumentException(
+        "Cannot extract release ID from VCF path '${vcf}' — no 8-digit date found in filename. " +
+        "Use YYYYMMDD format in the vcf column or rename the file."
+    )
+}
+
+// resolveVcf: resolves the strainfile vcf column to an accessible path or URL.
+//   - 8-digit date → constructs CaeNDR URL per species
+//   - Relative path (does not start with / or http) → prefixed with projectDir
+//     (supports test strainfiles that use paths like data/test/test.vcf.gz)
+//   - Absolute path or http(s) URL → returned as-is
+// Called during channel construction (head-node phase) — errors surface before SLURM submission.
+def resolveVcf(String vcf, String species, String projectDir) {
+    if (vcf ==~ /^\d{8}$/) {
+        switch (species) {
+            case 'c_elegans':    return "https://caendr.org/download/WI.${vcf}.hard-filter.isotype.vcf.gz"
+            case 'c_briggsae':   return "https://caendr.org/download/CB.${vcf}.hard-filter.isotype.vcf.gz"
+            case 'c_tropicalis': return "https://caendr.org/download/CT.${vcf}.hard-filter.isotype.vcf.gz"
+            default:
+                throw new IllegalArgumentException(
+                    "Unrecognized species '${species}' for CaeNDR URL construction. " +
+                    "Use 'c_elegans', 'c_briggsae', or 'c_tropicalis'."
+                )
+        }
+    }
+    if (!vcf.startsWith('/') && !vcf.startsWith('http')) {
+        return "${projectDir}/${vcf}"  // relative path → absolute (test profile support)
+    }
+    return vcf  // absolute path passthrough
+}
+
 workflow {
     main:
     ch_versions = Channel.empty()
 
     date = new Date().format( 'yyyyMMdd' )
 
+    // Resolve CV (causal variant pool) parameters
+    // No 'def' — these become script bindings accessible in workflow.onComplete
+    cv_maf = params.cv_maf != null ? params.cv_maf as Float : null
+    cv_ld  = params.cv_ld  != null ? params.cv_ld  as Float : 0.8f
+    assert cv_ld > 0f && cv_ld < 1.0f : "cv_ld must be in (0, 1), got: ${cv_ld}"
+    if (cv_maf != null && cv_maf > 0.5f) {
+        error "cv_maf must be in (0, 0.5], got: ${cv_maf} — values above 0.5 are major allele frequency"
+    }
 
     // Set default values for parameters
     if (params.nqtl == null){
@@ -46,11 +92,6 @@ workflow {
         h2_file = "${workflow.projectDir}/data/simulate_h2.csv"
     } else {
         h2_file = params.h2
-    }
-    if (params.maf == null){
-        maf_file = "${workflow.projectDir}/data/simulate_maf.csv"
-    } else {
-        maf_file = params.maf
     }
     if (params.effect == null){
         effect_file = "${workflow.projectDir}/data/simulate_effect_sizes.csv"
@@ -87,14 +128,14 @@ workflow {
         log.info "rockfish              Profile        Perform selected analysis on Rockfish (default GWA mapping)"
         log.info " "
         log.info "Mandatory argument (General):"
-        log.info "--strainfile      File               A TSV file with two columns: the first is a name for the strain set and the second is a comma-separated strain list without spaces"
-        log.info "--vcf             File               Generally a CaeNDR release date (i.e. 20231213). Can also provide a user-specified VCF with index in same folder"
+        log.info "--strainfile      File               A tab-separated file with header: group, species, vcf, ms_maf, ms_ld, strains. One row per strain group. vcf accepts a CaeNDR release date (8-digit) or an absolute path."
         log.info " "
         log.info "Optional arguments (General):"
         log.info "--nqtl            File               A CSV file with the number of QTL to simulate per phenotype, one value per line (Default is located: data/simulate_nqtl.csv)"
         log.info "--h2              File               A CSV file with phenotype heritability, one value per line (Default is located: data/simulate_h2.csv)"
         log.info "--reps             Integer            The number of replicates to simulate per number of QTL and heritability (Default: 2)"
-        log.info "--maf             File               A CSV file where each line is a minor allele frequency threshold to test for simulations (Default: data/simulate_maf.csv)"
+        log.info "--cv_maf          Decimal            Minor allele frequency threshold for causal variant pool (Default: per-group ms_maf from strainfile)"
+        log.info "--cv_ld           Decimal            LD R² threshold for causal variant pool pruning (Default: 0.8)"
         log.info "--effect          File               A CSV file where each line is an effect size range (e.g. 0.2-0.3) to test for simulations (Default: data/simulate_effect_sizes.csv)"
         log.info "--qtlloc          File               A BED file with three columns: chromosome name (numeric 1-6), start postion, end postion. The genomic range specified is where markers will be pulled from to simulate QTL (Default: null [which defaults to using the whole genome to randomly simulate a QTL])"
         log.info "--sthresh         String             Significance threshold for QTL - Options: BF - for bonferroni correction, EIGEN - for SNV eigen value correction, or another number e.g. 4"
@@ -114,12 +155,12 @@ workflow {
 
     '''
         log.info ""
-        log.info "Strain name and list file               = ${strainfile}"
-        log.info "VCF                                     = ${params.vcf}"
+        log.info "Strainfile                              = ${strainfile}"
         log.info "Number of QTLs/phenotype simulated      = ${nqtl_file}"
         log.info "Phenotype heritability file             = ${h2_file}"
         log.info "Number of replicates to simulate        = ${params.reps}"
-        log.info "Minor allele freq. threshold file       = ${maf_file}"
+        log.info "Causal variant MAF                      = ${cv_maf ?: '(per-group ms_maf)'}"
+        log.info "Causal variant LD threshold             = ${cv_ld}"
         log.info "Effect size range file                  = ${effect_file}"
         log.info "Genome range file                       = ${params.qtlloc}"
         log.info "Significance Thresholds                 = BF, EIGEN"
@@ -134,40 +175,116 @@ workflow {
 
 
 
-    // Created needed channels
-    ch_vcf = Channel.fromPath(params.vcf).map{ it: [[id: "vcf"], it, "${it}.tbi"] }.first()
-    ch_strain_sets = Channel.fromPath(strainfile).splitCsv(sep: " ").map{ it: [[id: it[0]], it[1]] }
-    ch_mafs = Channel.fromPath(maf_file).splitCsv().first()
+    // Parse 6-column strainfile and fan out per-row parameters
+    ch_strain_sets = Channel.fromPath(strainfile)
+        .splitCsv(sep: "\t", header: true)
+        .map { row ->
+            // M8 fix: normalize whitespace to handle Windows CRLF line endings
+            def cleanRow = row.collectEntries { k, v -> [k.trim(), v?.trim()] }
+            if (!(cleanRow.species in ['c_elegans', 'c_briggsae', 'c_tropicalis'])) {
+                error "Unknown species '${cleanRow.species}' in strainfile row for group '${cleanRow.group}'"
+            }
+            if (cleanRow.ms_maf.toFloat() <= 0 || cleanRow.ms_maf.toFloat() > 0.5) {
+                error "ms_maf '${cleanRow.ms_maf}' out of range (0, 0.5] in group '${cleanRow.group}' — values above 0.5 are major allele frequency, not MAF"
+            }
+            if (cleanRow.ms_ld.toFloat() <= 0 || cleanRow.ms_ld.toFloat() >= 1.0) {
+                error "ms_ld '${cleanRow.ms_ld}' out of range (0, 1) in group '${cleanRow.group}'"
+            }
+            [
+                [id: cleanRow.group],
+                cleanRow.species,
+                cleanRow.vcf,
+                cleanRow.ms_maf.toFloat(),
+                cleanRow.ms_ld.toFloat(),
+                cleanRow.strains
+            ]
+        }
+
+    ch_strain_sets
+        .multiMap { meta, species, vcf, ms_maf, ms_ld, strains ->
+            def cv_maf_eff = cv_maf != null ? cv_maf : ms_maf
+            if (cv_maf != null && cv_maf > ms_maf) {
+                log.warn "cv_maf (${cv_maf}) > ms_maf (${ms_maf}) for group ${meta.id}: " +
+                         "the CV pool is a strict subset of the marker SNP set. " +
+                         "This is likely unintentional."
+            }
+            marker_set_params: [meta.id, ms_maf, species, extractVcfReleaseId(vcf), ms_ld]
+            vcf_per_group:     [meta, species, vcf, strains]
+            ms_maf_vals:       [meta, ms_maf]
+            ms_ld_vals:        [meta, ms_ld]
+            cv_maf_vals:       [meta, cv_maf_eff]
+        }
+        .set { ch_sf }
+
+    // ch_sf.marker_set_params is a queue channel — fan out with .tap{} before
+    // 3 subscribers consume it (write_marker_set, write_genotype_matrix, write_gwa_to_db).
+    // Without this, DSL2 distributes emissions round-robin among competing readers.
+    ch_sf.marker_set_params
+        .tap { ch_marker_set_params_for_ms }
+        .tap { ch_marker_set_params_for_gm }
+        .set { ch_marker_set_params_for_gwa }
+
+    ch_vcf_per_group = ch_sf.vcf_per_group
+        .map { meta, species, vcf, strains ->
+            def vcf_path = resolveVcf(vcf, species, workflow.projectDir.toString())
+            [meta, file(vcf_path), file("${vcf_path}.tbi"), strains]
+        }
+
+    // Fan out ch_vcf_per_group to separate sub-channels (avoids queue channel consumption)
+    ch_vcf_per_group
+        .multiMap { meta, vcf, tbi, strains ->
+            for_contig:  [meta, vcf, tbi]
+            for_extract: [meta, vcf, tbi]
+            for_strains: [meta, strains]
+        }
+        .set { ch_vcf_groups }
 
     // Get contig data from VCF file
-    LOCAL_GET_CONTIG_INFO( ch_vcf )
+    // .first() — one representative VCF suffices; all supported species share same chromosome names
+    LOCAL_GET_CONTIG_INFO( ch_vcf_groups.for_contig.first() )
     ch_mito_num = LOCAL_GET_CONTIG_INFO.out.mapping.splitCsv(sep:"\t")
         .filter{ row -> row[0] == mito_name }
         .map{ row -> row[1] }
         .first()
 
-    BCFTOOLS_EXTRACT_STRAINS( ch_vcf, ch_strain_sets )
+    BCFTOOLS_EXTRACT_STRAINS( ch_vcf_groups.for_extract, ch_vcf_groups.for_strains )
     ch_versions = ch_versions.mix(BCFTOOLS_EXTRACT_STRAINS.out.versions)
 
     // Extract desired strain sets
-    BCFTOOLS_RENAME_CHROMS( 
+    BCFTOOLS_RENAME_CHROMS(
         BCFTOOLS_EXTRACT_STRAINS.out.vcf,
         LOCAL_GET_CONTIG_INFO.out.mapping
         )
     ch_versions = ch_versions.mix(BCFTOOLS_RENAME_CHROMS.out.versions)
 
     // Recode the VCF file and create plink formatted files
-    PLINK_RECODE_VCF(
-        BCFTOOLS_RENAME_CHROMS.out.vcf,
+    // Fork renamed VCF before two parallel PLINK calls (avoids queue channel consumption)
+    BCFTOOLS_RENAME_CHROMS.out.vcf
+        .tap { ch_renamed_for_ms }
+        .tap { ch_renamed_for_cv }
+
+    // Marker SNP selection — uses per-group ms_maf and ms_ld from strainfile
+    PLINK_RECODE_MS_VCF(
+        ch_renamed_for_ms,
         ch_mito_num,
-        ch_mafs
+        ch_sf.ms_maf_vals.map { meta, ms_maf -> ms_maf },
+        ch_sf.ms_ld_vals.map  { meta, ms_ld  -> ms_ld  }
         )
-    ch_versions = ch_versions.mix(PLINK_RECODE_VCF.out.versions)
+    ch_versions = ch_versions.mix(PLINK_RECODE_MS_VCF.out.versions)
+
+    // Causal variant pool selection — uses global cv_maf/cv_ld (or per-group ms_maf fallback)
+    PLINK_RECODE_CV_VCF(
+        ch_renamed_for_cv,
+        ch_mito_num,
+        ch_sf.cv_maf_vals.map { meta, cv_maf_eff -> cv_maf_eff },
+        Channel.value(cv_ld)
+        )
+    ch_versions = ch_versions.mix(PLINK_RECODE_CV_VCF.out.versions)
 
     // Create plaintext genotype matrix
     BCFTOOLS_CREATE_GENOTYPE_MATRIX(
-        PLINK_RECODE_VCF.out.vcf,
-        PLINK_RECODE_VCF.out.markers
+        PLINK_RECODE_MS_VCF.out.vcf,
+        PLINK_RECODE_MS_VCF.out.markers
         )
     ch_versions = ch_versions.mix(BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.versions)
 
@@ -192,11 +309,22 @@ workflow {
 
     LOCAL_COMPILE_EIGENS( ch_eigens )
 
+    // CV binary — drop maf (cv_maf_eff) so combine(by:0) keys on group only
+    ch_cv_plink_for_combine = PLINK_RECODE_CV_VCF.out.plink
+        .map { group, _maf, bed, bim, fam, map_f, nosex, ped, log_f ->
+            [group, bed, bim, fam, map_f, nosex, ped, log_f]
+        }
+
     // Compile required files for simulations by strain group and MAF
-    ch_plink_genomat_eigen = PLINK_RECODE_VCF.out.plink
+    // Extends with CV binary so PYTHON_SIMULATE_EFFECTS_GLOBAL can sample non-marker causal variants
+    ch_plink_genomat_eigen = PLINK_RECODE_MS_VCF.out.plink
         .join(BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix, by: [0, 1])
-        //.join(ch_eigens, by: [0, 1])
         .join(LOCAL_COMPILE_EIGENS.out.tests, by: [0, 1])
+        .combine(ch_cv_plink_for_combine, by: 0)
+    // Resulting tuple (18 elements):
+    //   [group, ms_maf, ms_bed, ms_bim, ms_fam, ms_map, ms_nosex, ms_ped, ms_log,
+    //    gm, n_indep_tests,
+    //    cv_bed, cv_bim, cv_fam, cv_map, cv_nosex, cv_ped, cv_log]
     
     // // Simulate QTL or genome
     // if (simulate_qtlloc){
@@ -231,14 +359,18 @@ workflow {
             .toSortedList() 
         )
     ch_versions = ch_versions.mix(PYTHON_SIMULATE_EFFECTS_GLOBAL.out.versions)
-    ch_sim_phenos = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.causal
-    ch_sim_plink = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.plink
+    ch_sim_phenos    = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.causal
+    ch_sim_plink     = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.plink
+    ch_sim_cv_plink  = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.cv_plink
     // }
 
-    // Adjust plink data by heritability
+    // Simulate phenotypes using the CV binary (--bfile CV_TO_SIMS) so GCTA can locate
+    // non-marker causal variant genotypes. The MS binary (ch_sim_plink) passes through
+    // to downstream GWA mapping unchanged.
     GCTA_SIMULATE_PHENOTYPES(
         ch_sim_phenos,
-        ch_sim_plink,
+        ch_sim_cv_plink,   // CV binary — used as --bfile for GCTA simulation
+        ch_sim_plink,      // MS binary — passed through to downstream GWA
         Channel.fromPath("${h2_file}")
             .splitCsv()
             .map{ it: it[0] }
@@ -373,28 +505,33 @@ workflow {
     // Wire from upstream PLINK + EIGEN channels (not from GCTA_PERFORM_GWA).
     // This eliminates the need for keyed_plink output or groupTuple dedup.
     //
-    // PLINK_RECODE_VCF.out.plink emits:
+    // PLINK_RECODE_MS_VCF.out.plink emits:
     //   tuple val(meta.id), val(maf), path(bed), path(bim), path(fam),
     //         path(map), path(nosex), path(ped), path(log)
     // We extract: (group, maf, bim)
-    ch_bim_for_marker = PLINK_RECODE_VCF.out.plink
+    ch_bim_for_marker = PLINK_RECODE_MS_VCF.out.plink
         .map { group, maf, _bed, bim, _fam, _map_f, _nosex, _ped, _log_f ->
             tuple(group, maf, bim)
         }
 
     // LOCAL_COMPILE_EIGENS.out.tests emits:
     //   tuple val(group), val(maf), path(n_indep_tests)
-    // Join by (group, maf) — 1:1 since both channels emit once per key
+    // ch_marker_set_params emits:
+    //   [group_id, ms_maf, species, vcf_release_id, ms_ld]
+    // Join by (group, maf) — 1:1 since all three channels emit once per key
     ch_marker_set_inputs = ch_bim_for_marker
         .join(LOCAL_COMPILE_EIGENS.out.tests, by: [0, 1])
-    // Result: tuple(group, maf, bim, n_indep_tests)
+        .join(ch_marker_set_params_for_ms, by: [0, 1])
+    // Result: tuple(group, maf, bim, n_indep_tests, species, vcf_release_id, ms_ld)
 
     DB_MIGRATION_WRITE_MARKER_SET(ch_marker_set_inputs, db_output_dir)
 
-    DB_MIGRATION_WRITE_GENOTYPE_MATRIX(
-        BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix,
-        db_output_dir
-    )
+    // WRITE_GENOTYPE_MATRIX — join(by:[0,1]) is 1:1 per group
+    ch_gm_inputs = BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix
+        .join(ch_marker_set_params_for_gm, by: [0, 1])
+    // Result: tuple(group, maf, genotype_matrix, species, vcf_release_id, ms_ld)
+
+    DB_MIGRATION_WRITE_GENOTYPE_MATRIX(ch_gm_inputs, db_output_dir)
 
     // ── GWA DATABASE WRITES ──────────────────────────────────────────
     // Barrier: wait for ALL marker sets to complete before writing mappings.
@@ -434,10 +571,16 @@ workflow {
         }
 
     // GCTA_PERFORM_GWA.out.gwa emits a single path per invocation.
-    // Nextflow pairs it with ch_db_params by emission index (lock-step).
+    // Nextflow pairs it with ch_gwa_db_inputs by emission index (lock-step).
     // No barrier gating needed on gwa — the params gate is sufficient.
+    //
+    // combine(by:[0,1]) is N:1 per (group, maf): N GWA results × 1 marker set params entry
+    ch_gwa_db_inputs = ch_db_params
+        .combine(ch_marker_set_params_for_gwa, by: [0, 1])
+    // Result: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, species, vcf_release_id, ms_ld)
+
     DB_MIGRATION_WRITE_GWA_TO_DB(
-        ch_db_params,
+        ch_gwa_db_inputs,
         GCTA_PERFORM_GWA.out.gwa,
         db_output_dir
     )
@@ -593,12 +736,12 @@ workflow.onComplete {
 
     { Parameters }
     ---------------------------
-    Strain Name and List File               = ${params.strainfile}
-    VCF                                     = ${params.vcf}
+    Strainfile                              = ${params.strainfile}
+    Causal variant MAF                      = ${cv_maf ?: '(per-group ms_maf)'}
+    Causal variant LD threshold             = ${cv_ld}
     Number of simulated QTLs                = ${nqtl_file}
     Phenotype Heritability File             = ${h2_file}
     Number of simulation replicates         = ${params.reps}
-    MAF Threshold File                      = ${maf_file}
     Effect Size Range File                  = ${effect_file}
     Marker Genomic Range File               = ${params.qtlloc}
     Significance Thresholds                 = BF, EIGEN

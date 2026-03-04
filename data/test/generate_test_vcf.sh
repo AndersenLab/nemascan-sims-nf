@@ -58,7 +58,7 @@ done
 # --- Extract strain list from test_strains.txt ---
 # Format: "{pop_name} {strain1,strain2,...}" — extract the comma-separated part
 STRAIN_LIST_FILE=$(mktemp)
-awk '{print $2}' "$STRAIN_FILE" | tr ',' '\n' > "$STRAIN_LIST_FILE"
+awk -F'\t' 'NR>1 {print $6}' "$STRAIN_FILE" | tr ',' '\n' > "$STRAIN_LIST_FILE"
 STRAIN_COUNT=$(wc -l < "$STRAIN_LIST_FILE" | tr -d ' ')
 echo "Subsetting ${STRAIN_COUNT} strains to chromosomes ${CHROMOSOMES}..."
 

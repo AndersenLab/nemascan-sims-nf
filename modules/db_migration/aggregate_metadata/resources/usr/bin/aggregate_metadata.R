@@ -82,6 +82,9 @@ if (length(meta_files) == 0) {
       df$hash_schema_version <- NA_character_
       df$mapping_hash_string <- NA_character_
       df$source_file         <- NA_character_
+      df$species             <- NA_character_
+      df$vcf_release_id      <- NA_character_
+      df$ms_ld               <- NA_real_
       df
     }, error = function(e) { warning(paste("Failed to read:", f, "-", e$message)); NULL })
   })

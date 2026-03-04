@@ -306,9 +306,12 @@ marker_set_metadata_schema <- function() {
   arrow::schema(
     marker_set_id          = arrow::utf8(),
     marker_set_hash_string = arrow::utf8(),
-    hash_schema_version    = arrow::utf8(),  # "v=1": increment if hash construction rules change; existing DBs regenerated
+    hash_schema_version    = arrow::utf8(),  # "v=2": v=1 hashes incompatible — regenerate DB
     population             = arrow::utf8(),
     maf                    = arrow::float64(),
+    species                = arrow::utf8(),
+    vcf_release_id         = arrow::utf8(),
+    ms_ld                  = arrow::float64(),
     n_markers              = arrow::int32(),
     n_independent_tests    = arrow::float64(),
     eigen_source_file      = arrow::utf8(),
@@ -389,21 +392,34 @@ init_database <- function(base_dir = "data/db") {
 }
 
 
-#' Generate marker set ID from population and MAF threshold
+#' Generate marker set ID from population, MAF, species, VCF release ID, and LD threshold
 #'
 #' @param population Population identifier (normalized to lowercase-trimmed). Canonical: "ce100", "ce96"
 #' @param maf MAF threshold as numeric. Do not pre-format — pass raw numeric.
-#' @return list with $hash (20-char lowercase hex) and $hash_string (human-readable input)
+#' @param species Species identifier (normalized to lowercase-trimmed). E.g. "c_elegans", "c_briggsae"
+#' @param vcf_release_id 8-digit CaeNDR release date string, e.g. "20220216"
+#' @param ms_ld LD R² pruning threshold as numeric. Do not pre-format.
+#' @return list with $hash (20-char lowercase hex) and $hash_string (human-readable v=2 input string)
 #'
 #' Pass $hash (not $hash_string) to generate_trait_id().
-#' hash_schema_version prefix "v=1": increment if hash construction rules change; existing DBs regenerated
-generate_marker_set_id <- function(population, maf) {
+#' hash_schema_version prefix "v=2": v=1 hashes are incompatible — regenerate DB.
+#'
+#' ⚠ CV parameters (cv_maf, cv_ld) are NOT included in this hash. Two runs that share the same
+#' (population, maf, species, vcf_release_id, ms_ld) but differ in cv_maf/cv_ld will produce
+#' identical marker_set_id values. See README Marker Set ID section for advisory.
+generate_marker_set_id <- function(population, maf, species, vcf_release_id, ms_ld) {
   if (!requireNamespace("digest", quietly = TRUE)) {
     stop("Package 'digest' is required for generate_marker_set_id()")
   }
-  population  <- tolower(trimws(population))
-  hash_string <- paste0("v=1|population=", population,
-                        "|maf=", sprintf("%.10f", as.numeric(maf)))
+  population     <- tolower(trimws(population))
+  species        <- tolower(trimws(species))
+  hash_string    <- paste0(
+    "v=2|population=",      population,
+    "|maf=",                sprintf("%.10f", as.numeric(maf)),
+    "|species=",            species,
+    "|vcf_release_id=",     vcf_release_id,
+    "|ms_ld=",              sprintf("%.10f", as.numeric(ms_ld))
+  )
   list(
     hash_string = hash_string,
     hash        = substr(digest::digest(hash_string, algo = "sha256", serialize = FALSE), 1, 20)
@@ -497,11 +513,16 @@ generate_mapping_id <- function(trait_hash, algorithm, pca) {
 #'
 #' @param population Population identifier
 #' @param maf MAF threshold
+#' @param species Species identifier (e.g. "c_elegans")
+#' @param vcf_release_id VCF release date string (e.g. "20220216")
+#' @param ms_ld LD R² pruning threshold
 #' @param base_dir Database root directory
 #' @return Path to marker set Parquet file
-get_markers_path <- function(population, maf, base_dir = "data/db") {
-  ms_id <- generate_marker_set_id(population, maf)
-  .markers_path_from_hash(ms_id$hash, base_dir)
+get_markers_path <- function(population, maf, species, vcf_release_id, ms_ld, base_dir = "data/db") {
+  result <- generate_marker_set_id(population, maf, species, vcf_release_id, ms_ld)
+  # ⚠ CV params (cv_maf, cv_ld) are NOT included in this hash — runs differing only in CV params
+  # produce identical marker_set_id values. See README Marker Set ID section for advisory.
+  .markers_path_from_hash(result$hash, base_dir)
 }
 
 
@@ -509,10 +530,13 @@ get_markers_path <- function(population, maf, base_dir = "data/db") {
 #'
 #' @param population Population identifier
 #' @param maf MAF threshold
+#' @param species Species identifier (e.g. "c_elegans")
+#' @param vcf_release_id VCF release date string (e.g. "20220216")
+#' @param ms_ld LD R² pruning threshold
 #' @param base_dir Database root directory
 #' @return TRUE if marker set exists
-marker_set_exists <- function(population, maf, base_dir = "data/db") {
-  file.exists(get_markers_path(population, maf, base_dir))
+marker_set_exists <- function(population, maf, species, vcf_release_id, ms_ld, base_dir = "data/db") {
+  file.exists(get_markers_path(population, maf, species, vcf_release_id, ms_ld, base_dir))
 }
 
 
@@ -524,18 +548,24 @@ marker_set_exists <- function(population, maf, base_dir = "data/db") {
 #' @param df Mapping dataframe with marker data
 #' @param population Population identifier
 #' @param maf MAF threshold
+#' @param species Species identifier (e.g. "c_elegans")
+#' @param vcf_release_id VCF release date string (e.g. "20220216")
+#' @param ms_ld LD R² pruning threshold
 #' @param base_dir Database root directory
 #' @param overwrite If TRUE, replace existing marker set
 #' @param n_independent_tests Number of EIGEN independent tests (optional)
 #' @param eigen_source_file Source filename for EIGEN value (optional)
 #' @return Invisibly returns the output path
-write_marker_set <- function(df, population, maf, base_dir = "data/db",
+write_marker_set <- function(df, population, maf, species, vcf_release_id, ms_ld,
+                             base_dir = "data/db",
                              overwrite = TRUE, n_independent_tests = NA_real_,
                              eigen_source_file = NA_character_) {
   init_database(base_dir)
   config <- .make_db_config(base_dir)
 
-  ms_id        <- generate_marker_set_id(population, maf)        # compute once
+  ms_id        <- generate_marker_set_id(population, maf, species, vcf_release_id, ms_ld) # compute once
+  # ⚠ CV params (cv_maf, cv_ld) are NOT included in this hash — runs differing only in CV params
+  # produce identical marker_set_id values. See README Marker Set ID section for advisory.
   markers_path <- .markers_path_from_hash(ms_id$hash, base_dir)  # no second hash call
 
   if (file.exists(markers_path) && !overwrite) {
@@ -564,6 +594,9 @@ write_marker_set <- function(df, population, maf, base_dir = "data/db",
   write_marker_set_metadata(
     population             = population,
     maf                    = maf,
+    species                = species,
+    vcf_release_id         = vcf_release_id,
+    ms_ld                  = ms_ld,
     n_markers              = nrow(markers_df),
     marker_set_id          = ms_id$hash,         # thread through
     marker_set_hash_string = ms_id$hash_string,  # stored once in metadata only
@@ -580,10 +613,13 @@ write_marker_set <- function(df, population, maf, base_dir = "data/db",
 #'
 #' @param population Population identifier
 #' @param maf MAF threshold
+#' @param species Species identifier (e.g. "c_elegans")
+#' @param vcf_release_id VCF release date string (e.g. "20220216")
+#' @param ms_ld LD R² pruning threshold
 #' @param base_dir Database root directory
 #' @return Dataframe with marker data
-read_marker_set <- function(population, maf, base_dir = "data/db") {
-  markers_path <- get_markers_path(population, maf, base_dir)
+read_marker_set <- function(population, maf, species, vcf_release_id, ms_ld, base_dir = "data/db") {
+  markers_path <- get_markers_path(population, maf, species, vcf_release_id, ms_ld, base_dir)
 
   if (!file.exists(markers_path)) {
     stop(glue::glue("Marker set not found: {population}_{maf}"))
@@ -618,11 +654,16 @@ list_marker_sets <- function(base_dir = "data/db") {
 #'
 #' @param population Population identifier
 #' @param maf MAF threshold
+#' @param species Species identifier (e.g. "c_elegans")
+#' @param vcf_release_id VCF release date string (e.g. "20220216")
+#' @param ms_ld LD R² pruning threshold
 #' @param base_dir Database root directory
 #' @return Path to genotype matrix Parquet file
-get_genotype_matrix_path <- function(population, maf, base_dir = "data/db") {
-  ms_id <- generate_marker_set_id(population, maf)
-  .genotypes_path_from_hash(ms_id$hash, base_dir)
+get_genotype_matrix_path <- function(population, maf, species, vcf_release_id, ms_ld, base_dir = "data/db") {
+  result <- generate_marker_set_id(population, maf, species, vcf_release_id, ms_ld)
+  # ⚠ CV params (cv_maf, cv_ld) are NOT included in this hash — runs differing only in CV params
+  # produce identical marker_set_id values. See README Marker Set ID section for advisory.
+  .genotypes_path_from_hash(result$hash, base_dir)
 }
 
 
@@ -630,10 +671,13 @@ get_genotype_matrix_path <- function(population, maf, base_dir = "data/db") {
 #'
 #' @param population Population identifier
 #' @param maf MAF threshold
+#' @param species Species identifier (e.g. "c_elegans")
+#' @param vcf_release_id VCF release date string (e.g. "20220216")
+#' @param ms_ld LD R² pruning threshold
 #' @param base_dir Database root directory
 #' @return TRUE if genotype matrix exists
-genotype_matrix_exists <- function(population, maf, base_dir = "data/db") {
-  file.exists(get_genotype_matrix_path(population, maf, base_dir))
+genotype_matrix_exists <- function(population, maf, species, vcf_release_id, ms_ld, base_dir = "data/db") {
+  file.exists(get_genotype_matrix_path(population, maf, species, vcf_release_id, ms_ld, base_dir))
 }
 
 
@@ -646,16 +690,21 @@ genotype_matrix_exists <- function(population, maf, base_dir = "data/db") {
 #'   BCFTOOLS_CREATE_GENOTYPE_MATRIX
 #' @param population Population/strain group identifier
 #' @param maf MAF threshold
+#' @param species Species identifier (e.g. "c_elegans")
+#' @param vcf_release_id VCF release date string (e.g. "20220216")
+#' @param ms_ld LD R² pruning threshold
 #' @param base_dir Database base directory
 #' @param overwrite Overwrite existing file (default TRUE for retry safety)
 #' @return Invisible path to written Parquet file
-write_genotype_matrix <- function(genotype_tsv, population, maf,
+write_genotype_matrix <- function(genotype_tsv, population, maf, species, vcf_release_id, ms_ld,
                                   base_dir = "data/db", overwrite = TRUE) {
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("Package 'data.table' is required for write_genotype_matrix()")
   }
 
-  ms_id    <- generate_marker_set_id(population, maf)         # compute once
+  ms_id    <- generate_marker_set_id(population, maf, species, vcf_release_id, ms_ld) # compute once
+  # ⚠ CV params (cv_maf, cv_ld) are NOT included in this hash — runs differing only in CV params
+  # produce identical marker_set_id values. See README Marker Set ID section for advisory.
   out_path <- .genotypes_path_from_hash(ms_id$hash, base_dir) # no second hash call
 
   if (file.exists(out_path) && !overwrite) {
@@ -704,10 +753,13 @@ write_genotype_matrix <- function(genotype_tsv, population, maf,
 #'
 #' @param population Population/strain group identifier
 #' @param maf MAF threshold
+#' @param species Species identifier (e.g. "c_elegans")
+#' @param vcf_release_id VCF release date string (e.g. "20220216")
+#' @param ms_ld LD R² pruning threshold
 #' @param base_dir Database base directory
 #' @return data.frame with columns: CHROM, POS, strain, allele (long format)
-read_genotype_matrix <- function(population, maf, base_dir = "data/db") {
-  path <- get_genotype_matrix_path(population, maf, base_dir)
+read_genotype_matrix <- function(population, maf, species, vcf_release_id, ms_ld, base_dir = "data/db") {
+  path <- get_genotype_matrix_path(population, maf, species, vcf_release_id, ms_ld, base_dir)
   if (!file.exists(path)) {
     stop("Genotype matrix not found: ", path)
   }
@@ -963,9 +1015,10 @@ get_marker_set_metadata_path <- function(base_dir = "data/db") {
 #' @param eigen_source_file Source filename for EIGEN value (optional)
 #' @param base_dir Database root directory
 #' @return Invisibly returns the metadata file path
-write_marker_set_metadata <- function(population, maf, n_markers,
+write_marker_set_metadata <- function(population, maf, species, vcf_release_id, ms_ld,
+                                       n_markers,
                                        marker_set_id, marker_set_hash_string,
-                                       hash_schema_version = "v=1",
+                                       hash_schema_version = "v=2",
                                        n_independent_tests = NA_real_,
                                        eigen_source_file = NA_character_,
                                        base_dir = "data/db") {
@@ -978,6 +1031,9 @@ write_marker_set_metadata <- function(population, maf, n_markers,
     hash_schema_version    = as.character(hash_schema_version),
     population             = as.character(population),
     maf                    = as.numeric(maf),
+    species                = as.character(species),
+    vcf_release_id         = as.character(vcf_release_id),
+    ms_ld                  = as.numeric(ms_ld),
     n_markers              = as.integer(n_markers),
     n_independent_tests    = as.numeric(n_independent_tests),
     eigen_source_file      = as.character(eigen_source_file),
@@ -1085,6 +1141,7 @@ get_n_independent_tests <- function(population, maf, base_dir = "data/db") {
 update_marker_set_eigen <- function(population, maf, n_independent_tests,
                                      eigen_source_file = NA_character_,
                                      base_dir = "data/db") {
+  stop("update_marker_set_eigen() is deprecated — use write_marker_set() directly (write_marker_set.R module).")
 
   existing <- read_marker_set_metadata(population, maf, base_dir)
 
@@ -1165,6 +1222,8 @@ get_mappings_path <- function(population, base_dir = "data/db") {
 #' @return Invisibly returns the output file path
 write_mapping_to_db <- function(df, source_file, base_dir = "data/db",
                                  overwrite = TRUE) {
+  stop("write_mapping_to_db() is deprecated — use the write_gwa_to_db.R module (modules/db_migration/write_gwa_to_db).")
+
   config <- .make_db_config(base_dir)
   init_database(base_dir)
 
