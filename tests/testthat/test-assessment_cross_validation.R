@@ -18,7 +18,8 @@
 #   TEST_DB_ASSESSMENT     - Path to db_simulation_assessment_results.tsv (DB path)
 #
 # Known differences (by design):
-#   - var.exp and Simulated.QTL.VarExp are NA in DB-path (no genotype matrix)
+#   - interval.var.exp is NA in DB-path (raw GWA r² not stored in Phase 5 DB; permanent design difference)
+#   - Simulated.QTL.VarExp is populated in DB-path via ANOVA (see test-assessment_var_exp.R)
 #   - algorithm_id format differs (both encode the same info, normalized for joining)
 #
 # Usage:
@@ -198,14 +199,35 @@ test_that("generate_mapping_id() is deterministic across invocations", {
   algorithm <- params_row$mode   # "inbred" or "loco" per canonical form
   pca       <- params_row$type == "pca"
 
-  ms1    <- generate_marker_set_id(params_row$strain_set_id, as.numeric(params_row$maf))
+  db_dir <- Sys.getenv("TEST_DB_DIR", unset = NA_character_)
+  if (is.na(db_dir)) skip("TEST_DB_DIR not set")
+
+  # First independent computation
+  ms_meta1 <- read_marker_set_metadata(
+    params_row$strain_set_id, as.numeric(params_row$maf), db_dir
+  )
+  if (is.null(ms_meta1)) skip("marker set metadata not found in TEST_DB_DIR")
+
+  ms1 <- generate_marker_set_id(
+    params_row$strain_set_id, as.numeric(params_row$maf),
+    ms_meta1$species, ms_meta1$vcf_release_id, as.numeric(ms_meta1$ms_ld)
+  )
   trait1 <- generate_trait_id(ms1$hash, as.integer(params_row$nQTL),
                               params_row$effect_distribution,
                               as.integer(params_row$simREP),
                               as.numeric(params_row$h2))
   map1   <- generate_mapping_id(trait1$hash, algorithm, pca)
 
-  ms2    <- generate_marker_set_id(params_row$strain_set_id, as.numeric(params_row$maf))
+  # Second independent computation with identical params — tests determinism
+  ms_meta2 <- read_marker_set_metadata(
+    params_row$strain_set_id, as.numeric(params_row$maf), db_dir
+  )
+  if (is.null(ms_meta2)) skip("marker set metadata not found in TEST_DB_DIR (second read)")
+
+  ms2 <- generate_marker_set_id(
+    params_row$strain_set_id, as.numeric(params_row$maf),
+    ms_meta2$species, ms_meta2$vcf_release_id, as.numeric(ms_meta2$ms_ld)
+  )
   trait2 <- generate_trait_id(ms2$hash, as.integer(params_row$nQTL),
                               params_row$effect_distribution,
                               as.integer(params_row$simREP),
@@ -213,7 +235,7 @@ test_that("generate_mapping_id() is deterministic across invocations", {
   map2   <- generate_mapping_id(trait2$hash, algorithm, pca)
 
   expect_equal(map1$hash, map2$hash,
-               label = "mapping_id is deterministic: same params → same hash")
+               label = "mapping_id is deterministic: same params → same hash (two independent calls)")
   expect_true(grepl("^[0-9a-f]{20}$", map1$hash),
               label = "mapping_id is 20-char lowercase hex")
 })
@@ -357,4 +379,46 @@ test_that("per-mapping interval Jaccard concordance is 1.0 for all mappings", {
       nrow(interval_conc_per_qtl), n_imperfect_qtls
     )
   )
+})
+
+
+# ── Variance-Explained Concordance ────────────────────────────────────────────
+#
+# interval.var.exp is NOT compared between paths:
+#   Legacy: GCTA's LMM-adjusted r² at the peak SNP (accounts for polygenic background via GRM).
+#   DB path: NA_real_ by design — raw per-marker GWA r² was not stored in Phase 5. Even if
+#   attempted via ANOVA, peak GWAS markers are rarely the causal variant, so the join would
+#   produce NA anyway. This is a permanent design difference, not a missing feature.
+
+test_that("Simulated.QTL.VarExp is populated in DB assessment output", {
+  skip_if_no_assessment_cross_validation()
+
+  db_assess <- read_db_assessment(db_assessment_path)
+  expect_gt(
+    sum(!is.na(db_assess$Simulated.QTL.VarExp)), 0,
+    label = "at least some rows have non-NA Simulated.QTL.VarExp in DB output"
+  )
+})
+
+
+test_that("Simulated.QTL.VarExp is concordant between DB and legacy paths", {
+  skip_if_no_assessment_cross_validation()
+
+  legacy    <- read_legacy_assessment(legacy_assessment_path)
+  db_assess <- read_db_assessment(db_assessment_path)
+
+  joined <- dplyr::inner_join(
+    legacy %>%
+      dplyr::select(QTL, nQTL, simREP, h2, maf, strain_set_id,
+                    varexp_legacy = Simulated.QTL.VarExp),
+    db_assess %>%
+      dplyr::select(QTL, nQTL, simREP, h2, maf, strain_set_id,
+                    varexp_db     = Simulated.QTL.VarExp),
+    by = c("QTL", "nQTL", "simREP", "h2", "maf", "strain_set_id")
+  ) %>%
+    dplyr::filter(!is.na(varexp_legacy), !is.na(varexp_db))
+
+  if (nrow(joined) == 0) skip("No non-NA Simulated.QTL.VarExp rows to compare")
+
+  expect_equal(joined$varexp_legacy, joined$varexp_db, tolerance = 1e-6)
 })

@@ -73,7 +73,22 @@ params <- list(
   threshold_method = toupper(opt$threshold)
 )
 
-ms_id      <- generate_marker_set_id(params$population, params$maf)
+ms_meta <- read_marker_set_metadata(params$population, as.numeric(params$maf), opt$base_dir)
+if (is.null(ms_meta)) {
+  stop(paste0(
+    "Marker set metadata not found for population='", params$population,
+    "', maf=", params$maf, " in ", opt$base_dir,
+    ". Ensure DB_MIGRATION_WRITE_MARKER_SET completed before resuming. ",
+    "If VCF/species parameters changed, a full re-run (not -resume) is required."
+  ))
+}
+if (is.na(as.numeric(ms_meta$ms_ld))) {
+  stop("ms_ld field is NA in marker set metadata — DB may be corrupt")
+}
+ms_id <- generate_marker_set_id(
+  params$population, as.numeric(params$maf),
+  ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld)
+)
 trait      <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
 mapping    <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
 mapping_id <- mapping$hash
