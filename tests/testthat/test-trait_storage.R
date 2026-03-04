@@ -13,15 +13,15 @@
 # ── generate_trait_id() ───────────────────────────────────────────────────────
 
 test_that("generate_trait_id is deterministic across calls", {
-  id1 <- generate_marker_set_id("ce.test.200strains", 0.05)
-  id2 <- generate_marker_set_id("ce.test.200strains", 0.05)
+  id1 <- generate_marker_set_id("ce.test.200strains", 0.05, "c_elegans", "20220216", 0.8)
+  id2 <- generate_marker_set_id("ce.test.200strains", 0.05, "c_elegans", "20220216", 0.8)
   t1 <- generate_trait_id(id1$hash, 5, "gamma", 1, 0.8)
   t2 <- generate_trait_id(id2$hash, 5, "gamma", 1, 0.8)
   expect_equal(t1$hash, t2$hash)
 })
 
 test_that("generate_trait_id produces different results for different params", {
-  ms_id <- generate_marker_set_id("ce.test.200strains", 0.05)
+  ms_id <- generate_marker_set_id("ce.test.200strains", 0.05, "c_elegans", "20220216", 0.8)
   id_a <- generate_trait_id(ms_id$hash, 5, "gamma", 1, 0.8)
   id_b <- generate_trait_id(ms_id$hash, 5, "gamma", 2, 0.8)
   id_c <- generate_trait_id(ms_id$hash, 10, "gamma", 1, 0.8)
@@ -31,7 +31,7 @@ test_that("generate_trait_id produces different results for different params", {
 })
 
 test_that("generate_trait_id output is 20-character lowercase hex", {
-  ms_id  <- generate_marker_set_id("ce.test.200strains", 0.05)
+  ms_id  <- generate_marker_set_id("ce.test.200strains", 0.05, "c_elegans", "20220216", 0.8)
   result <- generate_trait_id(ms_id$hash, 5, "gamma", 1, 0.8)
   expect_equal(nchar(result$hash), 20L)
   expect_match(result$hash, "^[0-9a-f]{20}$")
@@ -43,20 +43,20 @@ test_that("generate_trait_id produces expected golden value", {
   # all stored trait data would become unreachable.
   #
   # Computed from SHA-256 of canonical hash_string, truncated to 20 chars.
-  ms_id  <- generate_marker_set_id("ce.test.200strains", 0.05)
+  ms_id  <- generate_marker_set_id("ce.test.200strains", 0.05, "c_elegans", "20220216", 0.8)
   result <- generate_trait_id(ms_id$hash, 5, "gamma", 1, 0.8)
-  expect_equal(result$hash, "332de89db2f4ff1eeff5")
+  expect_equal(result$hash, "ee021bdd04f7bb23ce7e")
 })
 
 test_that("generate_trait_id returns list with hash and hash_string", {
-  ms_id  <- generate_marker_set_id("ce.test.200strains", 0.05)
+  ms_id  <- generate_marker_set_id("ce.test.200strains", 0.05, "c_elegans", "20220216", 0.8)
   result <- generate_trait_id(ms_id$hash, 5, "gamma", 1, 0.8)
   expect_true(is.list(result))
   expect_true(all(c("hash", "hash_string") %in% names(result)))
 })
 
 test_that("generate_trait_id hash_string contains parent= and h2=", {
-  ms_id  <- generate_marker_set_id("ce.test.200strains", 0.05)
+  ms_id  <- generate_marker_set_id("ce.test.200strains", 0.05, "c_elegans", "20220216", 0.8)
   result <- generate_trait_id(ms_id$hash, 5, "gamma", 1, 0.8)
   expect_match(result$hash_string, "parent=")
   expect_match(result$hash_string, "h2=0.8000000000")
@@ -68,7 +68,7 @@ test_that("generate_trait_id hash_string contains parent= and h2=", {
 test_that("write_trait_metadata / read_trait_metadata round-trip preserves all fields", {
   db_dir <- create_temp_db()
   init_database(db_dir)
-  ms_id <- generate_marker_set_id("ce.test.200strains", 0.05)
+  ms_id <- generate_marker_set_id("ce.test.200strains", 0.05, "c_elegans", "20220216", 0.8)
   trait <- generate_trait_id(ms_id$hash, 5, "gamma", 1, 0.8)
 
   write_trait_metadata(
@@ -100,7 +100,7 @@ test_that("write_trait_metadata / read_trait_metadata round-trip preserves all f
 test_that("write_trait_metadata created_at is ISO 8601 format string", {
   db_dir <- create_temp_db()
   init_database(db_dir)
-  ms_id <- generate_marker_set_id("ce.test.200strains", 0.05)
+  ms_id <- generate_marker_set_id("ce.test.200strains", 0.05, "c_elegans", "20220216", 0.8)
   trait <- generate_trait_id(ms_id$hash, 5, "gamma", 1, 0.8)
 
   write_trait_metadata(
@@ -126,7 +126,7 @@ test_that("write_trait_metadata created_at is ISO 8601 format string", {
 test_that("write_causal_variants / read_causal_variants_data round-trip", {
   db_dir <- create_temp_db()
   init_database(db_dir)
-  ms_id    <- generate_marker_set_id("ce.test.200strains", 0.05)
+  ms_id    <- generate_marker_set_id("ce.test.200strains", 0.05, "c_elegans", "20220216", 0.8)
   trait    <- generate_trait_id(ms_id$hash, 5, "gamma", 1, 0.8)
   trait_id <- trait$hash
   par_file <- fixture_path("test_sims.par")
@@ -153,7 +153,7 @@ test_that("write_causal_variants / read_causal_variants_data round-trip", {
 test_that("write_phenotype_data / read_phenotype_data round-trip preserves values", {
   db_dir <- create_temp_db()
   init_database(db_dir)
-  ms_id    <- generate_marker_set_id("ce.test.200strains", 0.05)
+  ms_id    <- generate_marker_set_id("ce.test.200strains", 0.05, "c_elegans", "20220216", 0.8)
   trait    <- generate_trait_id(ms_id$hash, 5, "gamma", 1, 0.8)
   trait_id <- trait$hash
   phen_file <- fixture_path("test_sims.phen")
@@ -174,7 +174,7 @@ test_that("write_phenotype_data / read_phenotype_data round-trip preserves value
 test_that("read_phenotype_data output has correct Arrow types via Parquet schema", {
   db_dir <- create_temp_db()
   init_database(db_dir)
-  ms_id    <- generate_marker_set_id("ce.test.200strains", 0.05)
+  ms_id    <- generate_marker_set_id("ce.test.200strains", 0.05, "c_elegans", "20220216", 0.8)
   trait    <- generate_trait_id(ms_id$hash, 5, "gamma", 1, 0.8)
   trait_id <- trait$hash
   phen_file <- fixture_path("test_sims.phen")
@@ -192,7 +192,7 @@ test_that("read_phenotype_data output has correct Arrow types via Parquet schema
 test_that("phenotype_exists returns FALSE before write, TRUE after", {
   db_dir <- create_temp_db()
   init_database(db_dir)
-  ms_id    <- generate_marker_set_id("ce.test.200strains", 0.05)
+  ms_id    <- generate_marker_set_id("ce.test.200strains", 0.05, "c_elegans", "20220216", 0.8)
   trait    <- generate_trait_id(ms_id$hash, 5, "gamma", 1, 0.8)
   trait_id <- trait$hash
 
@@ -210,7 +210,7 @@ test_that("deterministic re-run: same params produce same trait_id and clean ove
   db_dir <- create_temp_db()
   init_database(db_dir)
 
-  ms_id      <- generate_marker_set_id("ce.test.200strains", 0.05)
+  ms_id      <- generate_marker_set_id("ce.test.200strains", 0.05, "c_elegans", "20220216", 0.8)
   trait_1    <- generate_trait_id(ms_id$hash, 5, "gamma", 1, 0.8)
   trait_id_1 <- trait_1$hash
   write_phenotype_data(fixture_path("test_sims.phen"), trait_id_1, db_dir)
@@ -239,7 +239,7 @@ test_that("open_mapping_db markers view excludes genotype files", {
   # Write a genotype matrix (stored in markers/ dir as *_genotypes.parquet)
   write_genotype_matrix(
     fixture_path("test_genotype_matrix.tsv"),
-    "test_pop", 0.05, db_dir
+    "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir
   )
 
   # Confirm the genotype file is in the markers/ directory (stored in markers/genotypes/ subdir)

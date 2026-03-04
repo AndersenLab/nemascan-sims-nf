@@ -6,27 +6,32 @@
 #
 # Usage: write_gwa_to_db.R --group <group> --maf <maf> --nqtl <nqtl>
 #            --effect <effect> --rep <rep> --h2 <h2> --mode <mode>
-#            --type <type> --gwa_file <file> --base_dir <db_dir>
+#            --type <type> --species <species> --vcf_release_id <vcf_release_id>
+#            --ms_ld <ms_ld> --gwa_file <file> --base_dir <db_dir>
 
 library(optparse)
 
 option_list <- list(
-  make_option("--group", type = "character", help = "Population/strain group identifier"),
-  make_option("--maf", type = "character", help = "MAF threshold"),
-  make_option("--nqtl", type = "integer", help = "Number of simulated QTLs"),
-  make_option("--effect", type = "character", help = "Effect size distribution (gamma/uniform)"),
-  make_option("--rep", type = "integer", help = "Simulation replicate number"),
-  make_option("--h2", type = "double", help = "Heritability"),
-  make_option("--mode", type = "character", help = "GWA mode (inbred/loco)"),
-  make_option("--type", type = "character", help = "PCA type (pca/nopca)"),
-  make_option("--gwa_file", type = "character", help = "Path to GWA output file"),
-  make_option("--base_dir", type = "character", help = "Database output directory")
+  make_option("--group",          type = "character", help = "Population/strain group identifier"),
+  make_option("--maf",            type = "character", help = "MAF threshold"),
+  make_option("--nqtl",           type = "integer",   help = "Number of simulated QTLs"),
+  make_option("--effect",         type = "character", help = "Effect size distribution (gamma/uniform)"),
+  make_option("--rep",            type = "integer",   help = "Simulation replicate number"),
+  make_option("--h2",             type = "double",    help = "Heritability"),
+  make_option("--mode",           type = "character", help = "GWA mode (inbred/loco)"),
+  make_option("--type",           type = "character", help = "PCA type (pca/nopca)"),
+  make_option("--species",        type = "character", help = "Species identifier"),
+  make_option("--vcf_release_id", type = "character", help = "VCF release date"),
+  make_option("--ms_ld",          type = "double",    help = "LD R² threshold for marker SNP selection"),
+  make_option("--gwa_file",       type = "character", help = "Path to GWA output file"),
+  make_option("--base_dir",       type = "character", help = "Database output directory")
 )
 
 opt <- parse_args(OptionParser(option_list = option_list))
 
 # Validate required args
-required <- c("group", "maf", "nqtl", "effect", "rep", "h2", "mode", "type", "gwa_file", "base_dir")
+required <- c("group", "maf", "nqtl", "effect", "rep", "h2", "mode", "type",
+              "species", "vcf_release_id", "ms_ld", "gwa_file", "base_dir")
 missing <- required[!required %in% names(opt) | sapply(opt[required], is.null)]
 if (length(missing) > 0) {
   stop(paste("Missing required arguments:", paste(missing, collapse = ", ")))
@@ -46,7 +51,6 @@ log_msg(paste("Reading GWA file:", opt$gwa_file))
 gwa_df <- read_raw_gwa_file(opt$gwa_file)
 
 # Deduplicate by marker (CHROM:POS) — LOCO .mlma files may contain duplicate rows
-# Matches dedup pattern in write_mapping_to_db() (database.R)
 n_before <- nrow(gwa_df)
 gwa_df <- gwa_df %>% dplyr::distinct(marker, .keep_all = TRUE)
 n_after <- nrow(gwa_df)
@@ -62,17 +66,23 @@ if (n_before != n_after) {
 pca <- opt$type == "pca"
 
 params <- list(
-  population = opt$group,
-  maf = as.numeric(opt$maf),
-  nqtl = as.integer(opt$nqtl),
-  effect = opt$effect,
-  rep = as.integer(opt$rep),
-  h2 = as.numeric(opt$h2),
-  algorithm = opt$mode,   # "inbred" or "loco" — canonical form per Step 1
-  pca = pca
+  population     = opt$group,
+  maf            = as.numeric(opt$maf),
+  species        = opt$species,
+  vcf_release_id = opt$vcf_release_id,
+  ms_ld          = as.numeric(opt$ms_ld),
+  nqtl           = as.integer(opt$nqtl),
+  effect         = opt$effect,
+  rep            = as.integer(opt$rep),
+  h2             = as.numeric(opt$h2),
+  algorithm      = opt$mode,   # "inbred" or "loco" — canonical form per Step 1
+  pca            = pca
 )
 
-ms_id   <- generate_marker_set_id(params$population, params$maf)
+# ⚠ cv_maf/cv_ld are NOT included in marker_set_id — see README Marker Set ID section
+ms_id   <- generate_marker_set_id(
+  params$population, params$maf, params$species, params$vcf_release_id, params$ms_ld
+)
 trait   <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
 mapping <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
 
