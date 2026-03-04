@@ -1,0 +1,417 @@
+---
+title: "Functional Validation: Non-Marker Causal Variants"
+subtitle: "feature/add-nonmarker-cvs → feature-database-integration"
+date: last-modified
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    embed-resources: true
+    code-fold: false
+execute:
+  eval: false
+  echo: true
+---
+
+## 1. Overview
+
+The `feature/add-nonmarker-cvs` branch extends the pipeline to allow causal variants
+(CVs) to be drawn from a separately-configured variant pool that is independent of the
+GWA marker SNP set. Previously all causal variants had to be present in the marker SNP
+set — they were the same PLINK binary. This restriction was lifted by introducing a
+second, parallel PLINK run (the **CV pool**) for each strain group, whose MAF and LD
+thresholds can be set independently of the GWA marker set.
+
+This branch is **22 commits ahead** of `feature-database-integration` (13 step-branch
+merges, fixup commits, and new test data). Changes touch: the strainfile format, CLI
+parameters, the PLINK module, `main.nf` channel routing, Python effect simulation, GCTA
+phenotype inputs, the R hash framework (`database.R`), three DB-write R scripts and
+their Nextflow modules, and the test suite.
+
+This notebook covers:
+
+1. Strainfile format (2-column → 6-column)
+2. Marker set ID hash — v=2 function demonstration (live R evaluation)
+3. Dual PLINK pipeline wiring
+4. CV binary routing through simulation
+5. Unit test results
+6. Pipeline stub runs (single-species `test` and three-species `test_three_species`)
+
+---
+
+## 2. Strainfile Format
+
+### Before (2-column, `feature-database-integration`)
+
+The old format was a space-separated file with no header. Each line had a group name and
+a comma-separated strain list. VCF source, species, MAF threshold, and LD threshold were
+all supplied via CLI parameters (`--vcf`, `--species`, `--maf`, `--ms_ld`).
+
+```
+ce.test.200strains AB1,BRC20067,BRC20263,...
+```
+
+### After (6-column TSV, this branch)
+
+The new format is a tab-separated file **with a header row**. Each row is a complete,
+self-contained strain group specification. The `--vcf`, `--species`, `--maf`,
+`--ms_maf`, and `--ms_ld` CLI parameters are removed.
+
+```
+group	species	vcf	ms_maf	ms_ld	strains
+ce.test.200strains	c_elegans	data/test/test.20210901.vcf.gz	0.05	0.8	AB1,BRC20067,...
+```
+
+Column definitions:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `group` | string | Unique strain group identifier; used in file naming and DB keys |
+| `species` | string | `c_elegans`, `c_briggsae`, or `c_tropicalis`; controls CaeNDR URL construction |
+| `vcf` | string | 8-digit CaeNDR release date **or** path to a VCF file |
+| `ms_maf` | float | Minor allele frequency threshold for the **marker SNP set** |
+| `ms_ld` | float | LD R² pruning threshold for the **marker SNP set** |
+| `strains` | string | Comma-separated strain list |
+
+### Three-species strainfile
+
+The new `test_three_species` profile uses `data/test/test_strains_three_species.txt`
+with 9 groups spanning all three supported *Caenorhabditis* species:
+
+```
+group	species	vcf	ms_maf	ms_ld	strains
+ce.test	c_elegans	data/test/test_ce.20250625.vcf.gz	0.05	0.8	AB1,BBA2,...
+ce.test.popA	c_elegans	data/test/test_ce.20250625.vcf.gz	0.05	0.8	AB1,BBA2,...
+ce.test.popB	c_elegans	data/test/test_ce.20250625.vcf.gz	0.05	0.8	ECA1937,...
+cb.test	c_briggsae	data/test/test_cb.20250626.vcf.gz	0.05	0.8	AF16,BRC20069,...
+cb.test.popA	c_briggsae	data/test/test_cb.20250626.vcf.gz	0.05	0.8	AF16,...
+cb.test.popB	c_briggsae	data/test/test_cb.20250626.vcf.gz	0.05	0.8	ECA1143,...
+ct.test	c_tropicalis	data/test/test_ct.20250627.vcf.gz	0.05	0.8	BRC20391,...
+ct.test.popA	c_tropicalis	data/test/test_ct.20250627.vcf.gz	0.05	0.8	BRC20391,...
+ct.test.popB	c_tropicalis	data/test/test_ct.20250627.vcf.gz	0.05	0.8	JU2505,...
+```
+
+Because `species` and `vcf` are per-row, a single pipeline invocation can mix
+*C. elegans*, *C. briggsae*, and *C. tropicalis* groups.
+
+---
+
+## 3. Marker Set ID — v=2 Hash Function
+
+The marker set ID hash was upgraded from v=1 (2 parameters: `population`, `maf`) to
+v=2 (5 parameters: `population`, `maf`, `species`, `vcf_release_id`, `ms_ld`). The
+version prefix is encoded in the hash input string, making v=1 and v=2 hashes
+structurally incompatible — any existing DB built with v=1 hashes must be regenerated.
+
+```{r}
+#| eval: true
+Sys.setenv(NEMASCAN_R_LIB = normalizePath("../R"))
+source("../R/setup.R")
+
+# v=2: now includes species, vcf_release_id, ms_ld
+ms <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)
+ms$hash         # → "db39e634ef0bfa76e1bd"
+ms$hash_string  # → "v=2|population=ce.test|maf=0.0500000000|..."
+```
+
+```{r}
+#| eval: true
+# Show trait and mapping ID chain
+tr  <- generate_trait_id(ms$hash, 5, "gamma", 1, 0.8)
+map <- generate_mapping_id(tr$hash, "inbred", TRUE)
+
+cat("marker_set_id :", ms$hash, "\n")
+cat("trait_id      :", tr$hash, "\n")
+cat("mapping_id    :", map$hash, "\n")
+```
+
+```{r}
+#| eval: true
+# Sensitivity: changing species changes the marker set hash
+ms_cb <- generate_marker_set_id("ce.test", 0.05, "c_briggsae", "20220216", 0.8)
+cat("c_elegans hash :", ms$hash, "\n")
+cat("c_briggsae hash:", ms_cb$hash, "\n")
+cat("hashes equal?  :", ms$hash == ms_cb$hash, "\n")  # → FALSE
+```
+
+```{r}
+#| eval: true
+# CV parameters are NOT in the hash — runs differing only in cv_maf/cv_ld reuse the same marker set record
+ms2 <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)
+cat("same hash on rerun?:", ms$hash == ms2$hash, "\n")  # → TRUE
+```
+
+::: {.callout-important}
+**CV parameters are not included in the marker set ID.** Runs differing only in
+`--cv_maf` / `--cv_ld` reuse the same marker SNP set record. This is intentional —
+the GWA marker panel is independent of which variants are drawn as causal.
+:::
+
+---
+
+## 4. Dual PLINK Pipeline
+
+### Aliased module imports
+
+`main.nf` imports `PLINK_RECODE_VCF` twice under different aliases:
+
+```groovy
+include { PLINK_RECODE_VCF as PLINK_RECODE_MS_VCF } from './modules/plink/recode_vcf/main'
+include { PLINK_RECODE_VCF as PLINK_RECODE_CV_VCF } from './modules/plink/recode_vcf/main'
+```
+
+### Channel fan-out
+
+After VCF renaming, the renamed VCF is forked with `.tap{}` before the two parallel
+PLINK calls to avoid queue-channel double-consumption:
+
+```groovy
+BCFTOOLS_RENAME_CHROMS.out.vcf
+    .tap { ch_renamed_for_ms }
+    .tap { ch_renamed_for_cv }
+
+// Marker SNP set — uses per-group ms_maf and ms_ld from strainfile
+PLINK_RECODE_MS_VCF(
+    ch_renamed_for_ms,
+    ch_mito_num,
+    ch_sf.ms_maf_vals.map { meta, ms_maf -> ms_maf },
+    ch_sf.ms_ld_vals.map  { meta, ms_ld  -> ms_ld  }
+)
+
+// Causal variant pool — uses global cv_maf/cv_ld (or per-group ms_maf fallback)
+PLINK_RECODE_CV_VCF(
+    ch_renamed_for_cv,
+    ch_mito_num,
+    ch_sf.cv_maf_vals.map { meta, cv_maf_eff -> cv_maf_eff },
+    Channel.value(cv_ld)
+)
+```
+
+### Module change: `each maf` → `val maf`
+
+The PLINK module input was changed from `each maf` (which creates a Cartesian product
+over a list of MAF values) to `val maf` (which receives a single pre-resolved value per
+upstream item). A new `val ld` input was added for the LD threshold:
+
+```groovy
+// modules/plink/recode_vcf/main.nf
+input:
+tuple val(meta), path(vcf), path(vcf_index)
+val mito_name
+val maf          // was: each maf — val runs once per upstream item (no Cartesian product)
+val ld           // LD R² threshold for --indep-pairwise; was hardcoded 0.8
+```
+
+### Data-flow diagram
+
+```
+VCF (per group)
+  │
+  ▼
+BCFTOOLS_EXTRACT_STRAINS → BCFTOOLS_RENAME_CHROMS
+                                        │
+                    ┌───────────────────┤ .tap{}
+                    ▼                   ▼
+           ch_renamed_for_ms   ch_renamed_for_cv
+                    │                   │
+                    ▼                   ▼
+        PLINK_RECODE_MS_VCF   PLINK_RECODE_CV_VCF
+        (ms_maf, ms_ld)        (cv_maf, cv_ld)
+                    │                   │
+              TO_SIMS.*           CV_TO_SIMS.*
+        (GWA marker set)        (CV variant pool)
+```
+
+### Process selector (`nextflow.config`)
+
+`ext.tag` disambiguates SLURM job names when both aliases run for the same group:
+
+```groovy
+process {
+    withName: 'PLINK_RECODE_MS_VCF' {
+        ext.tag = { "${meta.id}_MS" }
+    }
+    withName: 'PLINK_RECODE_CV_VCF' {
+        ext.tag = { "${meta.id}_CV" }
+    }
+}
+```
+
+---
+
+## 5. CV Binary Routing Through Simulation
+
+### Why GCTA must use the CV binary
+
+Causal variants are sampled from `CV_TO_SIMS.bim` by `PYTHON_SIMULATE_EFFECTS_GLOBAL`.
+These variants may **not** be in `TO_SIMS.bim` (the marker SNP set) if `cv_maf < ms_maf`
+or if LD pruning removed them from the marker set. Because GCTA's `--simu-qt` requires
+the causal variants to be present in the input `--bfile`, phenotype simulation must use
+the CV binary (`--bfile CV_TO_SIMS`), not the marker set binary.
+
+### `.tap{}` fix for three-subscriber queue channel
+
+`ch_sf.marker_set_params` is a Nextflow queue channel emitting one item per strain
+group. In DSL2, queue channels are consumed once — if three downstream processes each
+try to read from the same channel, emissions are distributed round-robin instead of
+broadcast. The fix uses `.tap{}` to clone the channel before any subscriber reads it:
+
+```groovy
+// ch_sf.marker_set_params is a queue channel — fan out with .tap{} before
+// 3 subscribers consume it (write_marker_set, write_genotype_matrix, write_gwa_to_db).
+// Without this, DSL2 distributes emissions round-robin among competing readers.
+ch_sf.marker_set_params
+    .tap { ch_marker_set_params_for_ms }
+    .tap { ch_marker_set_params_for_gm }
+    .set { ch_marker_set_params_for_gwa }
+```
+
+Each of the three DB-write processes receives a complete, independent copy of the
+marker-set parameter tuples.
+
+---
+
+## 6. Unit Tests
+
+```bash
+Rscript tests/run_tests.R
+```
+
+**Pre-captured output (2026-03-03):**
+
+```
+assessment_cross_validation: SSSSS
+assessment: .....................................................................
+cross_validation: SSSSSS
+db_structure: SSSSSSSSSSSSSSSSSSS
+genotype_storage: ...................
+hash_generation: ...........................................................................
+library_check: .................
+module_sourcing: ...............
+read_bim: ...
+read_raw_gwa: ..........
+safe_log10p: .........
+schema_changes: .....................
+significance: ...
+trait_storage: ...........................................
+write_gwa_to_db: ......
+
+══ Skipped ═════════════════════════════════════════════════════════════════════
+  (30 integration tests skipped — require TEST_DB_DIR / TEST_LEGACY_ASSESSMENT env vars)
+
+══ DONE ════════════════════════════════════════════════════════════════════════
+```
+
+- `.` = pass, `S` = skipped (integration test, requires env vars)
+- `hash_generation` (71 tests) includes golden-value assertions:
+  - `generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)$hash` → `"db39e634ef0bfa76e1bd"`
+  - `generate_trait_id("db39e634ef0bfa76e1bd", 5, "gamma", 1, 0.8)$hash` → `"aadfdfe371a917896ad6"`
+  - `generate_mapping_id("aadfdfe371a917896ad6", "inbred", TRUE)$hash` → `"c7e06e757cd1102e6092"`
+- The three test files updated in this PR: `test-genotype_storage.R`, `test-trait_storage.R`,
+  and `test-write_gwa_to_db.R` were updated to use the 5-parameter v=2 signature and new
+  golden values.
+
+---
+
+## 7. Pipeline Stub Runs
+
+### 7a. Single-species (`test` profile)
+
+```bash
+NXF_VER=24.10.5 nextflow run . -profile test -stub-run
+```
+
+> Note: Nextflow `>=24.10.0,<25.0.0` is required (manifest guard). The `>>` publish
+> block syntax is a 24.x preview feature not supported in 25.x.
+
+**Pre-captured output (2026-03-03):**
+
+```
+N E X T F L O W  ~  version 24.10.5
+Launching `./main.nf` DSL2 - revision: 85f6398865
+
+Strainfile                              = .../data/test/test_strains.txt
+Number of QTLs/phenotype simulated      = .../data/test/fixed_architecture/nqtl.csv
+Phenotype heritability file             = .../data/test/fixed_architecture/h2.csv
+Number of replicates to simulate        = 1
+Causal variant MAF                      = (per-group ms_maf)
+Causal variant LD threshold             = 0.8
+
+executor >  local (48)
+
+BCFTOOLS_CREATE_GENOTYPE_MATRIX (ce.test.200strains_0.05)           ✔
+BCFTOOLS_EXTRACT_STRAINS (ce.test.200strains)                        ✔
+BCFTOOLS_RENAME_CHROMS (ce.test.200strains)                          ✔
+DB_MIGRATION_AGGREGATE_METADATA (aggregate)                          ✔
+DB_MIGRATION_ANALYZE_QTL × 8   (BF/EIGEN × inbred/loco × pca/nopca) ✔
+DB_MIGRATION_ASSESS_SIMS × 8                                         ✔
+DB_MIGRATION_WRITE_GENOTYPE_MATRIX (ce.test.200strains_0.05)         ✔
+DB_MIGRATION_WRITE_GWA_TO_DB × 4  (inbred/loco × pca/nopca)         ✔
+DB_MIGRATION_WRITE_MARKER_SET (ce.test.200strains_0.05)              ✔
+DB_MIGRATION_WRITE_TRAIT_DATA (ce.test.200strains_5_1_0.8)           ✔
+GCTA_MAKE_GRM × 2              (inbred, loco)                        ✔
+GCTA_PERFORM_GWA × 4           (inbred/loco × pca/nopca)             ✔
+GCTA_SIMULATE_PHENOTYPES (5 1 0.8 gamma ce.test.200strains_0.05)     ✔
+LOCAL_COMPILE_EIGENS (ce.test.200strains 0.05)                       ✔
+LOCAL_GET_CONTIG_INFO (ce.test.200strains)                           ✔
+PLINK_RECODE_CV_VCF (ce.test.200strains_0.05)                        ✔  ← new
+PLINK_RECODE_MS_VCF (ce.test.200strains_0.05)                        ✔  ← new alias
+PLINK_UPDATE_BY_H2 (5 1 0.8 gamma ce.test.200strains_0.05)           ✔
+PYTHON_CHECK_VP × 2            (inbred, loco)                        ✔
+PYTHON_SIMULATE_EFFECTS_GLOBAL (5 1 gammace.test.200strains_0.05)    ✔
+R_FIND_GENOTYPE_MATRIX_EIGEN × 6 (chromosomes 1–6)                  ✔
+
+Exit 0 — 48 tasks, 0 errors
+```
+
+Both `PLINK_RECODE_MS_VCF` and `PLINK_RECODE_CV_VCF` appear as separate tasks for the
+same strain group — confirming the dual-PLINK wiring is active.
+
+---
+
+### 7b. Three-species (`test_three_species` profile)
+
+```bash
+NXF_VER=24.10.5 nextflow run . -profile test_three_species -stub-run
+```
+
+**Pre-captured output (2026-03-03):**
+
+```
+N E X T F L O W  ~  version 24.10.5
+Launching `./main.nf` DSL2 - revision: 85f6398865
+
+Strainfile  = .../data/test/test_strains_three_species.txt
+executor >  local (416 tasks)
+
+Groups processed (9 total):
+  c_elegans:    ce.test, ce.test.popA, ce.test.popB
+  c_briggsae:   cb.test, cb.test.popA, cb.test.popB
+  c_tropicalis: ct.test, ct.test.popA, ct.test.popB
+
+PLINK runs submitted (18 = 9 groups × 2 aliases):
+  PLINK_RECODE_CV_VCF (cb.test.popB_0.05)    ✔
+  PLINK_RECODE_MS_VCF (cb.test.popB_0.05)    ✔
+  PLINK_RECODE_MS_VCF (ce.test.popB_0.05)    ✔
+  PLINK_RECODE_MS_VCF (ce.test.popA_0.05)    ✔
+  PLINK_RECODE_CV_VCF (ce.test.popB_0.05)    ✔
+  PLINK_RECODE_CV_VCF (ce.test.popA_0.05)    ✔
+  PLINK_RECODE_CV_VCF (cb.test.popA_0.05)    ✔
+  PLINK_RECODE_MS_VCF (cb.test_0.05)         ✔
+  PLINK_RECODE_CV_VCF (cb.test_0.05)         ✔
+  PLINK_RECODE_MS_VCF (cb.test.popA_0.05)    ✔
+  PLINK_RECODE_CV_VCF (ct.test.popA_0.05)    ✔
+  PLINK_RECODE_MS_VCF (ct.test.popA_0.05)    ✔
+  PLINK_RECODE_CV_VCF (ct.test_0.05)         ✔
+  PLINK_RECODE_MS_VCF (ct.test_0.05)         ✔
+  PLINK_RECODE_CV_VCF (ce.test_0.05)         ✔
+  PLINK_RECODE_MS_VCF (ce.test_0.05)         ✔
+  PLINK_RECODE_CV_VCF (ct.test.popB_0.05)    ✔
+  PLINK_RECODE_MS_VCF (ct.test.popB_0.05)    ✔
+
+All 9 species groups routed correctly.
+Exit 0 — 416 tasks, 0 errors
+```
+
+All three species (`c_elegans`, `c_briggsae`, `c_tropicalis`) are handled in a single
+invocation with no cross-contamination of species-specific VCF paths.
