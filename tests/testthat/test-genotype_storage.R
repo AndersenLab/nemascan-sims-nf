@@ -16,9 +16,9 @@ test_that("write_genotype_matrix produces correct long-format row count", {
   init_database(db_dir)
   tsv <- fixture_path("test_genotype_matrix.tsv")
 
-  write_genotype_matrix(tsv, "test_pop", 0.05, db_dir)
+  write_genotype_matrix(tsv, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
 
-  result <- read_genotype_matrix("test_pop", 0.05, db_dir)
+  result <- read_genotype_matrix("test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
   # 5 markers × 3 strains = 15 rows
   expect_equal(nrow(result), 15L)
 })
@@ -28,8 +28,8 @@ test_that("write_genotype_matrix output has correct schema columns", {
   init_database(db_dir)
   tsv <- fixture_path("test_genotype_matrix.tsv")
 
-  write_genotype_matrix(tsv, "test_pop", 0.05, db_dir)
-  result <- read_genotype_matrix("test_pop", 0.05, db_dir)
+  write_genotype_matrix(tsv, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
+  result <- read_genotype_matrix("test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
 
   expect_setequal(names(result), c("marker_set_id", "CHROM", "POS", "strain", "allele"))
 })
@@ -39,8 +39,8 @@ test_that("write_genotype_matrix drops REF and ALT columns", {
   init_database(db_dir)
   tsv <- fixture_path("test_genotype_matrix.tsv")
 
-  write_genotype_matrix(tsv, "test_pop", 0.05, db_dir)
-  result <- read_genotype_matrix("test_pop", 0.05, db_dir)
+  write_genotype_matrix(tsv, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
+  result <- read_genotype_matrix("test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
 
   expect_false("REF" %in% names(result))
   expect_false("ALT" %in% names(result))
@@ -51,8 +51,8 @@ test_that("write_genotype_matrix preserves allele values including NA", {
   init_database(db_dir)
   tsv <- fixture_path("test_genotype_matrix.tsv")
 
-  write_genotype_matrix(tsv, "test_pop", 0.05, db_dir)
-  result <- read_genotype_matrix("test_pop", 0.05, db_dir)
+  write_genotype_matrix(tsv, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
+  result <- read_genotype_matrix("test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
 
   # All allele values should be -1, 1, or NA
   non_na_vals <- result$allele[!is.na(result$allele)]
@@ -69,8 +69,8 @@ test_that("write_genotype_matrix preserves strain names", {
   init_database(db_dir)
   tsv <- fixture_path("test_genotype_matrix.tsv")
 
-  write_genotype_matrix(tsv, "test_pop", 0.05, db_dir)
-  result <- read_genotype_matrix("test_pop", 0.05, db_dir)
+  write_genotype_matrix(tsv, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
+  result <- read_genotype_matrix("test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
 
   expect_setequal(unique(result$strain), c("BRC20263", "JU397", "XZ1734"))
 })
@@ -83,11 +83,11 @@ test_that("genotype_matrix_exists returns FALSE before write, TRUE after", {
   init_database(db_dir)
   tsv <- fixture_path("test_genotype_matrix.tsv")
 
-  expect_false(genotype_matrix_exists("test_pop", 0.05, db_dir))
+  expect_false(genotype_matrix_exists("test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir))
 
-  write_genotype_matrix(tsv, "test_pop", 0.05, db_dir)
+  write_genotype_matrix(tsv, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
 
-  expect_true(genotype_matrix_exists("test_pop", 0.05, db_dir))
+  expect_true(genotype_matrix_exists("test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir))
 })
 
 
@@ -98,14 +98,14 @@ test_that("write_genotype_matrix with overwrite = TRUE succeeds on second write"
   init_database(db_dir)
   tsv <- fixture_path("test_genotype_matrix.tsv")
 
-  write_genotype_matrix(tsv, "test_pop", 0.05, db_dir)
+  write_genotype_matrix(tsv, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
   # Second write should not error
   expect_no_error(
-    write_genotype_matrix(tsv, "test_pop", 0.05, db_dir, overwrite = TRUE)
+    write_genotype_matrix(tsv, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir, overwrite = TRUE)
   )
 
   # Data should still be correct after overwrite
-  result <- read_genotype_matrix("test_pop", 0.05, db_dir)
+  result <- read_genotype_matrix("test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
   expect_equal(nrow(result), 15L)
 })
 
@@ -114,12 +114,12 @@ test_that("write_genotype_matrix with overwrite = FALSE skips existing file", {
   init_database(db_dir)
   tsv <- fixture_path("test_genotype_matrix.tsv")
 
-  write_genotype_matrix(tsv, "test_pop", 0.05, db_dir)
-  path_before <- get_genotype_matrix_path("test_pop", 0.05, db_dir)
+  write_genotype_matrix(tsv, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
+  path_before <- get_genotype_matrix_path("test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
   mtime_before <- file.mtime(path_before)
 
   Sys.sleep(0.01)
-  write_genotype_matrix(tsv, "test_pop", 0.05, db_dir, overwrite = FALSE)
+  write_genotype_matrix(tsv, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir, overwrite = FALSE)
   mtime_after <- file.mtime(path_before)
 
   expect_equal(mtime_before, mtime_after,
@@ -134,8 +134,8 @@ test_that("output Parquet has correct Arrow types", {
   init_database(db_dir)
   tsv <- fixture_path("test_genotype_matrix.tsv")
 
-  write_genotype_matrix(tsv, "test_pop", 0.05, db_dir)
-  path <- get_genotype_matrix_path("test_pop", 0.05, db_dir)
+  write_genotype_matrix(tsv, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
+  path <- get_genotype_matrix_path("test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
 
   tbl <- arrow::read_parquet(path, as_data_frame = FALSE)
   schema <- tbl$schema
@@ -152,10 +152,10 @@ test_that("write_genotype_matrix marker_set_id matches generate_marker_set_id ha
   init_database(db_dir)
   tsv <- fixture_path("test_genotype_matrix.tsv")
 
-  write_genotype_matrix(tsv, "test_pop", 0.05, db_dir)
-  result <- read_genotype_matrix("test_pop", 0.05, db_dir)
+  write_genotype_matrix(tsv, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
+  result <- read_genotype_matrix("test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
 
-  expected_hash <- generate_marker_set_id("test_pop", 0.05)$hash
+  expected_hash <- generate_marker_set_id("test_pop", 0.05, "c_elegans", "20220216", 0.8)$hash
   expect_true(all(result$marker_set_id == expected_hash),
               label = "all marker_set_id values match expected hash")
 })
@@ -168,7 +168,7 @@ test_that("genotype parquet file is in markers/genotypes/ dir", {
   init_database(db_dir)
   tsv <- fixture_path("test_genotype_matrix.tsv")
 
-  write_genotype_matrix(tsv, "test_pop", 0.05, db_dir)
+  write_genotype_matrix(tsv, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
 
   markers_dir <- file.path(db_dir, "markers", "genotypes")
   geno_files <- list.files(markers_dir, pattern = "_genotypes\\.parquet$")

@@ -5,7 +5,7 @@ test_that("fastGWA data writes to database with correct schema and values", {
   df <- read_raw_gwa_file(fixture_path("test.fastGWA"), verbose = FALSE)
   params <- list(nqtl = 5L, rep = 1L, h2 = 0.8, maf = 0.05, effect = "gamma",
                  population = "test_pop", algorithm = "inbred", pca = TRUE)
-  ms_id   <- generate_marker_set_id(params$population, params$maf)
+  ms_id   <- generate_marker_set_id(params$population, params$maf, "c_elegans", "20220216", 0.8)
   trait   <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
   mapping <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
 
@@ -47,7 +47,7 @@ test_that("mlma data writes with correct LOCO metadata", {
   df <- read_raw_gwa_file(fixture_path("test.mlma"), verbose = FALSE)
   params <- list(nqtl = 5L, rep = 1L, h2 = 0.8, maf = 0.05, effect = "gamma",
                  population = "test_pop", algorithm = "loco", pca = FALSE)
-  ms_id   <- generate_marker_set_id(params$population, params$maf)
+  ms_id   <- generate_marker_set_id(params$population, params$maf, "c_elegans", "20220216", 0.8)
   trait   <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
   mapping <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
 
@@ -62,7 +62,7 @@ test_that("mlma data writes with correct LOCO metadata", {
 test_that("PCA=TRUE and PCA=FALSE produce different mapping_ids", {
   params_base <- list(nqtl = 5L, rep = 1L, h2 = 0.8, maf = 0.05, effect = "gamma",
                       population = "test_pop", algorithm = "inbred")
-  ms_id  <- generate_marker_set_id(params_base$population, params_base$maf)
+  ms_id  <- generate_marker_set_id(params_base$population, params_base$maf, "c_elegans", "20220216", 0.8)
   trait  <- generate_trait_id(ms_id$hash, params_base$nqtl, params_base$effect,
                                params_base$rep, params_base$h2)
 
@@ -77,12 +77,12 @@ test_that("marker set creation from bim file works end-to-end", {
   init_database(db_dir)
 
   marker_df <- read_bim_file(fixture_path("test.bim"))
-  write_marker_set(marker_df, "test_pop", 0.05, db_dir,
+  write_marker_set(marker_df, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir,
                    overwrite = TRUE,
                    n_independent_tests = 1234)
 
   # Verify marker set
-  ms <- read_marker_set("test_pop", 0.05, db_dir)
+  ms <- read_marker_set("test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
   expect_equal(nrow(ms), 50)
   expect_true("marker_set_id" %in% names(ms))
   expect_false("AF1" %in% names(ms))
@@ -93,7 +93,7 @@ test_that("marker set creation from bim file works end-to-end", {
   meta <- read_marker_set_metadata("test_pop", 0.05, db_dir)
   expect_equal(meta$n_markers, 50)
   expect_equal(meta$n_independent_tests, 1234)
-  expect_equal(meta$marker_set_id, generate_marker_set_id("test_pop", 0.05)$hash)
+  expect_equal(meta$marker_set_id, generate_marker_set_id("test_pop", 0.05, "c_elegans", "20220216", 0.8)$hash)
 
   # Verify threshold calculation
   tp <- get_threshold_params("test_pop", 0.05, base_dir = db_dir)
@@ -108,7 +108,7 @@ test_that("write_mapping_metadata() creates meta.parquet with required columns",
 
   params <- list(nqtl = 5L, rep = 1L, h2 = 0.8, maf = 0.05, effect = "gamma",
                  population = "test_pop", algorithm = "inbred", pca = TRUE)
-  ms_id   <- generate_marker_set_id(params$population, params$maf)
+  ms_id   <- generate_marker_set_id(params$population, params$maf, "c_elegans", "20220216", 0.8)
   trait   <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
   mapping <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
 
@@ -134,12 +134,12 @@ test_that("overwrite = TRUE replaces existing marker set on retry", {
 
   marker_df <- read_bim_file(fixture_path("test.bim"))
 
-  write_marker_set(marker_df, "test_pop", 0.05, db_dir,
+  write_marker_set(marker_df, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir,
                    overwrite = TRUE, n_independent_tests = 1234)
   meta1 <- read_marker_set_metadata("test_pop", 0.05, db_dir)
   expect_equal(meta1$n_independent_tests, 1234)
 
-  write_marker_set(marker_df, "test_pop", 0.05, db_dir,
+  write_marker_set(marker_df, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir,
                    overwrite = TRUE, n_independent_tests = 5678)
   meta2 <- read_marker_set_metadata("test_pop", 0.05, db_dir)
   expect_equal(meta2$n_independent_tests, 5678)
