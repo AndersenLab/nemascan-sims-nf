@@ -540,7 +540,15 @@ workflow {
     // validate that at least one marker set was written. Without this
     // guard, a complete WRITE_MARKER_SET failure would silently allow
     // WRITE_GWA_TO_DB to proceed with no marker sets in the database.
+    // ch_marker_barrier collects 2N emissions per run: N from WRITE_MARKER_SET + N from
+    // WRITE_GENOTYPE_MATRIX (where N = number of population/MAF pairs in the strainfile).
+    // Both signals are required so assess_sims.R can call read_genotype_matrix() safely.
+    //
+    // Liveness check only (size > 0), not completeness check (size == 2N).
+    // If WRITE_GENOTYPE_MATRIX fails silently, ASSESS_SIMS will fail on read
+    // with a descriptive tryCatch message (see assess_sims.R).
     ch_marker_barrier = DB_MIGRATION_WRITE_MARKER_SET.out.done
+        .mix(DB_MIGRATION_WRITE_GENOTYPE_MATRIX.out.done)
         .collect()
         .map { items ->
             if (items.size() == 0) {
