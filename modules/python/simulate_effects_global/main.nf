@@ -35,7 +35,7 @@ process PYTHON_SIMULATE_EFFECTS_GLOBAL {
   script:
   def args = task.ext.args ?: ''
   """
-      python ${create_causal_qtls} CV_TO_SIMS.bim ${nqtl} ${effect}
+      python ${create_causal_qtls} CV_TO_SIMS.bim ${nqtl} ${effect} ${rep}
       mv causal_vars.txt causal.variants.sim.${nqtl}.${rep}.txt
 
   cat <<-END_VERSIONS > versions.yml
