@@ -32,8 +32,8 @@ process GCTA_SIMULATE_PHENOTYPES {
          --simu-hsq ${h2} \\
          --simu-rep 1 \\
          --autosome-num 6 \\
-         --thread-num ${task.cpus} \\
-         --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims
+         --thread-num 1 \\
+         --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims  # pinned: BLAS reduction order must be deterministic
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
