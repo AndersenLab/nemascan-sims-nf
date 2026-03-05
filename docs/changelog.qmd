@@ -41,6 +41,18 @@ not use version tags; entries are organized by development phase and date.
     when no metadata sidecars exist.
 
 ### Added
+- **Strainfile provenance in marker set metadata** (`fix/strain-file-not-hashed`, 2026-03-05):
+  `marker_set_metadata.parquet` now records two new columns for reproducibility auditing:
+  - `strainfile_hash` (`utf8`) — SHA-256 hex digest of the complete strainfile, computed
+    once at pipeline submission time (same value for all population groups in a run).
+  - `strain_list` (`utf8`) — Comma-separated list of strain names used for the specific
+    population group, derived from the strainfile at submission time.
+  - Both columns are optional/NA-safe: queries against databases produced before this
+    change return `NULL` without error.
+  - Enables post-hoc verification that a database was produced with a particular strain
+    set, and that the strainfile has not been modified between runs.
+
+### Added
 - `mappings_metadata.parquet` sidecar file written to the database root by
   `DB_MIGRATION_AGGREGATE_METADATA` — provides a single queryable index of all
   mapping runs without scanning every Hive partition. (2026-03-02)

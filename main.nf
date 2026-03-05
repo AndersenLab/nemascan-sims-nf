@@ -208,7 +208,7 @@ workflow {
                          "the CV pool is a strict subset of the marker SNP set. " +
                          "This is likely unintentional."
             }
-            marker_set_params: [meta.id, ms_maf, species, extractVcfReleaseId(vcf), ms_ld]
+            marker_set_params: [meta.id, ms_maf, species, extractVcfReleaseId(vcf), ms_ld, strains, strainfile]
             vcf_per_group:     [meta, species, vcf, strains]
             ms_maf_vals:       [meta, ms_maf]
             ms_ld_vals:        [meta, ms_ld]
@@ -517,12 +517,12 @@ workflow {
     // LOCAL_COMPILE_EIGENS.out.tests emits:
     //   tuple val(group), val(maf), path(n_indep_tests)
     // ch_marker_set_params emits:
-    //   [group_id, ms_maf, species, vcf_release_id, ms_ld]
+    //   [group_id, ms_maf, species, vcf_release_id, ms_ld, strains, strainfile_path]
     // Join by (group, maf) — 1:1 since all three channels emit once per key
+    // Result: tuple(group, maf, bim, n_indep_tests, species, vcf_release_id, ms_ld, strains, strainfile_path)
     ch_marker_set_inputs = ch_bim_for_marker
         .join(LOCAL_COMPILE_EIGENS.out.tests, by: [0, 1])
         .join(ch_marker_set_params_for_ms, by: [0, 1])
-    // Result: tuple(group, maf, bim, n_indep_tests, species, vcf_release_id, ms_ld)
 
     DB_MIGRATION_WRITE_MARKER_SET(ch_marker_set_inputs, db_output_dir)
 
