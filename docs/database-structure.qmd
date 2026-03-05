@@ -125,7 +125,11 @@ marker Parquet files.
 markers <- read_marker_set("complete", 0.05, base_dir = "results/db")
 
 # Via DuckDB (used internally by open_mapping_db)
-ms_id <- generate_marker_set_id("complete", 0.05)$hash
+ms_meta <- read_marker_set_metadata("complete", 0.05, base_dir = "results/db")
+ms_id <- generate_marker_set_id(
+  "complete", 0.05,
+  ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld)
+)$hash
 con <- DBI::dbConnect(duckdb::duckdb(), ":memory:")
 DBI::dbExecute(con, "
   CREATE VIEW markers AS

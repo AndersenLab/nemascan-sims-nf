@@ -36,8 +36,13 @@ test_that("marker set parquet files exist", {
   marker_files <- list.files(markers_dir, pattern = "_markers\\.parquet$")
   expect_gt(length(marker_files), 0, label = "at least one marker set file")
 
-  # Derive expected filename from hash
-  expected_hash <- generate_marker_set_id(expected_population, 0.05)$hash
+  # Derive expected filename from hash via metadata lookup (5-param v=2 signature)
+  ms_meta <- read_marker_set_metadata(expected_population, 0.05, db_dir)
+  if (is.null(ms_meta)) skip("marker set metadata not found in TEST_DB_DIR")
+  expected_hash <- generate_marker_set_id(
+    expected_population, 0.05,
+    ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld)
+  )$hash
   expected_file <- paste0(expected_hash, "_markers.parquet")
   expect_true(
     expected_file %in% marker_files,
