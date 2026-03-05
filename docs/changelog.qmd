@@ -13,6 +13,19 @@ not use version tags; entries are organized by development phase and date.
 
 ## [Unreleased] — March 2026
 
+### Fixed
+- **Stochastic script reproducibility** (`fix/rand-seed-stochastic-scripts`, 2026-03-05): causal variant
+  selection and effect size simulation are now fully reproducible across pipeline runs:
+  - `bin/create_causal_vars.py` seeds `np.random.default_rng(rep)` at startup; all stochastic calls
+    (`rng.choice`, `rng.gamma`, `rng.uniform`) use the seeded Generator. Previously, `np.random.default_rng()`
+    was called without a seed, making results non-deterministic.
+  - `bin/Create_Causal_QTLs.R` calls `set.seed(as.integer(rep))` before any stochastic draws (`rgamma`,
+    `sample`, `runif`).
+  - Both Nextflow modules (`PYTHON_SIMULATE_EFFECTS_GLOBAL`, `R_SIMULATE_EFFECTS_GLOBAL`,
+    `R_SIMULATE_EFFECTS_LOCAL`) now pass `${rep}` as the seed argument to the scripts.
+  - `trait_metadata_schema()` gains a new `sim_seed` (int32) field; `write_trait_metadata()` stores the
+    seed used for each simulated trait, enabling exact post-hoc reproduction without the Nextflow cache.
+
 ### Added
 - **Non-marker causal variants** (`feature/add-nonmarker-cvs`, 2026-03-03): causal variants
   can now be drawn from a separately-configured variant pool rather than the marker SNP set.
