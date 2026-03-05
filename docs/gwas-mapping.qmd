@@ -299,7 +299,7 @@ gcta64 ${COMMAND} \
 > **Thread count:** `--fastGWA-mlm-exact` (inbred mode) uses `--thread-num 1` for
 > deterministic results. `--mlma-loco` (loco mode) uses `--thread-num ${task.cpus}`,
 > set via the `GWA_THREADS` shell variable, because its per-chromosome refits are
-> independent and numerically less sensitive. See [Thread-count determinism](#thread-count-determinism).
+> independent and numerically less sensitive. See [Thread-count determinism](development.qmd#thread-count-determinism).
 
 **Inbred mode (`mode == "inbred"`):**
 
@@ -441,20 +441,5 @@ CHR	SNP	POS	A1	A2	N	AF1	BETA	SE	P
 ### Thread-count determinism
 
 All GCTA steps except `--mlma-loco` are pinned to `--thread-num 1` to ensure
-reproducible floating-point results across local and HPC runs. Multi-threaded BLAS
-uses non-deterministic partial-sum reduction order — differences propagate from GRM
-construction through REML, PCA, and the LMM solve into BETA, SE, and P-values.
-
-| GCTA step | `--thread-num` | Rationale |
-|-----------|---------------|-----------|
-| `--make-grm-inbred` / `--make-grm` | **1** | Errors here propagate to all downstream steps |
-| `--reml` | **1** | Governs Vp upscaling decision; must be consistent at borderline values |
-| `--simu-qt` | **1** | Ensures phenotype simulation is deterministic for a given random seed |
-| `--make-bK-sparse` | **1** | Eliminates residual non-determinism in sparse encoding |
-| `--pca 1` | **1** | Eigenvector iteration sensitive to BLAS reduction order |
-| `--fastGWA-mlm-exact` | **1** | LMM solve; diverges between local and HPC without pinning |
-| `--mlma-loco` | **configurable (`task.cpus`)** | Per-chromosome refits are independent; highest compute cost; least numerically sensitive step |
-
-The `gcta_make_grm` Rockfish label is configured with `cpus = 1` since all its
-operations are single-threaded. The `gcta_perform_gwa` label retains `cpus = 4`
-to provide CPU headroom for `--mlma-loco` on larger datasets.
+reproducible floating-point results; see [Thread-count determinism](development.qmd#thread-count-determinism)
+in the developer notes for the full rationale.
