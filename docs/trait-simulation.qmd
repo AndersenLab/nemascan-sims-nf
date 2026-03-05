@@ -121,7 +121,7 @@ gcta64 --bfile CV_TO_SIMS \
      --simu-hsq ${h2} \
      --simu-rep 1 \
      --autosome-num 6 \
-     --thread-num ${task.cpus} \
+     --thread-num 1 \
      --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims
 ```
 
@@ -132,7 +132,7 @@ gcta64 --bfile CV_TO_SIMS \
 | `--simu-hsq` | Target heritability (h^2^); from the `--h2` pipeline parameter, crossed in via `each h2` |
 | `--simu-rep 1` | Single replicate per GCTA call (pipeline-level `--reps` parameter controls repetition via Nextflow `each`) |
 | `--autosome-num 6` | *C. elegans* has 6 chromosomes (5 autosomes + X) |
-| `--thread-num` | Number of threads |
+| `--thread-num 1` | Pinned to 1 thread for deterministic floating-point results; multi-threaded BLAS introduces non-deterministic reduction order |
 
 ### Inputs / Outputs
 
