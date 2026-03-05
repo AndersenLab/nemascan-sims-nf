@@ -12,6 +12,7 @@ process DB_MIGRATION_WRITE_GWA_TO_DB {
 
     output:
     val true, emit: done
+    path "versions.yml", emit: versions
 
     script:
     """
@@ -23,10 +24,20 @@ process DB_MIGRATION_WRITE_GWA_TO_DB {
         --species ${species} \
         --vcf_release_id ${vcf_release_id} \
         --ms_ld ${ms_ld}
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        R: \$( Rscript --version |& cut -f 4 )
+    END_VERSIONS
     """
 
     stub:
     """
     echo "STUB: write_gwa_to_db ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_${mode}_${type} species=${species} vcf_release_id=${vcf_release_id} ms_ld=${ms_ld}"
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        R: stub
+    END_VERSIONS
     """
 }
