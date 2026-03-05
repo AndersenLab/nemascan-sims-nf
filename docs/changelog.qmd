@@ -40,6 +40,14 @@ not use version tags; entries are organized by development phase and date.
   - `aggregate_metadata.R` fallback path updated to emit `NA` for the three new columns
     when no metadata sidecars exist.
 
+### Fixed
+- **Python dependency pinning** (`fix/python-requirements`, 2026-03-05): added
+  `requirements.txt` at the repository root pinning `numpy==2.2.3` and
+  `pandas==2.2.3` to the versions present in the `andersenlab/numpy:20250506`
+  container. The `PYTHON_SIMULATE_EFFECTS_GLOBAL` `versions.yml` emission now
+  also records `numpy` and `pandas` library versions alongside the Python
+  interpreter version, providing runtime provenance in pipeline output logs.
+
 ### Added
 - `mappings_metadata.parquet` sidecar file written to the database root by
   `DB_MIGRATION_AGGREGATE_METADATA` — provides a single queryable index of all

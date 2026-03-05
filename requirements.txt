@@ -1,0 +1,4 @@
+# Python dependencies for bin/create_causal_vars.py
+# Pinned to versions present in andersenlab/numpy:20250506
+numpy==2.2.3
+pandas==2.2.3

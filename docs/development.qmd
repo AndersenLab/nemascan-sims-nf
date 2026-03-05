@@ -411,6 +411,72 @@ NXF_VER=24.10.4 nextflow run main.nf \
 ```
 
 
+## Container Updates
+
+All pipeline processes run inside versioned, date-tagged Docker/Singularity
+images. Container references live in two files:
+
+| File | Used by |
+|------|---------|
+| `conf/docker.config` | Local runs (`-profile docker`) |
+| `conf/rockfish.config` | HPC runs (`-profile rockfish`) |
+
+When a container image is updated, both config files must be changed in the
+same PR. The `PYTHON_.*` container also has a companion `requirements.txt` that
+must be kept in sync.
+
+### Updating the Python container (`andersenlab/numpy`)
+
+`bin/create_causal_vars.py` is the only pipeline script with third-party Python
+dependencies (`numpy`, `pandas`). These are pinned in `requirements.txt` at the
+repository root. When the `andersenlab/numpy` image is updated:
+
+1. Update the container tag in `conf/docker.config` and `conf/rockfish.config`:
+
+    ```groovy
+    withName: 'PYTHON_.*' {
+        container = "andersenlab/numpy:YYYYMMDD"
+    }
+    ```
+
+2. Extract the exact library versions from the new image:
+
+    ```bash
+    docker run --rm andersenlab/numpy:YYYYMMDD \
+      python -c "import numpy, pandas; print('numpy:', numpy.__version__); print('pandas:', pandas.__version__)"
+    ```
+
+3. Update `requirements.txt` with the extracted versions:
+
+    ```
+    # Python dependencies for bin/create_causal_vars.py
+    # Pinned to versions present in andersenlab/numpy:YYYYMMDD
+    numpy==X.Y.Z
+    pandas==X.Y.Z
+    ```
+
+4. Verify the pinned versions match the container:
+
+    ```bash
+    grep -E '^(numpy|pandas)==[0-9]+\.[0-9]+\.[0-9]+$' requirements.txt | wc -l
+    # must print: 2
+    ```
+
+The `requirements.txt` is a documentation/local-dev reference — no `pip
+install` step is embedded in the Nextflow scripts. The container is the sealed
+execution environment; `requirements.txt` records what it contains.
+
+### Updating other containers
+
+For all other containers (bcftools, plink, GCTA, R, DB migration), update the
+tag in `conf/docker.config` and `conf/rockfish.config` and verify with a stub
+run:
+
+```bash
+nextflow run main.nf -profile test,docker -stub-run
+```
+
+
 ## Generating Test Data
 
 Test VCF files are not committed to the repository due to their size. Four generate
