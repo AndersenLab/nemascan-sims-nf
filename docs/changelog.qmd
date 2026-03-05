@@ -41,6 +41,15 @@ not use version tags; entries are organized by development phase and date.
     when no metadata sidecars exist.
 
 ### Added
+- **R package lockfile** (`fix/r_package_lockfile`, 2026-03-05): `renv.lock`
+  committed at the project root records the exact versions of all R packages
+  installed in the `andersenlab/r_packages:20250519` container. Provides a
+  verifiable record of the software environment that produced simulation results
+  and enables local environment reproduction via `renv::restore()`.
+  `scripts/generate_renv_lock.sh` documents how to regenerate the lockfile when
+  the container changes.
+
+### Added
 - `mappings_metadata.parquet` sidecar file written to the database root by
   `DB_MIGRATION_AGGREGATE_METADATA` — provides a single queryable index of all
   mapping runs without scanning every Hive partition. (2026-03-02)
