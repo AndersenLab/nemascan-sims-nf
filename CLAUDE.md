@@ -132,6 +132,9 @@ Primary output is `db_simulation_assessment_results.tsv`. The Parquet database l
 | `--ci_size` | SNVs flanking peak for CI definition | 150 |
 | `--alpha` | Significance level for threshold calculation | 0.05 |
 | `--db_output` | Parquet DB directory (absolute path) | `{outputDir}/db` |
+| `--output_dir` | Explicit output directory; overrides date-based default | null (`Analysis_Results-{date}`) |
+| `--slurm_account` | SLURM account for Rockfish (`conf/rockfish.config`) | `eande106` |
+| `--scratch_dir` | Nextflow work dir on scratch for Rockfish (`conf/rockfish.config`) | `/scratch4/eande106` |
 
 ## Documentation Site
 
@@ -139,6 +142,7 @@ The `docs/` directory is a Quarto website published to GitHub Pages. One `.qmd` 
 
 ## Development Notes
 
+- `nextflow_schema.json` at the project root is a hand-maintained JSON Schema (draft-07) covering all `params.*` in `nextflow.config`. Update it manually when parameters are added, removed, or have their types/defaults changed. Rockfish infrastructure params (`slurm_account`, `scratch_dir`, `baseDir`, etc. in `conf/rockfish.config`) are intentionally excluded from the schema.
 - The notes vault at `nemascan-sims-nf-notes/` (Obsidian, may be added as working directory) contains development plans, testing records, and technical notes. Its own `CLAUDE.md` describes navigation.
 - Test VCF generation: `bash data/test/generate_test_vcf.sh /path/to/source.vcf.gz`
 - GWA output formats differ by mode: `.fastGWA` (inbred) vs `.mlma` (loco) — `read_raw_gwa_file()` in `R/io.R` auto-detects format and normalizes column names.
