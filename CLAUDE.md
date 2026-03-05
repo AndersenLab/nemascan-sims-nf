@@ -89,6 +89,7 @@ Database migration modules (`modules/db_migration/`) use a two-layer pattern:
 1. Each module's `main.nf` sets `R_SOURCE_DIR="${projectDir}/R"` as an environment variable
 2. The executable R script lives in `resources/usr/bin/` and is auto-added to `$PATH` via `moduleBinaries = true`
 3. The resource script uses `R_SOURCE_DIR` to source only the R library files it needs (not all of them)
+4. All 7 `db_migration` processes emit `path "versions.yml", emit: versions` (R version captured via `Rscript --version`), consistent with the `modules/r/` module pattern. Stub blocks use `R: stub`. Do NOT add `when:` or `task.ext.args` to db_migration modules — they are intentionally absent; these modules use direct Nextflow parameter passing, not the `task.ext` config pattern.
 
 Legacy modules in `modules/r/` use `bin/` scripts instead, which are available to all processes.
 

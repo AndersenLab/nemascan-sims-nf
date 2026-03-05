@@ -431,6 +431,7 @@ workflow {
         ch_trait.write_par,
         db_output_dir
     )
+    ch_versions = ch_versions.mix(DB_MIGRATION_WRITE_TRAIT_DATA.out.versions)
 
     // Update plink data by heritability
     PLINK_UPDATE_BY_H2(
@@ -525,6 +526,7 @@ workflow {
     // Result: tuple(group, maf, bim, n_indep_tests, species, vcf_release_id, ms_ld)
 
     DB_MIGRATION_WRITE_MARKER_SET(ch_marker_set_inputs, db_output_dir)
+    ch_versions = ch_versions.mix(DB_MIGRATION_WRITE_MARKER_SET.out.versions)
 
     // WRITE_GENOTYPE_MATRIX — join(by:[0,1]) is 1:1 per group
     ch_gm_inputs = BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix
@@ -532,6 +534,7 @@ workflow {
     // Result: tuple(group, maf, genotype_matrix, species, vcf_release_id, ms_ld)
 
     DB_MIGRATION_WRITE_GENOTYPE_MATRIX(ch_gm_inputs, db_output_dir)
+    ch_versions = ch_versions.mix(DB_MIGRATION_WRITE_GENOTYPE_MATRIX.out.versions)
 
     // ── GWA DATABASE WRITES ──────────────────────────────────────────
     // Barrier: wait for ALL marker sets to complete before writing mappings.
@@ -592,6 +595,7 @@ workflow {
         GCTA_PERFORM_GWA.out.gwa,
         db_output_dir
     )
+    ch_versions = ch_versions.mix(DB_MIGRATION_WRITE_GWA_TO_DB.out.versions)
 
     // ── METADATA AGGREGATION ─────────────────────────────────────────
     // Runs after ALL WRITE_GWA_TO_DB processes complete.
@@ -600,6 +604,7 @@ workflow {
         DB_MIGRATION_WRITE_GWA_TO_DB.out.done.collect(),
         db_output_dir
     )
+    ch_versions = ch_versions.mix(DB_MIGRATION_AGGREGATE_METADATA.out.versions)
 
     // ── DB-PATH QTL ANALYSIS (default) ─────────────────────────────────
     // Queries the populated database, detects QTL intervals with flexible
@@ -634,6 +639,7 @@ workflow {
         params.group_qtl,
         params.alpha
     )
+    ch_versions = ch_versions.mix(DB_MIGRATION_ANALYZE_QTL.out.versions)
 
     // Step 2: Assess Sims (consumes ANALYZE_QTL outputs — correctly paired via pass-through)
     DB_MIGRATION_ASSESS_SIMS(
@@ -645,6 +651,7 @@ workflow {
         params.group_qtl,
         params.alpha
     )
+    ch_versions = ch_versions.mix(DB_MIGRATION_ASSESS_SIMS.out.versions)
 
     ch_db_assessment_pub = DB_MIGRATION_ASSESS_SIMS.out.assessment.collectFile(
         name: "db_simulation_assessment_results.tsv", sort: false

@@ -13,6 +13,15 @@ not use version tags; entries are organized by development phase and date.
 
 ## [Unreleased] — March 2026
 
+### Fixed
+- **Missing `versions.yml` in DB migration modules** (`fix/versions_yml_db_migration`, 2026-03-05):
+  Added `versions.yml` output to all 7 `modules/db_migration/*/main.nf` processes
+  (`write_marker_set`, `write_genotype_matrix`, `write_gwa_to_db`, `write_trait_data`,
+  `aggregate_metadata`, `analyze_qtl`, `assess_sims`). The pattern was established across
+  all other module families (bcftools, GCTA, PLINK, R, Python) but had not been carried
+  forward when the DB migration layer was added. All 7 processes now capture the R version
+  and wire their `versions` output channel into `ch_versions` in `main.nf`.
+
 ### Added
 - **Non-marker causal variants** (`feature/add-nonmarker-cvs`, 2026-03-03): causal variants
   can now be drawn from a separately-configured variant pool rather than the marker SNP set.
