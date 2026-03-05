@@ -761,6 +761,6 @@ workflow.onComplete {
     Result Directory                        = ${workflow.outputDir}
     """
 
-    // println summary
+    println summary
 
 }

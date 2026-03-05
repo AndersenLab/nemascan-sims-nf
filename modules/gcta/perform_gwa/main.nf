@@ -27,22 +27,24 @@ process GCTA_PERFORM_GWA {
     if [[ ${mode} == "inbred" ]]; then
         GRM_OPTION='--grm-sparse'
         COMMAND='--fastGWA-mlm-exact'
+        GWA_THREADS=1  # pinned: BLAS reduction order must be deterministic
     else
         GRM_OPTION="--grm"
         COMMAND="--mlma-loco"
+        GWA_THREADS=${task.cpus}  # mlma-loco: per-chromosome refits are independent; thread-count is configurable (see rockfish.config)
     fi
 
     gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \\
         --make-bK-sparse ${sparse_cut} \\
         --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \\
-        --thread-num ${task.cpus}
+        --thread-num 1  # pinned: BLAS reduction order must be deterministic
 
     if [[ ${type} == "pca" ]]; then
 
         gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \\
             --pca 1 \\
             --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \\
-            --thread-num ${task.cpus}
+            --thread-num 1  # pinned: BLAS reduction order must be deterministic
 
         COVAR="--qcovar ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode}.eigenvec"
     else
@@ -56,7 +58,7 @@ process GCTA_PERFORM_GWA {
         --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_lmm-exact_${mode}_${type} \\
         --pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno \\
         --maf ${maf} \\
-        --thread-num ${task.cpus}
+        --thread-num \${GWA_THREADS}
 
     if [[ ${mode} == "loco" ]]; then
         mv "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_lmm-exact_${mode}_${type}.loco.mlma" \\
