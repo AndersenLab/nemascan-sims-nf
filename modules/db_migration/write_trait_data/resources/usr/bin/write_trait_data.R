@@ -48,7 +48,22 @@ if (!grepl(expected_prefix, actual_basename)) {
 }
 
 # Compute marker set ID (parent of trait)
-ms_id <- generate_marker_set_id(opt$group, as.numeric(opt$maf))
+ms_meta <- read_marker_set_metadata(opt$group, as.numeric(opt$maf), opt$base_dir)
+if (is.null(ms_meta)) {
+  stop(paste0(
+    "Marker set metadata not found for population='", opt$group,
+    "', maf=", opt$maf, " in ", opt$base_dir,
+    ". Ensure DB_MIGRATION_WRITE_MARKER_SET completed before resuming. ",
+    "If VCF/species parameters changed, a full re-run (not -resume) is required."
+  ))
+}
+if (is.na(as.numeric(ms_meta$ms_ld))) {
+  stop("ms_ld field is NA in marker set metadata — DB may be corrupt")
+}
+ms_id <- generate_marker_set_id(
+  opt$group, as.numeric(opt$maf),
+  ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld)
+)
 
 # Compute trait ID (child of marker set)
 trait    <- generate_trait_id(ms_id$hash, opt$nqtl, opt$effect, opt$rep, opt$h2)
