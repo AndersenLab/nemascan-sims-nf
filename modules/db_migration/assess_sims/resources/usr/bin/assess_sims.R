@@ -77,7 +77,22 @@ params <- list(
   snp_grouping = opt$snp_grouping
 )
 
-ms_id      <- generate_marker_set_id(params$population, params$maf)
+ms_meta <- read_marker_set_metadata(params$population, as.numeric(params$maf), opt$base_dir)
+if (is.null(ms_meta)) {
+  stop(paste0(
+    "Marker set metadata not found for population='", params$population,
+    "', maf=", params$maf, " in ", opt$base_dir,
+    ". Ensure DB_MIGRATION_WRITE_MARKER_SET completed before resuming. ",
+    "If VCF/species parameters changed, a full re-run (not -resume) is required."
+  ))
+}
+if (is.na(as.numeric(ms_meta$ms_ld))) {
+  stop("ms_ld field is NA in marker set metadata — DB may be corrupt")
+}
+ms_id <- generate_marker_set_id(
+  params$population, as.numeric(params$maf),
+  ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld)
+)
 trait      <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
 mapping    <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
 mapping_id <- mapping$hash
@@ -89,6 +104,36 @@ log_msg(paste("Read", nrow(qtl_regions), "QTL regions"))
 
 # Step 2: Load causal variants from .par file
 causal_variants <- load_causal_variants(opt$par_file)
+
+# Step 3a: Compute variance explained from DB-stored genotype and phenotype data.
+# var.exp is a per-trait property; ASSESS_SIMS runs once per (trait × mode × type × threshold).
+# All invocations for a trait compute identical values — redundancy is accepted.
+# var.exp is scale-invariant (SS ratio); read is the full genotype Parquet (~400–600 MB at
+# production scale, <8 GB task allocation). Accepted redundancy across mode/type invocations.
+genotype_matrix <- tryCatch(
+  read_genotype_matrix(
+    params$population, as.numeric(params$maf),
+    ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld),
+    opt$base_dir
+  ),
+  error = function(e) stop(paste0(
+    "Failed to read genotype matrix for population='", params$population,
+    "', maf=", params$maf, ": ", conditionMessage(e)))
+)
+phenotype_data <- tryCatch(
+  read_phenotype_data(trait$hash, opt$base_dir),
+  error = function(e) stop(paste0(
+    "Failed to read phenotype data for trait='", trait$hash, "': ",
+    conditionMessage(e)))
+)
+var_exp_df     <- compute_var_exp_anova(genotype_matrix, phenotype_data, causal_variants)
+
+# Augment causal_variants with Simulated.QTL.VarExp before compile_full_assessment().
+# build_assessment_union() picks it up via score_causal_markers() join (any_of select).
+causal_variants <- dplyr::left_join(causal_variants, var_exp_df, by = "QTL")
+
+# interval.var.exp stays NA_real_ by design — GCTA's LMM-adjusted r² at the peak marker
+# cannot be recovered from the DB (raw per-marker GWA r² was not stored in Phase 5).
 
 # Step 3: Query mapping data for causal marker scores + peak info
 mapping_data <- query_for_threshold_analysis(mapping_id, opt$base_dir)
@@ -123,6 +168,13 @@ assessment <- compile_full_assessment(
   causal_variants = causal_variants,
   mapping_params = params
 )
+
+# Ensure Simulated.QTL.VarExp is present even if all causal variants were filtered
+# (e.g. no mapping peak matched). format_assessment_tsv() handles the NA default,
+# but guard here prevents downstream confusion if assessment has no matching rows.
+if (!"Simulated.QTL.VarExp" %in% names(assessment)) {
+  assessment$Simulated.QTL.VarExp <- NA_real_
+}
 
 # Step 5: Format and write output
 if (nrow(assessment) > 0) {

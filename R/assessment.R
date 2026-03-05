@@ -15,6 +15,93 @@
 library(dplyr)
 library(tidyr)
 library(glue)
+library(purrr)
+
+
+# =============================================================================
+# Variance Explained via ANOVA
+# =============================================================================
+
+#' Per-QTL ANOVA helper: compute SS ratio for one causal variant
+#'
+#' @param data Data frame with columns: allele, trait.value (for one QTL)
+#' @param qtl_id QTL identifier string (e.g. "1:100")
+#' @return data.frame with columns QTL, Simulated.QTL.VarExp
+var_exp_one <- function(data, qtl_id) {
+  data_clean <- dplyr::filter(data, !is.na(allele))
+
+  # Guard: insufficient data
+  if (nrow(data_clean) < 2) {
+    return(data.frame(QTL = qtl_id, Simulated.QTL.VarExp = NA_real_))
+  }
+
+  # Guard: minimum 2 distinct allele classes, and at least 2 strains per class.
+  # Catches monomorphic (one class) and near-monomorphic (one class has <2 strains).
+  class_counts <- table(data_clean$allele)
+  if (length(class_counts) < 2 || any(class_counts < 2)) {
+    return(data.frame(QTL = qtl_id, Simulated.QTL.VarExp = NA_real_))
+  }
+
+  tryCatch({
+    data_clean$allele <- as.factor(data_clean$allele)
+    aov_out  <- summary(aov(trait.value ~ allele, data = data_clean))
+    ss_df    <- as.data.frame(aov_out[[1]])
+    SSallele <- ss_df["allele", "Sum Sq"]
+    SST      <- sum(ss_df[["Sum Sq"]], na.rm = TRUE)
+    var_exp  <- if (SST == 0 || is.na(SST) || is.na(SSallele)) NA_real_ else SSallele / SST
+    data.frame(QTL = qtl_id, Simulated.QTL.VarExp = var_exp)
+  }, error = function(e) {
+    data.frame(QTL = qtl_id, Simulated.QTL.VarExp = NA_real_)
+  })
+}
+
+
+#' Compute variance explained per causal variant via ANOVA SS ratio
+#'
+#' @param genotype_matrix Long-format data frame from read_genotype_matrix():
+#'   columns marker_set_id, CHROM, POS, strain, allele (allele: -1/+1/NA).
+#' @param phenotype_data Data frame from read_phenotype_data():
+#'   columns strain, phenotype (pre-upscaled; scale-invariant for ANOVA ratio).
+#' @param causal_data Causal variant data frame from load_causal_variants():
+#'   columns QTL, CHROM, POS, RefAllele, Frequency, Effect.
+#' @return data.frame with columns QTL, Simulated.QTL.VarExp
+#'   (NA_real_ for degenerate cases).
+compute_var_exp_anova <- function(genotype_matrix, phenotype_data, causal_data) {
+  causal_pos <- causal_data %>%
+    dplyr::mutate(CHROM = as.character(CHROM), POS = as.integer(POS)) %>%
+    dplyr::select(QTL, CHROM, POS) %>%
+    dplyr::distinct()
+
+  geno_filtered <- genotype_matrix %>%
+    dplyr::mutate(CHROM = as.character(CHROM), POS = as.integer(POS)) %>%
+    dplyr::inner_join(causal_pos, by = c("CHROM", "POS")) %>%
+    dplyr::select(QTL, strain, allele)
+
+  if (nrow(geno_filtered) == 0) {
+    # No causal variant positions found in genotype matrix — return all NA
+    return(data.frame(
+      QTL = causal_data$QTL,
+      Simulated.QTL.VarExp = NA_real_
+    ))
+  }
+
+  # Warn on partial strain overlap (inner_join silently drops non-overlapping strains)
+  strain_overlap <- length(intersect(unique(geno_filtered$strain), unique(phenotype_data$strain)))
+  if (strain_overlap == 0) {
+    warning("No strain overlap between genotype and phenotype data — all var.exp will be NA")
+    return(data.frame(QTL = causal_data$QTL, Simulated.QTL.VarExp = NA_real_))
+  }
+
+  joined <- geno_filtered %>%
+    dplyr::inner_join(
+      dplyr::rename(phenotype_data, trait.value = phenotype),
+      by = "strain"
+    ) %>%
+    dplyr::group_by(QTL) %>%
+    tidyr::nest()
+
+  purrr::map2(joined$data, joined$QTL, var_exp_one) %>% dplyr::bind_rows()
+}
 
 
 # =============================================================================
@@ -181,7 +268,7 @@ build_assessment_union <- function(effects_scores, overlap_df, mapping_params) {
       dplyr::left_join(
         effects_scores %>%
           dplyr::select(QTL, CHROM, POS, RefAllele, Frequency, Effect,
-                        log10p, significant) %>%
+                        log10p, significant, dplyr::any_of("Simulated.QTL.VarExp")) %>%
           dplyr::filter(!duplicated(QTL)),
         by = "QTL"
       )
@@ -224,7 +311,6 @@ build_assessment_union <- function(effects_scores, overlap_df, mapping_params) {
 
   all_qtl <- all_qtl %>%
     dplyr::mutate(
-      Simulated.QTL.VarExp = NA_real_,
       top.hit = if ("detected.peak" %in% names(.)) QTL == detected.peak else NA,
       nQTL = as.character(mapping_params$nqtl),
       simREP = as.character(mapping_params$rep),
@@ -345,6 +431,9 @@ format_assessment_tsv <- function(assessment_df) {
     "mode", "type", "threshold", "algorithm_id", "alpha", "ci_size", "snp_grouping"
   )
 
+  # Canonical NA fallback: any expected column absent from input (e.g. Simulated.QTL.VarExp
+  # when the DB path is not used, or interval.var.exp which is always NA in the DB path)
+  # is added here as NA. Callers are not required to pre-populate missing columns.
   for (col in expected_cols) {
     if (!col %in% names(assessment_df)) {
       assessment_df[[col]] <- NA
