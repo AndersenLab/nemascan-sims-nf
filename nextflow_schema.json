@@ -1,0 +1,156 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema",
+    "$id": "https://raw.githubusercontent.com/AndersenLab/nemascan-sims-nf/main/nextflow_schema.json",
+    "title": "AndersenLab/nemascan-sims-nf pipeline parameters",
+    "description": "GWAS simulation pipeline for C. elegans and related nematodes.",
+    "type": "object",
+    "definitions": {
+        "input_output_options": {
+            "title": "Input/output options",
+            "type": "object",
+            "description": "Define where the pipeline should find input data and save output data.",
+            "required": ["strainfile"],
+            "properties": {
+                "strainfile": {
+                    "type": "string",
+                    "description": "Tab-separated file (with header) specifying strain groups. Six required columns: group, species, vcf, ms_maf, ms_ld, strains. One row per strain group.",
+                    "format": "file-path"
+                },
+                "output_dir": {
+                    "type": "string",
+                    "description": "Output directory name. If omitted, defaults to 'Analysis_Results-{date}'.",
+                    "default": null
+                },
+                "db_output": {
+                    "type": "string",
+                    "description": "Absolute path for the Parquet database directory. Defaults to '{output_dir}/db' when null.",
+                    "default": null
+                }
+            }
+        },
+        "simulation_parameters": {
+            "title": "Simulation parameters",
+            "type": "object",
+            "description": "Parameters controlling the phenotype simulation grid.",
+            "properties": {
+                "nqtl": {
+                    "type": "string",
+                    "description": "CSV file with number-of-QTL values to simulate, one per line.",
+                    "format": "file-path"
+                },
+                "h2": {
+                    "type": "string",
+                    "description": "CSV file with heritability values to simulate, one per line.",
+                    "format": "file-path"
+                },
+                "reps": {
+                    "type": "integer",
+                    "description": "Number of simulation replicates per parameter combination.",
+                    "default": 2,
+                    "minimum": 1
+                },
+                "effect": {
+                    "type": "string",
+                    "description": "CSV file with effect size ranges (e.g. '0.2-0.3'), one per line.",
+                    "format": "file-path"
+                },
+                "qtlloc": {
+                    "type": "string",
+                    "description": "BED file (3 columns: chrom, start, end) restricting causal variant placement. Null means whole-genome.",
+                    "default": null,
+                    "format": "file-path"
+                },
+                "simulate_qtlloc": {
+                    "type": "boolean",
+                    "description": "Whether to restrict QTL simulation to the genomic regions specified in --qtlloc.",
+                    "default": false
+                },
+                "cv_maf": {
+                    "type": "number",
+                    "description": "MAF threshold for the causal variant pool. Defaults to each group's ms_maf from the strainfile when null.",
+                    "default": null,
+                    "minimum": 0,
+                    "maximum": 0.5
+                },
+                "cv_ld": {
+                    "type": "number",
+                    "description": "LD R\u00b2 pruning threshold for the causal variant pool.",
+                    "default": 0.8,
+                    "minimum": 0,
+                    "exclusiveMaximum": 1
+                }
+            }
+        },
+        "analysis_parameters": {
+            "title": "Analysis parameters",
+            "type": "object",
+            "description": "Parameters controlling QTL detection and significance thresholds.",
+            "properties": {
+                "sthresh": {
+                    "type": "string",
+                    "description": "Significance threshold method. 'BF' for Bonferroni, 'EIGEN' for eigenvalue correction, or a numeric string (e.g. '4' for -log10p > 4).",
+                    "default": "BF"
+                },
+                "alpha": {
+                    "type": "number",
+                    "description": "Significance level for Bonferroni and EIGEN threshold calculation.",
+                    "default": 0.05,
+                    "minimum": 0,
+                    "exclusiveMaximum": 1
+                },
+                "group_qtl": {
+                    "type": "integer",
+                    "description": "Maximum base-pair distance between two QTL peaks to merge them into one interval.",
+                    "default": 1000,
+                    "minimum": 0
+                },
+                "ci_size": {
+                    "type": "integer",
+                    "description": "Number of flanking SNVs on each side of the peak marker defining the QTL confidence interval.",
+                    "default": 150,
+                    "minimum": 0
+                },
+                "sparse_cut": {
+                    "type": "number",
+                    "description": "Off-diagonal GRM values above this threshold are set to zero (sparsity cutoff).",
+                    "default": 0.05,
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "mito_name": {
+                    "type": "string",
+                    "description": "Name of the mitochondrial chromosome to exclude from GWA mapping.",
+                    "default": null
+                },
+                "legacy_assess": {
+                    "type": "boolean",
+                    "description": "Run the legacy R-based QTL interval and assessment chain in parallel with the DB path. Used for cross-validation.",
+                    "default": false
+                }
+            }
+        },
+        "generic_options": {
+            "title": "Generic options",
+            "type": "object",
+            "description": "Miscellaneous pipeline control options.",
+            "properties": {
+                "help": {
+                    "type": "boolean",
+                    "description": "Display usage information and exit.",
+                    "default": false
+                },
+                "debug": {
+                    "type": "boolean",
+                    "description": "Enable verbose debug logging.",
+                    "default": false
+                }
+            }
+        }
+    },
+    "allOf": [
+        { "$ref": "#/definitions/input_output_options" },
+        { "$ref": "#/definitions/simulation_parameters" },
+        { "$ref": "#/definitions/analysis_parameters" },
+        { "$ref": "#/definitions/generic_options" }
+    ]
+}

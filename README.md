@@ -17,11 +17,14 @@ Optional arguments (General):
     --effect          File               A CSV file where each line is an effect size range (e.g. 0.2-0.3) to test for simulations (Default: data/simulate_effect_sizes.csv)
     --qtlloc          File               A BED file with three columns: chromosome name (numeric 1-6), start postion, end postion. The genomic range specified is where markers will be pulled from to simulate QTL (Default: null [which defaults to using the whole genome to randomly simulate a QTL])
     --sthresh         String             Significance threshold for QTL - Options: BF - for bonferroni correction, EIGEN - for SNV eigen value correction, or another number e.g. 4
+    --alpha           Decimal            Significance level for Bonferroni and EIGEN threshold calculation (Default: 0.05)
+    --legacy_assess   Boolean            Run legacy R-based QTL detection chain alongside the DB path for cross-validation (Default: false)
     --group_qtl       Integer            If two QTL are less than this distance from each other, combine the QTL into one, (DEFAULT = 1000)
     --ci_size         Integer            Number of SNVs to the left and right of the peak marker used to define the QTL confidence interval, (DEFAULT = 150)
     --sparse_cut      Decimal            Any off-diagonal value in the genetic relatedness matrix greater than this is set to 0 (Default: 0.05)
     --simulate_qtlloc Boolean            Whether to simulate QTLs in specific genomic regions (Default: false)
-    -output-dir       String             Name of folder that will contain the results (Default: Simulations_{date})
+    --output_dir      String             Output directory name (Default: Analysis_Results-{date}).
+                                         Also settable via Nextflow's native -output-dir flag.
 
 ## Strainfile Format
 
@@ -274,4 +277,27 @@ nextflow run main.nf -profile test,rockfish
 
 ```bash
 nextflow run main.nf -profile test,rockfish --legacy_assess
+```
+
+### 5. Customizing Rockfish Paths
+
+`conf/rockfish.config` ships with defaults for the `eande106` account. Override these
+for your own account without editing the config file by passing parameters on the command line:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--slurm_account` | `eande106` | SLURM account name used in the `-A` cluster option |
+| `--scratch_dir` | `/scratch4/eande106` | Nextflow work directory on the scratch filesystem |
+| `--baseDir` | `/vast/eande106` | Base directory for data and Singularity cache |
+| `--dataDir` | `/vast/eande106/data` | Data directory |
+| `--softwareDir` | `/data/eande106/software` | Software directory |
+
+**Example** — run as a different account:
+
+```bash
+nextflow run main.nf \
+    -profile test,rockfish \
+    --slurm_account myaccount \
+    --scratch_dir /scratch4/myaccount \
+    --baseDir /vast/myaccount
 ```
