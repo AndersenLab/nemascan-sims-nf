@@ -10,6 +10,7 @@ process DB_MIGRATION_WRITE_TRAIT_DATA {
 
     output:
     val true, emit: done
+    path "versions.yml", emit: versions
 
     script:
     """
@@ -17,10 +18,20 @@ process DB_MIGRATION_WRITE_TRAIT_DATA {
     write_trait_data.R --group ${group} --maf ${maf} --nqtl ${nqtl} \
         --effect ${effect} --rep ${rep} --h2 ${h2} \
         --pheno_file ${pheno_file} --par_file ${par_file} --base_dir ${base_dir}
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        R: \$( Rscript --version |& cut -f 4 )
+    END_VERSIONS
     """
 
     stub:
     """
     echo "STUB: write_trait_data ${group}_${nqtl}_${rep}_${h2}"
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        R: stub
+    END_VERSIONS
     """
 }
