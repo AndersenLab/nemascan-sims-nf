@@ -67,6 +67,23 @@ mv causal_vars.txt causal.variants.sim.${nqtl}.${rep}.txt
 | `simulate_effect_gamma()` | Gamma(shape=0.4, scale=1.66) distribution with random sign (+1 or -1); uses seeded Generator |
 | `simulate_effect_uniform()` | Uniform(low, high) distribution with random sign (+1 or -1); uses seeded Generator |
 
+::: {.callout-note}
+## Python dependency versions
+
+`create_causal_vars.py` depends on `numpy` and `pandas`. The exact versions
+validated with this pipeline are recorded in `requirements.txt` at the
+repository root (`numpy==2.2.3`, `pandas==2.2.3`) and correspond to the
+packages present in the `andersenlab/numpy:20250506` container. These versions
+are also captured at runtime in each task's `versions.yml` output, so pipeline
+execution logs carry full library-version provenance.
+
+For local development outside the container:
+
+```bash
+pip install -r requirements.txt
+```
+:::
+
 ### Effect type selection
 
 The third command-line argument determines which effect size distribution is
