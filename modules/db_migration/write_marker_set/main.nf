@@ -10,6 +10,7 @@ process DB_MIGRATION_WRITE_MARKER_SET {
 
     output:
     val true, emit: done
+    path "versions.yml", emit: versions
 
     script:
     """
@@ -18,6 +19,12 @@ process DB_MIGRATION_WRITE_MARKER_SET {
         --base_dir ${base_dir} \
         --species ${species} \
         --vcf_release_id ${vcf_release_id} \
+        --ms_ld ${ms_ld}
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        R: \$( Rscript --version |& cut -f 4 )
+    END_VERSIONS
         --ms_ld ${ms_ld} \
         --strainfile_path "${strainfile_path}" \
         --strains "${strains}"
@@ -26,5 +33,10 @@ process DB_MIGRATION_WRITE_MARKER_SET {
     stub:
     """
     echo "STUB: write_marker_set ${group}_${maf} species=${species} vcf_release_id=${vcf_release_id} ms_ld=${ms_ld}"
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        R: stub
+    END_VERSIONS
     """
 }
