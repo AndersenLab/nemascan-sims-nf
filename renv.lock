@@ -1,0 +1,24 @@
+{
+  "R": {
+    "Version": "4.4.0",
+    "Repositories": [
+      {
+        "Name": "CRAN",
+        "URL": "https://cloud.r-project.org"
+      },
+      {
+        "Name": "Bioconductor",
+        "URL": "https://bioconductor.org/packages/release/bioc"
+      }
+    ]
+  },
+  "Packages": {
+    "_PLACEHOLDER_": {
+      "Package": "_PLACEHOLDER_",
+      "Version": "0.0.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "00000000000000000000000000000000"
+    }
+  }
+}

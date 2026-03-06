@@ -80,6 +80,7 @@ write_trait_metadata(
   marker_set_id     = ms_id$hash,
   nqtl       = opt$nqtl,
   rep        = opt$rep,
+  sim_seed   = as.integer(opt$rep),
   h2         = opt$h2,
   maf        = opt$maf,
   effect     = opt$effect,
