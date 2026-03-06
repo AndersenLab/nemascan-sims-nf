@@ -79,7 +79,9 @@ test_that("marker set creation from bim file works end-to-end", {
   marker_df <- read_bim_file(fixture_path("test.bim"))
   write_marker_set(marker_df, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir,
                    overwrite = TRUE,
-                   n_independent_tests = 1234)
+                   n_independent_tests = 1234,
+                   strainfile_hash = paste(rep("a", 64), collapse = ""),
+                   strain_list = "strain1,strain2")
 
   # Verify marker set
   ms <- read_marker_set("test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
@@ -135,12 +137,16 @@ test_that("overwrite = TRUE replaces existing marker set on retry", {
   marker_df <- read_bim_file(fixture_path("test.bim"))
 
   write_marker_set(marker_df, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir,
-                   overwrite = TRUE, n_independent_tests = 1234)
+                   overwrite = TRUE, n_independent_tests = 1234,
+                   strainfile_hash = paste(rep("a", 64), collapse = ""),
+                   strain_list = "strain1,strain2")
   meta1 <- read_marker_set_metadata("test_pop", 0.05, db_dir)
   expect_equal(meta1$n_independent_tests, 1234)
 
   write_marker_set(marker_df, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir,
-                   overwrite = TRUE, n_independent_tests = 5678)
+                   overwrite = TRUE, n_independent_tests = 5678,
+                   strainfile_hash = paste(rep("a", 64), collapse = ""),
+                   strain_list = "strain1,strain2")
   meta2 <- read_marker_set_metadata("test_pop", 0.05, db_dir)
   expect_equal(meta2$n_independent_tests, 5678)
 })

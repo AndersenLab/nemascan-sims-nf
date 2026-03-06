@@ -89,6 +89,7 @@ Database migration modules (`modules/db_migration/`) use a two-layer pattern:
 1. Each module's `main.nf` sets `R_SOURCE_DIR="${projectDir}/R"` as an environment variable
 2. The executable R script lives in `resources/usr/bin/` and is auto-added to `$PATH` via `moduleBinaries = true`
 3. The resource script uses `R_SOURCE_DIR` to source only the R library files it needs (not all of them)
+4. All 7 `db_migration` processes emit `path "versions.yml", emit: versions` (R version captured via `Rscript --version`), consistent with the `modules/r/` module pattern. Stub blocks use `R: stub`. Do NOT add `when:` or `task.ext.args` to db_migration modules — they are intentionally absent; these modules use direct Nextflow parameter passing, not the `task.ext` config pattern.
 
 Legacy modules in `modules/r/` use `bin/` scripts instead, which are available to all processes.
 
@@ -132,6 +133,9 @@ Primary output is `db_simulation_assessment_results.tsv`. The Parquet database l
 | `--ci_size` | SNVs flanking peak for CI definition | 150 |
 | `--alpha` | Significance level for threshold calculation | 0.05 |
 | `--db_output` | Parquet DB directory (absolute path) | `{outputDir}/db` |
+| `--output_dir` | Explicit output directory; overrides date-based default | null (`Analysis_Results-{date}`) |
+| `--slurm_account` | SLURM account for Rockfish (`conf/rockfish.config`) | `eande106` |
+| `--scratch_dir` | Nextflow work dir on scratch for Rockfish (`conf/rockfish.config`) | `/scratch4/eande106` |
 
 ## Documentation Site
 
@@ -139,6 +143,7 @@ The `docs/` directory is a Quarto website published to GitHub Pages. One `.qmd` 
 
 ## Development Notes
 
+- `nextflow_schema.json` at the project root is a hand-maintained JSON Schema (draft-07) covering all `params.*` in `nextflow.config`. Update it manually when parameters are added, removed, or have their types/defaults changed. Rockfish infrastructure params (`slurm_account`, `scratch_dir`, `baseDir`, etc. in `conf/rockfish.config`) are intentionally excluded from the schema.
 - The notes vault at `nemascan-sims-nf-notes/` (Obsidian, may be added as working directory) contains development plans, testing records, and technical notes. Its own `CLAUDE.md` describes navigation.
 - Test VCF generation: `bash data/test/generate_test_vcf.sh /path/to/source.vcf.gz`
 - GWA output formats differ by mode: `.fastGWA` (inbred) vs `.mlma` (loco) — `read_raw_gwa_file()` in `R/io.R` auto-detects format and normalizes column names.
@@ -155,7 +160,11 @@ The `docs/` directory is a Quarto website published to GitHub Pages. One `.qmd` 
 - **Phase 5 — Narrow glob:** `R/queries.R` uses `_markers\\.parquet$` (not `\\.parquet$`) to exclude genotype files from the `markers` DuckDB view. The genotype files in `marker_sets/` have a different schema and must not be union-read with marker files.
 - **Phase 5 — `.merge()` ordering:** `DB_MIGRATION_WRITE_TRAIT_DATA` uses `.merge()` to align `GCTA_SIMULATE_PHENOTYPES` output channels. `.merge()` aligns by emission order, not key — do not insert any reordering operator (`.filter()`, `.map()`, `.branch()`) between `GCTA_SIMULATE_PHENOTYPES.out.*` and the `.merge()` chain.
 - **DB write barrier pattern:** `DB_MIGRATION_WRITE_MARKER_SET` emits `val true` on `done`; downstream `WRITE_GWA_TO_DB` gates on `.collect()` of all marker set completions combined with the GWA channel — ensures marker schemas exist before mappings are written.
+- **Strainfile provenance:** `marker_set_metadata.parquet` stores `strainfile_hash` (SHA-256 of the full strainfile at pipeline submission, same for all groups) and `strain_list` (comma-separated strain names for the specific population group). Both columns are NA-safe for backward compatibility with pre-existing databases.
 - **Phase 5 — Pre-upscaled phenotype:** The phenotype stored in `phenotypes/` is the GCTA `.phen` output *before* `check_vp.py`. It may differ from the GWAS input by 1000× if upscaling was applied. This is intentional — the ANOVA SS ratio for offline variance-explained is scale-invariant.
 - **GCTA thread pinning:** All GCTA steps except `--mlma-loco` use `--thread-num 1` to ensure deterministic floating-point results across runs. Multi-threaded BLAS introduces non-deterministic reduction order. `--mlma-loco` remains configurable via `GWA_THREADS=${task.cpus}` in `perform_gwa/main.nf`. The `gcta_make_grm` Rockfish label uses `cpus = 1`; `gcta_perform_gwa` uses `cpus = 4` to support loco parallelism.
+- **RNG seeding:** `bin/create_causal_vars.py` seeds `np.random.default_rng(rep)` at startup; `bin/Create_Causal_QTLs.R` calls `set.seed(as.integer(rep))`. Both receive `rep` as a CLI argument (4th arg for Python, last arg for R). The seed is stored as `sim_seed` in `trait_metadata_schema()` and written by `write_trait_metadata()` via `write_trait_data.R`.
+- **GCTA replicate RNG strategy:** `GCTA_SIMULATE_PHENOTYPES` uses `--simu-rep ${rep}` (not `--simu-rep 1`). Because GCTA has no `--seed` flag, parallel tasks starting near-simultaneously can draw the same random state. `--simu-rep ${rep}` advances the RNG by N draws so that replicate N produces a distinct phenotype draw. An awk post-processing step immediately extracts the N-th phenotype column (`col = rep + 2`) and overwrites the `.phen` file in place, keeping it in standard 3-column format (`FID IID value`) for all downstream consumers. The `.par` file is unaffected (always single-row-per-QTL regardless of N reps).
 - **Python dependencies:** `requirements.txt` at the repo root pins `numpy==2.2.3` and `pandas==2.2.3` to the versions in `andersenlab/numpy:20250506`. It is a documentation/local-dev reference — no `pip install` step is added to Nextflow scripts; the container is the sealed execution environment. When the container image is updated, `requirements.txt` must be updated in the same PR as `conf/docker.config`. `check_vp.py` uses only stdlib and has no entry in `requirements.txt`.
 - cSpell in the IDE flags many domain-specific terms as unknown (e.g. `nextflow`, `bcftools`, `gcta`, `Rscript`, `testthat`). These are false positives, not real errors.
+- **R package lockfile:** `renv.lock` at the project root records the exact R package versions in the `r_packages:20250519` container. Regenerate with `bash scripts/generate_renv_lock.sh` (requires Docker) when the container is updated. The `migrate-sims:20260202` container does not yet have a lockfile (tracked as a follow-up).
