@@ -431,6 +431,7 @@ trait_id <- trait$hash   # 20-char hex string
 | `marker_set_id` | `utf8` | FK → marker set metadata (parent link) |
 | `nqtl` | `int32` | Number of simulated causal QTLs |
 | `rep` | `int32` | Simulation replicate number |
+| `sim_seed` | `int32` | Integer seed used for RNG initialization in causal variant and effect size simulation; equals `rep` for runs using the default seed strategy |
 | `h2` | `float64` | Simulated heritability |
 | `maf` | `float64` | MAF threshold |
 | `effect` | `utf8` | Effect size distribution (e.g. `"gamma"`) |

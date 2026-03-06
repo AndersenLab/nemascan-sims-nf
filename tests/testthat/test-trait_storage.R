@@ -77,6 +77,7 @@ test_that("write_trait_metadata / read_trait_metadata round-trip preserves all f
     marker_set_id     = ms_id$hash,
     nqtl       = 5L,
     rep        = 1L,
+    sim_seed   = 1L,
     h2         = 0.8,
     maf        = 0.05,
     effect     = "gamma",
@@ -91,6 +92,7 @@ test_that("write_trait_metadata / read_trait_metadata round-trip preserves all f
   expect_equal(result$marker_set_id, ms_id$hash)
   expect_equal(result$nqtl, 5L)
   expect_equal(result$rep, 1L)
+  expect_equal(result$sim_seed, 1L)
   expect_equal(result$h2, 0.8)
   expect_equal(result$maf, 0.05)
   expect_equal(result$effect, "gamma")
@@ -109,6 +111,7 @@ test_that("write_trait_metadata created_at is ISO 8601 format string", {
     marker_set_id     = ms_id$hash,
     nqtl       = 5L,
     rep        = 1L,
+    sim_seed   = 1L,
     h2         = 0.8,
     maf        = 0.05,
     effect     = "gamma",

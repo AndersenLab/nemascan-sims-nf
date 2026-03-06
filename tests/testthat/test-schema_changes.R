@@ -47,3 +47,14 @@ test_that("metadata_schema contains hash FK columns", {
   expect_true("hash_schema_version" %in% field_names)
 })
 
+test_that("trait_metadata_schema includes sim_seed field", {
+  s <- trait_metadata_schema()
+  expect_true("sim_seed" %in% names(s),
+              label = "sim_seed present in trait_metadata_schema")
+})
+
+test_that("trait_metadata_schema sim_seed is int32 type", {
+  s <- trait_metadata_schema()
+  expect_equal(s$GetFieldByName("sim_seed")$type, arrow::int32())
+})
+

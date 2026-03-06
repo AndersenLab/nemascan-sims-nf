@@ -54,7 +54,7 @@ providing a more realistic simulation of causal architecture.
 **Command:**
 
 ```bash
-python create_causal_vars.py CV_TO_SIMS.bim ${nqtl} ${effect}
+python create_causal_vars.py CV_TO_SIMS.bim ${nqtl} ${effect} ${rep}
 mv causal_vars.txt causal.variants.sim.${nqtl}.${rep}.txt
 ```
 
@@ -63,9 +63,9 @@ mv causal_vars.txt causal.variants.sim.${nqtl}.${rep}.txt
 | Function | Description |
 |----------|-------------|
 | `load_strain_set_variants()` | Reads marker IDs from column 2 of the `.bim` file |
-| `select_variants()` | Random sample of `nQTL` markers without replacement via `np.random.choice` |
-| `simulate_effect_gamma()` | Gamma(shape=0.4, scale=1.66) distribution with random sign (+1 or -1) |
-| `simulate_effect_uniform()` | Uniform(low, high) distribution with random sign (+1 or -1) |
+| `select_variants()` | Random sample of `nQTL` markers without replacement via `rng.choice` (seeded Generator) |
+| `simulate_effect_gamma()` | Gamma(shape=0.4, scale=1.66) distribution with random sign (+1 or -1); uses seeded Generator |
+| `simulate_effect_uniform()` | Uniform(low, high) distribution with random sign (+1 or -1); uses seeded Generator |
 
 ### Effect type selection
 
@@ -84,8 +84,16 @@ used:
 | Input | `CV_TO_SIMS.bim` | PLINK marker information file from the CV pool (`PLINK_RECODE_CV_VCF`, Phase 1); variant IDs in column 2 |
 | Input | `nqtl` (val) | Number of causal variants to select |
 | Input | `effect` (val) | Effect size specification: `gamma` or `low-high` range |
-| Input | `rep` (val) | Replicate number (used only in output filename) |
+| Input | `rep` (val) | Replicate number; used as RNG seed and in output filename |
 | Output | `causal.variants.sim.${nqtl}.${rep}.txt` | Space-separated file: marker ID (col 1) and effect size (col 2), one row per causal variant |
+
+::: {.callout-note}
+## Reproducibility: RNG seeding
+
+`create_causal_vars.py` seeds NumPy's `np.random.default_rng(rep)` at startup, so identical
+`rep` values always produce the same causal variant selection and effect sizes. The seed value
+(`rep`) is stored as `sim_seed` in the trait metadata Parquet file for post-hoc verification.
+:::
 
 ### Example output
 
