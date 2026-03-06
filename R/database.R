@@ -315,6 +315,8 @@ marker_set_metadata_schema <- function() {
     n_markers              = arrow::int32(),
     n_independent_tests    = arrow::float64(),
     eigen_source_file      = arrow::utf8(),
+    strainfile_hash        = arrow::utf8(),
+    strain_list            = arrow::utf8(),
     created_at             = arrow::timestamp("us")
   )
 }
@@ -347,6 +349,7 @@ trait_metadata_schema <- function() {
     marker_set_id     = arrow::utf8(),
     nqtl              = arrow::int32(),
     rep               = arrow::int32(),
+    sim_seed          = arrow::int32(),
     h2                = arrow::float64(),
     maf               = arrow::float64(),
     effect            = arrow::utf8(),
@@ -559,7 +562,9 @@ marker_set_exists <- function(population, maf, species, vcf_release_id, ms_ld, b
 write_marker_set <- function(df, population, maf, species, vcf_release_id, ms_ld,
                              base_dir = "data/db",
                              overwrite = TRUE, n_independent_tests = NA_real_,
-                             eigen_source_file = NA_character_) {
+                             eigen_source_file = NA_character_,
+                             strainfile_hash,
+                             strain_list) {
   init_database(base_dir)
   config <- .make_db_config(base_dir)
 
@@ -602,6 +607,8 @@ write_marker_set <- function(df, population, maf, species, vcf_release_id, ms_ld
     marker_set_hash_string = ms_id$hash_string,  # stored once in metadata only
     n_independent_tests    = n_independent_tests,
     eigen_source_file      = eigen_source_file,
+    strainfile_hash        = strainfile_hash,
+    strain_list            = strain_list,
     base_dir               = base_dir
   )
 
@@ -790,6 +797,7 @@ get_trait_metadata_path <- function(trait_id, base_dir) {
 #' @param marker_set_id Parent marker set hash from generate_marker_set_id()$hash
 #' @param nqtl Number of QTLs
 #' @param rep Replicate number
+#' @param sim_seed Integer seed used for the stochastic simulation
 #' @param h2 Heritability
 #' @param maf MAF threshold
 #' @param effect Effect distribution
@@ -797,7 +805,7 @@ get_trait_metadata_path <- function(trait_id, base_dir) {
 #' @param base_dir Database base directory
 #' @param overwrite Overwrite existing file (default TRUE for retry safety)
 write_trait_metadata <- function(trait_id, trait_hash_string, marker_set_id,
-                                 nqtl, rep, h2, maf, effect,
+                                 nqtl, rep, sim_seed, h2, maf, effect,
                                  population, base_dir, overwrite = TRUE) {
   out_path <- get_trait_metadata_path(trait_id, base_dir)
   if (file.exists(out_path) && !overwrite) {
@@ -809,6 +817,7 @@ write_trait_metadata <- function(trait_id, trait_hash_string, marker_set_id,
     marker_set_id     = as.character(marker_set_id),
     nqtl       = as.integer(nqtl),
     rep        = as.integer(rep),
+    sim_seed   = as.integer(sim_seed),
     h2         = as.numeric(h2),
     maf        = as.numeric(maf),
     effect     = as.character(effect),
@@ -1021,6 +1030,8 @@ write_marker_set_metadata <- function(population, maf, species, vcf_release_id, 
                                        hash_schema_version = "v=2",
                                        n_independent_tests = NA_real_,
                                        eigen_source_file = NA_character_,
+                                       strainfile_hash,
+                                       strain_list,
                                        base_dir = "data/db") {
   config <- .make_db_config(base_dir)
   metadata_path <- get_marker_set_metadata_path(base_dir)
@@ -1037,6 +1048,8 @@ write_marker_set_metadata <- function(population, maf, species, vcf_release_id, 
     n_markers              = as.integer(n_markers),
     n_independent_tests    = as.numeric(n_independent_tests),
     eigen_source_file      = as.character(eigen_source_file),
+    strainfile_hash        = as.character(strainfile_hash),
+    strain_list            = as.character(strain_list),
     created_at             = Sys.time(),
     stringsAsFactors       = FALSE
   )

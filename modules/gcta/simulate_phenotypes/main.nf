@@ -30,10 +30,16 @@ process GCTA_SIMULATE_PHENOTYPES {
          --simu-qt \\
          --simu-causal-loci ${causal_variants} \\
          --simu-hsq ${h2} \\
-         --simu-rep 1 \\
+         --simu-rep ${rep} \\
          --autosome-num 6 \\
          --thread-num 1 \\
          --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims  # pinned: BLAS reduction order must be deterministic
+
+    awk -v col=\$((${rep} + 2)) '{print \$1, \$2, \$col}' \\
+        ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen \\
+        > ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen.tmp && \\
+        mv ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen.tmp \\
+           ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
