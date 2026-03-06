@@ -22,6 +22,61 @@ not use version tags; entries are organized by development phase and date.
   forward when the DB migration layer was added. All 7 processes now capture the R version
   and wire their `versions` output channel into `ch_versions` in `main.nf`.
 
+### Fixed
+<<<<<<< HEAD
+- **Pipeline configuration gaps** (`fix/pipeline_configuration_gaps`, 2026-03-05):
+  - Added `--output_dir` parameter for stable, deterministic output directory naming.
+    The date-based default (`Analysis_Results-{date}`) is preserved when `--output_dir`
+    is not specified.
+  - Added `nextflow_schema.json` — machine-readable parameter schema covering all pipeline
+    parameters, compatible with nf-core tooling and IDE parameter validation.
+  - Documented previously undocumented parameters `--alpha` and `--legacy_assess` in the
+    README parameters table and `--help` output.
+  - Parameterized hardcoded Rockfish cluster paths in `conf/rockfish.config`: `--slurm_account`
+    (replaces hardcoded `eande106` in `clusterOptions`) and `--scratch_dir` (replaces hardcoded
+    `/scratch4/eande106` in `workflow.workDir`). All Rockfish infrastructure params are now
+    overridable without editing the config file.
+=======
+- **Stochastic script reproducibility** (`fix/rand-seed-stochastic-scripts`, 2026-03-05): causal variant
+  selection and effect size simulation are now fully reproducible across pipeline runs:
+  - `bin/create_causal_vars.py` seeds `np.random.default_rng(rep)` at startup; all stochastic calls
+    (`rng.choice`, `rng.gamma`, `rng.uniform`) use the seeded Generator. Previously, `np.random.default_rng()`
+    was called without a seed, making results non-deterministic.
+  - `bin/Create_Causal_QTLs.R` calls `set.seed(as.integer(rep))` before any stochastic draws (`rgamma`,
+    `sample`, `runif`).
+  - Both Nextflow modules (`PYTHON_SIMULATE_EFFECTS_GLOBAL`, `R_SIMULATE_EFFECTS_GLOBAL`,
+    `R_SIMULATE_EFFECTS_LOCAL`) now pass `${rep}` as the seed argument to the scripts.
+  - `trait_metadata_schema()` gains a new `sim_seed` (int32) field; `write_trait_metadata()` stores the
+    seed used for each simulated trait, enabling exact post-hoc reproduction without the Nextflow cache.
+>>>>>>> origin/reproducibility-updates
+
+### Fixed
+- **Pipeline configuration gaps** (`fix/pipeline_configuration_gaps`, 2026-03-05):
+  - Added `--output_dir` parameter for stable, deterministic output directory naming.
+    The date-based default (`Analysis_Results-{date}`) is preserved when `--output_dir`
+    is not specified.
+  - Added `nextflow_schema.json` — machine-readable parameter schema covering all pipeline
+    parameters, compatible with nf-core tooling and IDE parameter validation.
+  - Documented previously undocumented parameters `--alpha` and `--legacy_assess` in the
+    README parameters table and `--help` output.
+  - Parameterized hardcoded Rockfish cluster paths in `conf/rockfish.config`: `--slurm_account`
+    (replaces hardcoded `eande106` in `clusterOptions`) and `--scratch_dir` (replaces hardcoded
+    `/scratch4/eande106` in `workflow.workDir`). All Rockfish infrastructure params are now
+    overridable without editing the config file.
+
+### Fixed
+- **Stochastic script reproducibility** (`fix/rand-seed-stochastic-scripts`, 2026-03-05): causal variant
+  selection and effect size simulation are now fully reproducible across pipeline runs:
+  - `bin/create_causal_vars.py` seeds `np.random.default_rng(rep)` at startup; all stochastic calls
+    (`rng.choice`, `rng.gamma`, `rng.uniform`) use the seeded Generator. Previously, `np.random.default_rng()`
+    was called without a seed, making results non-deterministic.
+  - `bin/Create_Causal_QTLs.R` calls `set.seed(as.integer(rep))` before any stochastic draws (`rgamma`,
+    `sample`, `runif`).
+  - Both Nextflow modules (`PYTHON_SIMULATE_EFFECTS_GLOBAL`, `R_SIMULATE_EFFECTS_GLOBAL`,
+    `R_SIMULATE_EFFECTS_LOCAL`) now pass `${rep}` as the seed argument to the scripts.
+  - `trait_metadata_schema()` gains a new `sim_seed` (int32) field; `write_trait_metadata()` stores the
+    seed used for each simulated trait, enabling exact post-hoc reproduction without the Nextflow cache.
+
 ### Added
 - **Non-marker causal variants** (`feature/add-nonmarker-cvs`, 2026-03-03): causal variants
   can now be drawn from a separately-configured variant pool rather than the marker SNP set.
@@ -48,6 +103,27 @@ not use version tags; entries are organized by development phase and date.
     `--ms_ld`.
   - `aggregate_metadata.R` fallback path updated to emit `NA` for the three new columns
     when no metadata sidecars exist.
+
+### Added
+- **R package lockfile** (`fix/r_package_lockfile`, 2026-03-05): `renv.lock`
+  committed at the project root records the exact versions of all R packages
+  installed in the `andersenlab/r_packages:20250519` container. Provides a
+  verifiable record of the software environment that produced simulation results
+  and enables local environment reproduction via `renv::restore()`.
+  `scripts/generate_renv_lock.sh` documents how to regenerate the lockfile when
+  the container changes.
+
+### Added
+- **Strainfile provenance in marker set metadata** (`fix/strain-file-not-hashed`, 2026-03-05):
+  `marker_set_metadata.parquet` now records two new columns for reproducibility auditing:
+  - `strainfile_hash` (`utf8`) — SHA-256 hex digest of the complete strainfile, computed
+    once at pipeline submission time (same value for all population groups in a run).
+  - `strain_list` (`utf8`) — Comma-separated list of strain names used for the specific
+    population group, derived from the strainfile at submission time.
+  - Both columns are optional/NA-safe: queries against databases produced before this
+    change return `NULL` without error.
+  - Enables post-hoc verification that a database was produced with a particular strain
+    set, and that the strainfile has not been modified between runs.
 
 ### Added
 - `mappings_metadata.parquet` sidecar file written to the database root by
