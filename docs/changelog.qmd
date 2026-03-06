@@ -14,6 +14,48 @@ not use version tags; entries are organized by development phase and date.
 ## [Unreleased] — March 2026
 
 ### Fixed
+<<<<<<< HEAD
+- **Pipeline configuration gaps** (`fix/pipeline_configuration_gaps`, 2026-03-05):
+  - Added `--output_dir` parameter for stable, deterministic output directory naming.
+    The date-based default (`Analysis_Results-{date}`) is preserved when `--output_dir`
+    is not specified.
+  - Added `nextflow_schema.json` — machine-readable parameter schema covering all pipeline
+    parameters, compatible with nf-core tooling and IDE parameter validation.
+  - Documented previously undocumented parameters `--alpha` and `--legacy_assess` in the
+    README parameters table and `--help` output.
+  - Parameterized hardcoded Rockfish cluster paths in `conf/rockfish.config`: `--slurm_account`
+    (replaces hardcoded `eande106` in `clusterOptions`) and `--scratch_dir` (replaces hardcoded
+    `/scratch4/eande106` in `workflow.workDir`). All Rockfish infrastructure params are now
+    overridable without editing the config file.
+=======
+- **Stochastic script reproducibility** (`fix/rand-seed-stochastic-scripts`, 2026-03-05): causal variant
+  selection and effect size simulation are now fully reproducible across pipeline runs:
+  - `bin/create_causal_vars.py` seeds `np.random.default_rng(rep)` at startup; all stochastic calls
+    (`rng.choice`, `rng.gamma`, `rng.uniform`) use the seeded Generator. Previously, `np.random.default_rng()`
+    was called without a seed, making results non-deterministic.
+  - `bin/Create_Causal_QTLs.R` calls `set.seed(as.integer(rep))` before any stochastic draws (`rgamma`,
+    `sample`, `runif`).
+  - Both Nextflow modules (`PYTHON_SIMULATE_EFFECTS_GLOBAL`, `R_SIMULATE_EFFECTS_GLOBAL`,
+    `R_SIMULATE_EFFECTS_LOCAL`) now pass `${rep}` as the seed argument to the scripts.
+  - `trait_metadata_schema()` gains a new `sim_seed` (int32) field; `write_trait_metadata()` stores the
+    seed used for each simulated trait, enabling exact post-hoc reproduction without the Nextflow cache.
+>>>>>>> origin/reproducibility-updates
+
+### Fixed
+- **Pipeline configuration gaps** (`fix/pipeline_configuration_gaps`, 2026-03-05):
+  - Added `--output_dir` parameter for stable, deterministic output directory naming.
+    The date-based default (`Analysis_Results-{date}`) is preserved when `--output_dir`
+    is not specified.
+  - Added `nextflow_schema.json` — machine-readable parameter schema covering all pipeline
+    parameters, compatible with nf-core tooling and IDE parameter validation.
+  - Documented previously undocumented parameters `--alpha` and `--legacy_assess` in the
+    README parameters table and `--help` output.
+  - Parameterized hardcoded Rockfish cluster paths in `conf/rockfish.config`: `--slurm_account`
+    (replaces hardcoded `eande106` in `clusterOptions`) and `--scratch_dir` (replaces hardcoded
+    `/scratch4/eande106` in `workflow.workDir`). All Rockfish infrastructure params are now
+    overridable without editing the config file.
+
+### Fixed
 - **Stochastic script reproducibility** (`fix/rand-seed-stochastic-scripts`, 2026-03-05): causal variant
   selection and effect size simulation are now fully reproducible across pipeline runs:
   - `bin/create_causal_vars.py` seeds `np.random.default_rng(rep)` at startup; all stochastic calls

@@ -139,12 +139,14 @@ workflow {
         log.info "--effect          File               A CSV file where each line is an effect size range (e.g. 0.2-0.3) to test for simulations (Default: data/simulate_effect_sizes.csv)"
         log.info "--qtlloc          File               A BED file with three columns: chromosome name (numeric 1-6), start postion, end postion. The genomic range specified is where markers will be pulled from to simulate QTL (Default: null [which defaults to using the whole genome to randomly simulate a QTL])"
         log.info "--sthresh         String             Significance threshold for QTL - Options: BF - for bonferroni correction, EIGEN - for SNV eigen value correction, or another number e.g. 4"
+        log.info "--alpha           Decimal            Significance level for Bonferroni and EIGEN threshold calculation (Default: 0.05)"
         log.info "--group_qtl       Integer            If two QTL are less than this distance from each other, combine the QTL into one, (DEFAULT = 1000)"
         log.info "--ci_size         Integer            Number of SNVs to the left and right of the peak marker used to define the QTL confidence interval, (DEFAULT = 150)"
         log.info "--sparse_cut      Decimal            Any off-diagonal value in the genetic relatedness matrix greater than this is set to 0 (Default: 0.05)"
         log.info "--mito_name       Strain             Name of mitochondrial chromosome"
         log.info "--simulate_qtlloc Boolean            Whether to simulate QTLs in specific genomic regions (Default: false)"
-        log.info "-output-dir       String             Name of folder that will contain the results (Default: Analysis_Results_{date})"
+        log.info "--legacy_assess   Boolean            Run legacy R-based QTL detection in parallel with DB path for cross-validation (Default: false)"
+        log.info "--output_dir      String             Output directory name (Default: Analysis_Results-{date}). Also settable via Nextflow native -output-dir flag."
         log.info " "
 
 
