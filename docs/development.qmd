@@ -239,6 +239,56 @@ require `--legacy_assess` to have been passed when collecting test data (so
 that the legacy output files exist alongside the DB output).
 
 
+## R Package Lockfile
+
+`renv.lock` at the project root records the exact versions of all R packages
+installed in the `andersenlab/r_packages:20250519` container. This file is a
+reproducibility audit artifact — it lets you verify which package versions
+produced a given set of simulation results and reproduce the environment
+locally if needed.
+
+### What is covered
+
+The lockfile covers packages used by `R_.*` Nextflow processes (`bin/` scripts):
+
+| Script | Key packages |
+|--------|-------------|
+| `bin/Get_GenoMatrix_Eigen.R` | Rcpp, dplyr, tidyr, ggplot2, stringr, readr, glue, purrr, coop, RSpectra |
+| `bin/Create_Causal_QTLs.R` | dplyr, tidyr, ggplot2, stringr, readr, IRanges, fuzzyjoin, glue, purrr |
+| `bin/Get_GCTA_Intervals.R` | dplyr, tidyr, ggplot2, stringr, readr, glue, purrr, ggbeeswarm |
+| `bin/Assess_Sims.R` | dplyr, tidyr, data.table, GenomicRanges, purrr, glue |
+
+`DB_MIGRATION_.*` processes run in a separate container
+(`andersenlab/migrate-sims:20260202`) and are not covered by this lockfile.
+
+### Reproducing the environment locally
+
+```r
+# Install renv if not present
+install.packages("renv")
+
+# Restore the exact package versions recorded in renv.lock
+renv::restore(lockfile = "renv.lock")
+```
+
+### Regenerating the lockfile
+
+Regenerate `renv.lock` whenever the `r_packages` container is rebuilt:
+
+```bash
+# Local (Docker)
+bash scripts/generate_renv_lock.sh docker
+
+# HPC / Rockfish (Singularity)
+bash scripts/generate_renv_lock.sh singularity
+```
+
+The script requires an explicit runtime argument (`docker` or `singularity`).
+It pulls `andersenlab/r_packages:20250519`, runs `renv::snapshot(type = "all")`
+inside the container via a bind-mounted project root, and writes `renv.lock`.
+Commit the updated file.
+
+
 ## Pipeline Stub Runs
 
 Stub runs verify process wiring without executing real computations:
