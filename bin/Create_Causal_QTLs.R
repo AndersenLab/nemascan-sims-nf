@@ -18,6 +18,8 @@ library(purrr)
 # args <- c("TO_SIMS.bim", 100, "gamma", "test.bed")
 # args <- c("TO_SIMS.bim", 5, "0.2-0.3", "chr125.bed")
 args = commandArgs(trailingOnly=TRUE)
+seed <- as.integer(args[length(args)])
+set.seed(seed)
 
 variants <- read.table(args[1]) %>%
   dplyr::filter(V1 != "MtDNA") %>%
@@ -25,7 +27,7 @@ variants <- read.table(args[1]) %>%
   dplyr::select(chrom = V1, start = V4, end, marker = V2)
 
 # if a bed file argument exists subset the variant set to only contain variants within the specified ranges
-if(length(args) > 3){
+if(length(args) > 4){
   
   genomic_roi <- read.table(args[4]) %>%
     dplyr::rename(chrom = V1, start = V2, end = V3)

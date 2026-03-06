@@ -21,7 +21,7 @@ process R_SIMULATE_EFFECTS_GLOBAL {
     script:
     def args = task.ext.args ?: ''
     """
-    Rscript --vanilla ${create_causal_qtls} TO_SIMS.bim ${nqtl} ${effect}
+    Rscript --vanilla ${create_causal_qtls} TO_SIMS.bim ${nqtl} ${effect} ${rep}
     mv causal.variants.sim.${nqtl}.txt causal.variants.sim.${nqtl}.${rep}.txt
     
     cat <<-END_VERSIONS > versions.yml
