@@ -5,7 +5,7 @@ process DB_MIGRATION_WRITE_MARKER_SET {
 
     input:
     tuple val(group), val(maf), path(bim_file), path(n_indep_tests),
-          val(species), val(vcf_release_id), val(ms_ld)
+          val(species), val(vcf_release_id), val(ms_ld), val(strains), val(strainfile_path)
     val base_dir
 
     output:
@@ -18,7 +18,9 @@ process DB_MIGRATION_WRITE_MARKER_SET {
         --base_dir ${base_dir} \
         --species ${species} \
         --vcf_release_id ${vcf_release_id} \
-        --ms_ld ${ms_ld}
+        --ms_ld ${ms_ld} \
+        --strainfile_path "${strainfile_path}" \
+        --strains "${strains}"
     """
 
     stub:

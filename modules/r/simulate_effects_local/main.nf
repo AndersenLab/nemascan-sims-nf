@@ -22,7 +22,7 @@ process R_SIMULATE_EFFECTS_LOCAL {
     script:
     def args = task.ext.args ?: ''
     """
-    Rscript --vanilla ${create_causal_qtls} TO_SIMS.bim ${nqtl} ${effect} ${qtl_loc_bed}
+    Rscript --vanilla ${create_causal_qtls} TO_SIMS.bim ${nqtl} ${effect} ${qtl_loc_bed} ${rep}
     mv causal.variants.sim.${nqtl}.txt causal.variants.sim.${nqtl}.${rep}.txt
     
     cat <<-END_VERSIONS > versions.yml

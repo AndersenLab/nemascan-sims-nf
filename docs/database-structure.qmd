@@ -41,7 +41,7 @@ time via DuckDB. The database contains five data domains:
  │   └── phenotypes/
  │       └── {trait_id}_phenotype.parquet        ◄── pre-upscaled phenotype values
  ├── mappings_metadata.parquet                   ◄── mapping summary table
- └── marker_set_metadata.parquet                 ◄── EIGEN + marker counts
+ └── marker_set_metadata.parquet                 ◄── EIGEN + marker counts + strainfile provenance
 ```
 
 All Parquet files use Snappy compression. Schemas are defined as Arrow schema
@@ -106,6 +106,8 @@ Within a marker set, `marker` (equivalently `CHROM` + `POS`) is unique.
 | `n_markers` | `int32` | Total number of markers |
 | `n_independent_tests` | `float64` | Independent tests from EIGEN decomposition |
 | `eigen_source_file` | `utf8` | EIGEN source filename |
+| `strainfile_hash` | `utf8` | SHA-256 hex of the complete strainfile at submission time |
+| `strain_list` | `utf8` | Comma-separated strain names used for this population group |
 | `created_at` | `timestamp[us]` | Write timestamp |
 
 **Key:** `marker_set_id` uniquely identifies a record.
@@ -431,6 +433,7 @@ trait_id <- trait$hash   # 20-char hex string
 | `marker_set_id` | `utf8` | FK → marker set metadata (parent link) |
 | `nqtl` | `int32` | Number of simulated causal QTLs |
 | `rep` | `int32` | Simulation replicate number |
+| `sim_seed` | `int32` | Integer seed used for RNG initialization in causal variant and effect size simulation; equals `rep` for runs using the default seed strategy |
 | `h2` | `float64` | Simulated heritability |
 | `maf` | `float64` | MAF threshold |
 | `effect` | `utf8` | Effect size distribution (e.g. `"gamma"`) |
