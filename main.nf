@@ -139,12 +139,14 @@ workflow {
         log.info "--effect          File               A CSV file where each line is an effect size range (e.g. 0.2-0.3) to test for simulations (Default: data/simulate_effect_sizes.csv)"
         log.info "--qtlloc          File               A BED file with three columns: chromosome name (numeric 1-6), start postion, end postion. The genomic range specified is where markers will be pulled from to simulate QTL (Default: null [which defaults to using the whole genome to randomly simulate a QTL])"
         log.info "--sthresh         String             Significance threshold for QTL - Options: BF - for bonferroni correction, EIGEN - for SNV eigen value correction, or another number e.g. 4"
+        log.info "--alpha           Decimal            Significance level for Bonferroni and EIGEN threshold calculation (Default: 0.05)"
         log.info "--group_qtl       Integer            If two QTL are less than this distance from each other, combine the QTL into one, (DEFAULT = 1000)"
         log.info "--ci_size         Integer            Number of SNVs to the left and right of the peak marker used to define the QTL confidence interval, (DEFAULT = 150)"
         log.info "--sparse_cut      Decimal            Any off-diagonal value in the genetic relatedness matrix greater than this is set to 0 (Default: 0.05)"
         log.info "--mito_name       Strain             Name of mitochondrial chromosome"
         log.info "--simulate_qtlloc Boolean            Whether to simulate QTLs in specific genomic regions (Default: false)"
-        log.info "-output-dir       String             Name of folder that will contain the results (Default: Analysis_Results_{date})"
+        log.info "--legacy_assess   Boolean            Run legacy R-based QTL detection in parallel with DB path for cross-validation (Default: false)"
+        log.info "--output_dir      String             Output directory name (Default: Analysis_Results-{date}). Also settable via Nextflow native -output-dir flag."
         log.info " "
 
 
@@ -208,7 +210,7 @@ workflow {
                          "the CV pool is a strict subset of the marker SNP set. " +
                          "This is likely unintentional."
             }
-            marker_set_params: [meta.id, ms_maf, species, extractVcfReleaseId(vcf), ms_ld]
+            marker_set_params: [meta.id, ms_maf, species, extractVcfReleaseId(vcf), ms_ld, strains, strainfile]
             vcf_per_group:     [meta, species, vcf, strains]
             ms_maf_vals:       [meta, ms_maf]
             ms_ld_vals:        [meta, ms_ld]
@@ -431,6 +433,7 @@ workflow {
         ch_trait.write_par,
         db_output_dir
     )
+    ch_versions = ch_versions.mix(DB_MIGRATION_WRITE_TRAIT_DATA.out.versions)
 
     // Update plink data by heritability
     PLINK_UPDATE_BY_H2(
@@ -517,14 +520,15 @@ workflow {
     // LOCAL_COMPILE_EIGENS.out.tests emits:
     //   tuple val(group), val(maf), path(n_indep_tests)
     // ch_marker_set_params emits:
-    //   [group_id, ms_maf, species, vcf_release_id, ms_ld]
+    //   [group_id, ms_maf, species, vcf_release_id, ms_ld, strains, strainfile_path]
     // Join by (group, maf) — 1:1 since all three channels emit once per key
+    // Result: tuple(group, maf, bim, n_indep_tests, species, vcf_release_id, ms_ld, strains, strainfile_path)
     ch_marker_set_inputs = ch_bim_for_marker
         .join(LOCAL_COMPILE_EIGENS.out.tests, by: [0, 1])
         .join(ch_marker_set_params_for_ms, by: [0, 1])
-    // Result: tuple(group, maf, bim, n_indep_tests, species, vcf_release_id, ms_ld)
 
     DB_MIGRATION_WRITE_MARKER_SET(ch_marker_set_inputs, db_output_dir)
+    ch_versions = ch_versions.mix(DB_MIGRATION_WRITE_MARKER_SET.out.versions)
 
     // WRITE_GENOTYPE_MATRIX — join(by:[0,1]) is 1:1 per group
     ch_gm_inputs = BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix
@@ -532,6 +536,7 @@ workflow {
     // Result: tuple(group, maf, genotype_matrix, species, vcf_release_id, ms_ld)
 
     DB_MIGRATION_WRITE_GENOTYPE_MATRIX(ch_gm_inputs, db_output_dir)
+    ch_versions = ch_versions.mix(DB_MIGRATION_WRITE_GENOTYPE_MATRIX.out.versions)
 
     // ── GWA DATABASE WRITES ──────────────────────────────────────────
     // Barrier: wait for ALL marker sets to complete before writing mappings.
@@ -592,6 +597,7 @@ workflow {
         GCTA_PERFORM_GWA.out.gwa,
         db_output_dir
     )
+    ch_versions = ch_versions.mix(DB_MIGRATION_WRITE_GWA_TO_DB.out.versions)
 
     // ── METADATA AGGREGATION ─────────────────────────────────────────
     // Runs after ALL WRITE_GWA_TO_DB processes complete.
@@ -600,6 +606,7 @@ workflow {
         DB_MIGRATION_WRITE_GWA_TO_DB.out.done.collect(),
         db_output_dir
     )
+    ch_versions = ch_versions.mix(DB_MIGRATION_AGGREGATE_METADATA.out.versions)
 
     // ── DB-PATH QTL ANALYSIS (default) ─────────────────────────────────
     // Queries the populated database, detects QTL intervals with flexible
@@ -634,6 +641,7 @@ workflow {
         params.group_qtl,
         params.alpha
     )
+    ch_versions = ch_versions.mix(DB_MIGRATION_ANALYZE_QTL.out.versions)
 
     // Step 2: Assess Sims (consumes ANALYZE_QTL outputs — correctly paired via pass-through)
     DB_MIGRATION_ASSESS_SIMS(
@@ -645,6 +653,7 @@ workflow {
         params.group_qtl,
         params.alpha
     )
+    ch_versions = ch_versions.mix(DB_MIGRATION_ASSESS_SIMS.out.versions)
 
     ch_db_assessment_pub = DB_MIGRATION_ASSESS_SIMS.out.assessment.collectFile(
         name: "db_simulation_assessment_results.tsv", sort: false

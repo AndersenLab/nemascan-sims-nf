@@ -15,6 +15,7 @@ process DB_MIGRATION_ASSESS_SIMS {
     output:
     path "*_db_assessment.tsv", emit: assessment
     val true, emit: done
+    path "versions.yml", emit: versions
 
     script:
     """
@@ -26,10 +27,20 @@ process DB_MIGRATION_ASSESS_SIMS {
         --qtl_regions ${qtl_regions} \
         --base_dir ${base_dir} --ci_size ${ci_size} --snp_grouping ${snp_grouping} \
         --alpha ${alpha}
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        R: \$( Rscript --version |& cut -f 4 )
+    END_VERSIONS
     """
 
     stub:
     """
     touch "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_${mode}_${type}_${threshold}_db_assessment.tsv"
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        R: stub
+    END_VERSIONS
     """
 }
