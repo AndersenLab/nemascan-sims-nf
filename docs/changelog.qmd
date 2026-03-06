@@ -54,6 +54,15 @@ not use version tags; entries are organized by development phase and date.
     when no metadata sidecars exist.
 
 ### Added
+- **R package lockfile** (`fix/r_package_lockfile`, 2026-03-05): `renv.lock`
+  committed at the project root records the exact versions of all R packages
+  installed in the `andersenlab/r_packages:20250519` container. Provides a
+  verifiable record of the software environment that produced simulation results
+  and enables local environment reproduction via `renv::restore()`.
+  `scripts/generate_renv_lock.sh` documents how to regenerate the lockfile when
+  the container changes.
+
+### Added
 - **Strainfile provenance in marker set metadata** (`fix/strain-file-not-hashed`, 2026-03-05):
   `marker_set_metadata.parquet` now records two new columns for reproducibility auditing:
   - `strainfile_hash` (`utf8`) — SHA-256 hex digest of the complete strainfile, computed
