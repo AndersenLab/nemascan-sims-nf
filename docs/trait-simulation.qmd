@@ -127,7 +127,7 @@ gcta64 --bfile CV_TO_SIMS \
      --simu-qt \
      --simu-causal-loci ${causal_variants} \
      --simu-hsq ${h2} \
-     --simu-rep 1 \
+     --simu-rep ${rep} \
      --autosome-num 6 \
      --thread-num 1 \
      --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims
@@ -138,9 +138,45 @@ gcta64 --bfile CV_TO_SIMS \
 | `--simu-qt` | Simulate quantitative traits |
 | `--simu-causal-loci` | Causal variants file from step 1 (marker IDs and effect sizes) |
 | `--simu-hsq` | Target heritability (h^2^); from the `--h2` pipeline parameter, crossed in via `each h2` |
-| `--simu-rep 1` | Single replicate per GCTA call (pipeline-level `--reps` parameter controls repetition via Nextflow `each`) |
+| `--simu-rep ${rep}` | Number of phenotype replicates GCTA generates in a single call; used as an RNG-advancement workaround — see note below |
 | `--autosome-num 6` | *C. elegans* has 6 chromosomes (5 autosomes + X) |
 | `--thread-num 1` | Pinned to 1 thread for deterministic floating-point results; multi-threaded BLAS introduces non-deterministic reduction order |
+
+::: {.callout-note}
+## Replicate RNG strategy: `--simu-rep ${rep}` with awk trimming
+
+GCTA has no `--seed` flag. When pipeline replicates run in parallel (as is typical
+on an HPC cluster), tasks starting near-simultaneously can receive the same
+time-based seed and therefore produce identical phenotype draws — defeating the
+purpose of replication.
+
+**Workaround:** Pass `--simu-rep ${rep}` instead of `--simu-rep 1`. With
+`--simu-rep N`, GCTA generates N independent phenotype columns in the output
+`.phen` file (columns: `FID IID pheno1 pheno2 ... phenoN`). Because each
+additional column consumes more of GCTA's internal RNG, replicate N draws from
+a different position in the random sequence even if two tasks share the same
+initial seed.
+
+**In-process trimming:** Immediately after the GCTA call, an awk step extracts
+only the N-th phenotype column and overwrites the `.phen` file in place:
+
+```bash
+awk -v col=$((${rep} + 2)) '{print $1, $2, $col}' sims.phen > sims.phen.tmp
+mv sims.phen.tmp sims.phen
+```
+
+The column index is `rep + 2` because column 1 is FID, column 2 is IID, and
+the phenotype columns begin at column 3. This trims the file back to the
+standard 3-column format (`FID IID value`) before it is emitted, so no
+downstream consumers require any changes.
+
+**The `.par` file is unaffected** — GCTA always outputs one row per causal
+variant regardless of `--simu-rep N`.
+
+**Edge case `rep=1`:** `col = 1 + 2 = 3`. The awk step extracts the only
+column that exists — a no-op that preserves identical behaviour to the previous
+`--simu-rep 1` setting.
+:::
 
 ### Inputs / Outputs
 
