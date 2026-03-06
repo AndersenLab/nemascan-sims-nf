@@ -86,7 +86,7 @@ test_that("marker_set_metadata.parquet has required columns and valid data", {
   # Required columns
   expected_cols <- c("marker_set_id", "marker_set_hash_string", "hash_schema_version",
                      "population", "maf", "n_markers", "n_independent_tests",
-                     "eigen_source_file", "created_at")
+                     "eigen_source_file", "strainfile_hash", "strain_list", "created_at")
   expect_true(all(expected_cols %in% names(ms_meta)),
               label = paste("marker_set_metadata columns:",
                             paste(setdiff(expected_cols, names(ms_meta)), collapse = ", ")))
@@ -101,6 +101,28 @@ test_that("marker_set_metadata.parquet has required columns and valid data", {
   # n_independent_tests should be positive (not NA for inline path with EIGEN)
   expect_true(all(!is.na(ms_meta$n_independent_tests)))
   expect_true(all(ms_meta$n_independent_tests > 0))
+})
+
+test_that("marker_set_metadata contains strainfile_hash and strain_list", {
+  skip_if_no_db()
+  ms_meta <- arrow::read_parquet(file.path(db_dir, "marker_set_metadata.parquet"))
+
+  expect_true("strainfile_hash" %in% names(ms_meta),
+              label = "strainfile_hash column present")
+  expect_true("strain_list" %in% names(ms_meta),
+              label = "strain_list column present")
+
+  # strainfile_hash must be populated (required, not NA) and 64-char SHA-256 hex
+  expect_true(all(!is.na(ms_meta$strainfile_hash)),
+              label = "strainfile_hash must not be NA")
+  expect_true(all(grepl("^[0-9a-f]{64}$", ms_meta$strainfile_hash)),
+              label = "strainfile_hash should be 64-char lowercase hex SHA-256")
+
+  # strain_list must be populated and non-empty
+  expect_true(all(!is.na(ms_meta$strain_list)),
+              label = "strain_list must not be NA")
+  expect_true(all(nchar(ms_meta$strain_list) > 0),
+              label = "strain_list should be non-empty")
 })
 
 test_that("marker set parquet has correct schema", {
