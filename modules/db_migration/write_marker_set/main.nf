@@ -27,9 +27,6 @@ process DB_MIGRATION_WRITE_MARKER_SET {
     "${task.process}":
         R: \$( Rscript --version |& cut -f 4 )
     END_VERSIONS
-        --ms_ld ${ms_ld} \
-        --strainfile_path "${strainfile_path}" \
-        --strains "${strains}"
     """
 
     stub:
