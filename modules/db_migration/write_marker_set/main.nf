@@ -19,7 +19,9 @@ process DB_MIGRATION_WRITE_MARKER_SET {
         --base_dir ${base_dir} \
         --species ${species} \
         --vcf_release_id ${vcf_release_id} \
-        --ms_ld ${ms_ld}
+        --ms_ld ${ms_ld} \
+        --strainfile_path "${strainfile_path}" \
+        --strains "${strains}"
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
