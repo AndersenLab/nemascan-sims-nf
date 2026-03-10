@@ -15,6 +15,9 @@ test_that("fastGWA data writes to database with correct schema and values", {
   partition_path <- get_partition_path("test_pop", mapping$hash, db_dir)
   parquet_path <- file.path(partition_path, "data.parquet")
   expect_true(file.exists(parquet_path))
+  expect_true(dir.exists(partition_path),
+    label = "partition directory created with correct mapping hash"
+  )
 
   # Read back and verify
   result <- arrow::read_parquet(parquet_path)
@@ -28,11 +31,19 @@ test_that("fastGWA data writes to database with correct schema and values", {
   expect_equal(result$BETA, df$BETA)
   expect_equal(result$AF1, df$AF1)
 
-  # Verify FK columns are present
-  expect_true("marker_set_id" %in% names(result))
-  expect_true("trait_id" %in% names(result))
-  expect_match(unique(result$mapping_id), "^[0-9a-f]{20}$")
-  expect_false("mapping_hash_string" %in% names(result))
+  # Verify FK columns are absent from data.parquet
+  expect_false("mapping_id" %in% names(result),
+    label = "mapping_id absent from data.parquet (partition key only)"
+  )
+  expect_false("marker_set_id" %in% names(result),
+    label = "marker_set_id absent from data.parquet (in mappings_metadata only)"
+  )
+  expect_false("trait_id" %in% names(result),
+    label = "trait_id absent from data.parquet (in mappings_metadata only)"
+  )
+  expect_false("mapping_hash_string" %in% names(result),
+    label = "mapping_hash_string absent from data.parquet"
+  )
 
   # Verify redundant params not stored per-row
   expect_false("nqtl" %in% names(result))
@@ -56,7 +67,12 @@ test_that("mlma data writes with correct LOCO metadata", {
   partition_path <- get_partition_path("test_pop", mapping$hash, db_dir)
   result <- arrow::read_parquet(file.path(partition_path, "data.parquet"))
 
-  expect_match(unique(result$mapping_id), "^[0-9a-f]{20}$")
+  expect_false("mapping_id" %in% names(result),
+    label = "mapping_id absent from data.parquet (partition key only)"
+  )
+  expect_true("marker" %in% names(result),
+    label = "marker column present in data.parquet"
+  )
 })
 
 test_that("PCA=TRUE and PCA=FALSE produce different mapping_ids", {

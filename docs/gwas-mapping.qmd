@@ -370,23 +370,25 @@ normalizes `algorithm` to lowercase via `tolower()`. The canonical `algorithm`
 values are `"inbred"` and `"loco"`, matching `val(mode)` from this process
 after normalization.
 
-When mapping results are written to the database, only measurement columns and
-foreign keys are stored per row:
+When mapping results are written to the database, only the measurement columns
+are stored in each `data.parquet` file:
 
 | Column | Description |
 |--------|-------------|
-| `marker_set_id` | Hash join key to marker set |
-| `trait_id` | Hash join key to parent trait |
-| `mapping_id` | Hash join key to mapping metadata |
 | `marker` | Marker ID (`CHROM:POS` format) |
 | `AF1` | Effect allele frequency |
 | `BETA` | Effect size estimate |
 | `SE` | Standard error |
 | `P` | P-value |
 
-Simulation parameters (`nqtl`, `rep`, `h2`, `effect`, `algorithm`, `pca`,
-`population`, `maf`) are stored once in `mappings_metadata.parquet` and
-recovered via FK joins — they are not repeated in every data row.
+`mapping_id` is the Hive partition key encoded in the directory path
+(`mappings/population={pop}/mapping_id={id}/`) and is auto-promoted by DuckDB
+when the directory tree is scanned — it is not a column inside the Parquet
+file. `marker_set_id` and `trait_id` are in `mappings_metadata.parquet`
+(accessible via the `metadata` DuckDB view). Simulation parameters (`nqtl`,
+`rep`, `h2`, `effect`, `algorithm`, `pca`, `population`, `maf`) are stored
+once in `mappings_metadata.parquet` and recovered via joins — they are not
+repeated in every data row.
 
 ### Example `.fastGWA` output
 

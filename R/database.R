@@ -258,9 +258,6 @@ markers_schema <- function() {
 #' @return Arrow schema object
 mappings_schema <- function() {
   arrow::schema(
-    marker_set_id = arrow::utf8(),   # FK → markers + marker_set_metadata
-    trait_id      = arrow::utf8(),   # FK → trait_metadata
-    mapping_id    = arrow::utf8(),   # partition key; FK → mappings_metadata
     marker        = arrow::utf8(),
     AF1           = arrow::float64(),
     BETA          = arrow::float64(),
@@ -1518,9 +1515,6 @@ write_mapping_partitioned <- function(df, params, ms_id, trait_id, base_dir = "d
   mapping_id <- mapping$hash
 
   mapping_df <- prepare_mapping_data(df, params)
-  mapping_df$mapping_id    <- mapping_id
-  mapping_df$marker_set_id <- ms_id$hash
-  mapping_df$trait_id      <- trait_id$hash
 
   partition_path <- get_partition_path(params$population, mapping_id, base_dir)
   dir.create(partition_path, recursive = TRUE, showWarnings = FALSE)

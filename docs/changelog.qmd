@@ -133,6 +133,18 @@ not use version tags; entries are organized by development phase and date.
   - Enables post-hoc verification that a database was produced with a particular strain
     set, and that the strainfile has not been modified between runs.
 
+### Changed
+- **Mapping data Parquet schema: FK columns removed** (`reproducibility-updates`, 2026-03-10):
+  `mappings/population={pop}/mapping_id={id}/data.parquet` now contains only the five
+  measurement columns (`marker`, `AF1`, `BETA`, `SE`, `P`). The three foreign-key columns
+  previously stored in every data file have been relocated:
+  - `mapping_id` — already encoded in the Hive directory path; DuckDB auto-promotes it
+    as a virtual column when the directory tree is scanned, so no query changes are needed.
+  - `marker_set_id` and `trait_id` — moved to `mappings_metadata.parquet`, accessible
+    via the `metadata` DuckDB view.
+  This removes constant-per-mapping columns from the millions-of-rows data files without
+  losing any information.
+
 ### Added
 - `mappings_metadata.parquet` sidecar file written to the database root by
   `DB_MIGRATION_AGGREGATE_METADATA` — provides a single queryable index of all
