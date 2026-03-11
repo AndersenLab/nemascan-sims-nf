@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-03-01">
+<meta name="dcterms.date" content="2026-03-05">
 
 <title>Phase 1: Marker Set Generation – nemascan-sims-nf</title>
 <style>
@@ -3909,10 +3909,21 @@ vertical-align: -.125em;
     <a class="nav-link" href="./cross-validation.html"> 
 <span class="menu-text">Cross-Validation</span></a>
   </li>  
-  <li class="nav-item">
-    <a class="nav-link" href="./development.html"> 
-<span class="menu-text">Development</span></a>
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-development" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Development</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-development">    
+        <li>
+    <a class="dropdown-item" href="./development.html">
+ <span class="dropdown-text">Development</span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="./changelog.html">
+ <span class="dropdown-text">Changelog</span></a>
+  </li>  
+    </ul>
+  </li>
 </ul>
           </div> <!-- /navcollapse -->
             <div class="quarto-navbar-tools">
@@ -3933,7 +3944,7 @@ vertical-align: -.125em;
   <li><a href="#local_get_contig_info-upstream-helper" id="toc-local_get_contig_info-upstream-helper" class="nav-link" data-scroll-target="#local_get_contig_info-upstream-helper">LOCAL_GET_CONTIG_INFO (upstream helper)</a></li>
   <li><a href="#bcftools_extract_strains" id="toc-bcftools_extract_strains" class="nav-link" data-scroll-target="#bcftools_extract_strains">1. BCFTOOLS_EXTRACT_STRAINS</a></li>
   <li><a href="#bcftools_rename_chroms" id="toc-bcftools_rename_chroms" class="nav-link" data-scroll-target="#bcftools_rename_chroms">2. BCFTOOLS_RENAME_CHROMS</a></li>
-  <li><a href="#plink_recode_vcf" id="toc-plink_recode_vcf" class="nav-link" data-scroll-target="#plink_recode_vcf">3. PLINK_RECODE_VCF</a>
+  <li><a href="#plink_recode_ms_vcf-plink_recode_cv_vcf" id="toc-plink_recode_ms_vcf-plink_recode_cv_vcf" class="nav-link" data-scroll-target="#plink_recode_ms_vcf-plink_recode_cv_vcf">3. PLINK_RECODE_MS_VCF / PLINK_RECODE_CV_VCF</a>
   <ul class="collapse">
   <li><a href="#command-1-ld-pruning" id="toc-command-1-ld-pruning" class="nav-link" data-scroll-target="#command-1-ld-pruning">Command 1: LD pruning</a></li>
   <li><a href="#command-2-binary-fileset-creation" id="toc-command-2-binary-fileset-creation" class="nav-link" data-scroll-target="#command-2-binary-fileset-creation">Command 2: Binary fileset creation</a></li>
@@ -3965,7 +3976,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">March 1, 2026</p>
+      <p class="date">March 5, 2026</p>
     </div>
   </div>
   
@@ -3989,7 +4000,8 @@ vertical-align: -.125em;
  ▼                                    │
  BCFTOOLS_RENAME_CHROMS ◄─────────────┘
  ▼
- PLINK_RECODE_VCF ──────────► PLINK binaries (.bed/.bim/.fam), markers.txt
+ PLINK_RECODE_MS_VCF ────────► TO_SIMS.* binaries + markers.txt (marker SNP set)
+ PLINK_RECODE_CV_VCF ────────► CV_TO_SIMS.* binaries (causal variant pool)
  │                                    │
  ▼                                    ▼
  (to Phase 2/3)          BCFTOOLS_CREATE_GENOTYPE_MATRIX ──► genotype matrix TSV
@@ -4190,10 +4202,15 @@ MtDNA   7</code></pre>
 </tbody>
 </table>
 </section>
-<section id="plink_recode_vcf" class="level2">
-<h2 class="anchored" data-anchor-id="plink_recode_vcf">3. PLINK_RECODE_VCF</h2>
-<p><strong>Source:</strong> <code>modules/plink/recode_vcf/main.nf</code></p>
-<p>Performs LD pruning and produces PLINK binary filesets for downstream GCTA analysis. This process runs two sequential PLINK commands: first to identify LD-pruned variants, then to create the binary files using only those variants.</p>
+<section id="plink_recode_ms_vcf-plink_recode_cv_vcf" class="level2">
+<h2 class="anchored" data-anchor-id="plink_recode_ms_vcf-plink_recode_cv_vcf">3. PLINK_RECODE_MS_VCF / PLINK_RECODE_CV_VCF</h2>
+<p><strong>Source:</strong> <code>modules/plink/recode_vcf/main.nf</code> (aliased twice in <code>main.nf</code>)</p>
+<p>The same module is imported under two alias names and called in parallel for each strain group:</p>
+<ul>
+<li><strong><code>PLINK_RECODE_MS_VCF</code></strong> — marker SNP set run. Uses per-group <code>ms_maf</code> and <code>ms_ld</code> thresholds from the strainfile. Outputs <code>TO_SIMS.*</code> files used for GRM construction and GWA mapping (Phase 3).</li>
+<li><strong><code>PLINK_RECODE_CV_VCF</code></strong> — causal variant pool run. Uses <code>params.cv_maf</code> (defaults to the group’s <code>ms_maf</code> if not set) and <code>params.cv_ld</code> thresholds. Outputs <code>CV_TO_SIMS.*</code> files used for causal variant selection in Phase 2.</li>
+</ul>
+<p>Both runs perform LD pruning and produce PLINK binary filesets through two sequential PLINK commands: first to identify LD-pruned variants, then to create the binary files using only those variants.</p>
 <section id="command-1-ld-pruning" class="level3">
 <h3 class="anchored" data-anchor-id="command-1-ld-pruning">Command 1: LD pruning</h3>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">plink</span> <span class="at">--vcf</span> recoded.vcf.gz <span class="dt">\</span></span>
@@ -4201,7 +4218,7 @@ MtDNA   7</code></pre>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--biallelic-only</span> <span class="dt">\</span></span>
 <span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--maf</span> <span class="va">${maf}</span> <span class="dt">\</span></span>
 <span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--set-missing-var-ids</span> @:# <span class="dt">\</span></span>
-<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--indep-pairwise</span> 50 10 0.8 <span class="dt">\</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--indep-pairwise</span> 50 10 <span class="va">${ld}</span> <span class="dt">\</span></span>
 <span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--geno</span> <span class="dt">\</span></span>
 <span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--not-chr</span> <span class="va">${mito_name}</span> <span class="dt">\</span></span>
 <span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--allow-extra-chr</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -4236,8 +4253,8 @@ MtDNA   7</code></pre>
 <td><a href="https://www.cog-genomics.org/plink/1.9/data#set_missing_var_ids">plink data</a></td>
 </tr>
 <tr class="odd">
-<td><code>--indep-pairwise 50 10 0.8</code></td>
-<td>Sliding-window LD pruning: window=50 variants, step=10, r<sup>2</sup> threshold=0.8</td>
+<td><code>--indep-pairwise 50 10 ${ld}</code></td>
+<td>Sliding-window LD pruning: window=50 variants, step=10, r<sup>2</sup> threshold from <code>ld</code> input (per-group <code>ms_ld</code> for the MS run; <code>cv_ld</code> for the CV run)</td>
 <td><a href="https://www.cog-genomics.org/plink/1.9/ld#indep">plink LD</a></td>
 </tr>
 <tr class="even">
@@ -4339,30 +4356,50 @@ MtDNA   7</code></pre>
 <tr class="odd">
 <td>Input</td>
 <td><code>maf</code> (val)</td>
-<td>Minor allele frequency threshold</td>
+<td>Minor allele frequency threshold (<code>ms_maf</code> for the MS run; <code>cv_maf</code> or fallback <code>ms_maf</code> for the CV run)</td>
 </tr>
 <tr class="even">
-<td>Output</td>
-<td><code>TO_SIMS.bed/.bim/.fam</code></td>
-<td>PLINK binary fileset (used by GCTA for GRM and GWAS)</td>
+<td>Input</td>
+<td><code>ld</code> (val)</td>
+<td>LD R² pruning threshold (<code>ms_ld</code> for the MS run; <code>cv_ld</code> for the CV run)</td>
 </tr>
 <tr class="odd">
-<td>Output</td>
+<td>Output (MS run)</td>
+<td><code>TO_SIMS.bed/.bim/.fam</code></td>
+<td>PLINK binary fileset for GRM construction and GWA mapping (Phase 3)</td>
+</tr>
+<tr class="even">
+<td>Output (MS run)</td>
 <td><code>TO_SIMS.map/.ped</code></td>
 <td>PLINK text-format fileset</td>
 </tr>
-<tr class="even">
-<td>Output</td>
+<tr class="odd">
+<td>Output (MS run)</td>
 <td><code>TO_SIMS.nosex/.log</code></td>
 <td>PLINK auxiliary outputs</td>
 </tr>
+<tr class="even">
+<td>Output (CV run)</td>
+<td><code>CV_TO_SIMS.bed/.bim/.fam</code></td>
+<td>PLINK binary fileset for causal variant selection (Phase 2)</td>
+</tr>
 <tr class="odd">
-<td>Output</td>
+<td>Output (CV run)</td>
+<td><code>CV_TO_SIMS.map/.ped</code></td>
+<td>PLINK text-format fileset</td>
+</tr>
+<tr class="even">
+<td>Output (CV run)</td>
+<td><code>CV_TO_SIMS.nosex/.log</code></td>
+<td>PLINK auxiliary outputs</td>
+</tr>
+<tr class="odd">
+<td>Output (MS run)</td>
 <td><code>recoded.vcf.gz</code> + <code>.tbi</code></td>
 <td>Copy of the input VCF (passed through for downstream use)</td>
 </tr>
 <tr class="even">
-<td>Output</td>
+<td>Output (MS run)</td>
 <td><code>markers.txt</code></td>
 <td>Tab-separated list of retained markers (CHROM, POS)</td>
 </tr>
@@ -4378,7 +4415,8 @@ Note
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>The <code>TO_SIMS.bim</code> file is consumed by <code>DB_MIGRATION_WRITE_MARKER_SET</code>, which writes the LD-pruned variant list to <code>{db}/markers/marker_sets/{marker_set_id}_markers.parquet</code>. <code>marker_set_id</code> is the 20-character SHA-256 hash of the population and MAF threshold, computed by <code>generate_marker_set_id()</code> in <code>R/database.R</code>. <code>DB_MIGRATION_WRITE_MARKER_SET</code> also requires <code>n_indep_tests</code> (number of independent tests from EIGEN analysis) before it can run; it stores this alongside the marker list in <code>marker_set_metadata.parquet</code>.</p>
+<p>The <code>TO_SIMS.bim</code> file (MS run output) is consumed by <code>DB_MIGRATION_WRITE_MARKER_SET</code>, which writes the LD-pruned marker list to <code>{db}/markers/marker_sets/{marker_set_id}_markers.parquet</code>. <code>marker_set_id</code> is the 20-character SHA-256 hash (v=2) computed from <code>(population, maf, species, vcf_release_id, ms_ld)</code> by <code>generate_marker_set_id()</code> in <code>R/database.R</code>. <code>DB_MIGRATION_WRITE_MARKER_SET</code> also requires <code>n_indep_tests</code> (number of independent tests from EIGEN analysis) before it can run; it stores this alongside the marker list in <code>marker_set_metadata.parquet</code>.</p>
+<p>The <code>CV_TO_SIMS.*</code> binary (CV run output) is not written to the database. It is passed to Phase 2 (<code>PYTHON_SIMULATE_EFFECTS_GLOBAL</code>) for causal variant selection, then forwarded to <code>GCTA_SIMULATE_PHENOTYPES</code> as the <code>--bfile</code> source. Only the MS binary drives GWA mapping.</p>
 </div>
 </div>
 </section>
@@ -4492,7 +4530,7 @@ Note
 <tr class="even">
 <td>Input</td>
 <td><code>markers.txt</code></td>
-<td>LD-pruned marker positions from <code>PLINK_RECODE_VCF</code></td>
+<td>LD-pruned marker positions from <code>PLINK_RECODE_MS_VCF</code></td>
 </tr>
 <tr class="odd">
 <td>Output</td>

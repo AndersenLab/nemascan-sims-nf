@@ -6,9 +6,9 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-03-05">
+<meta name="dcterms.date" content="2026-03-10">
 
-<title>Assessment Cross-Validation – nemascan-sims-nf</title>
+<title>Changelog – nemascan-sims-nf</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -19,41 +19,6 @@ ul.task-list{list-style: none;}
 ul.task-list li input[type="checkbox"] {
 width: 0.8em;
 margin: 0 0.8em 0.2em -1em;  vertical-align: middle;
-}
-
-html { -webkit-text-size-adjust: 100%; }
-pre > code.sourceCode { white-space: pre; position: relative; }
-pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
-pre > code.sourceCode > span:empty { height: 1.2em; }
-.sourceCode { overflow: visible; }
-code.sourceCode > span { color: inherit; text-decoration: inherit; }
-div.sourceCode { margin: 1em 0; }
-pre.sourceCode { margin: 0; }
-@media screen {
-div.sourceCode { overflow: auto; }
-}
-@media print {
-pre > code.sourceCode { white-space: pre-wrap; }
-pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
-}
-pre.numberSource code
-{ counter-reset: source-line 0; }
-pre.numberSource code > span
-{ position: relative; left: -4em; counter-increment: source-line; }
-pre.numberSource code > span > a:first-child::before
-{ content: counter(source-line);
-position: relative; left: -1em; text-align: right; vertical-align: baseline;
-border: none; display: inline-block;
--webkit-touch-callout: none; -webkit-user-select: none;
--khtml-user-select: none; -moz-user-select: none;
--ms-user-select: none; user-select: none;
-padding: 0 4px; width: 4em;
-}
-pre.numberSource { margin-left: 3em; padding-left: 4px; }
-div.sourceCode
-{ }
-@media screen {
-pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
 </style>
 
@@ -3906,7 +3871,7 @@ vertical-align: -.125em;
 <span class="menu-text">Database Structure</span></a>
   </li>  
   <li class="nav-item">
-    <a class="nav-link active" href="./cross-validation.html" aria-current="page"> 
+    <a class="nav-link" href="./cross-validation.html"> 
 <span class="menu-text">Cross-Validation</span></a>
   </li>  
   <li class="nav-item dropdown ">
@@ -3940,17 +3905,46 @@ vertical-align: -.125em;
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#purpose" id="toc-purpose" class="nav-link active" data-scroll-target="#purpose">Purpose</a></li>
-  <li><a href="#when-to-use-this" id="toc-when-to-use-this" class="nav-link" data-scroll-target="#when-to-use-this">When to Use This</a></li>
-  <li><a href="#concordance-scores" id="toc-concordance-scores" class="nav-link" data-scroll-target="#concordance-scores">Concordance Scores</a></li>
-  <li><a href="#running-the-cross-validation" id="toc-running-the-cross-validation" class="nav-link" data-scroll-target="#running-the-cross-validation">Running the Cross-Validation</a>
+  <li><a href="#unreleased-march-2026" id="toc-unreleased-march-2026" class="nav-link active" data-scroll-target="#unreleased-march-2026">[Unreleased] — March 2026</a>
   <ul class="collapse">
-  <li><a href="#run-the-pipeline-with-both-paths" id="toc-run-the-pipeline-with-both-paths" class="nav-link" data-scroll-target="#run-the-pipeline-with-both-paths">1. Run the pipeline with both paths</a></li>
-  <li><a href="#run-the-automated-test-suite" id="toc-run-the-automated-test-suite" class="nav-link" data-scroll-target="#run-the-automated-test-suite">2. Run the automated test suite</a></li>
-  <li><a href="#render-the-interactive-notebook" id="toc-render-the-interactive-notebook" class="nav-link" data-scroll-target="#render-the-interactive-notebook">3. Render the interactive notebook</a></li>
+  <li><a href="#fixed" id="toc-fixed" class="nav-link" data-scroll-target="#fixed">Fixed</a></li>
+  <li><a href="#fixed-1" id="toc-fixed-1" class="nav-link" data-scroll-target="#fixed-1">Fixed</a></li>
+  <li><a href="#fixed-2" id="toc-fixed-2" class="nav-link" data-scroll-target="#fixed-2">Fixed</a></li>
+  <li><a href="#fixed-3" id="toc-fixed-3" class="nav-link" data-scroll-target="#fixed-3">Fixed</a></li>
+  <li><a href="#added" id="toc-added" class="nav-link" data-scroll-target="#added">Added</a></li>
+  <li><a href="#fixed-4" id="toc-fixed-4" class="nav-link" data-scroll-target="#fixed-4">Fixed</a></li>
+  <li><a href="#added-1" id="toc-added-1" class="nav-link" data-scroll-target="#added-1">Added</a></li>
+  <li><a href="#added-2" id="toc-added-2" class="nav-link" data-scroll-target="#added-2">Added</a></li>
+  <li><a href="#changed" id="toc-changed" class="nav-link" data-scroll-target="#changed">Changed</a></li>
+  <li><a href="#added-3" id="toc-added-3" class="nav-link" data-scroll-target="#added-3">Added</a></li>
   </ul></li>
-  <li><a href="#notebook-contents" id="toc-notebook-contents" class="nav-link" data-scroll-target="#notebook-contents">Notebook Contents</a></li>
-  <li><a href="#adapting-for-other-comparisons" id="toc-adapting-for-other-comparisons" class="nav-link" data-scroll-target="#adapting-for-other-comparisons">Adapting for Other Comparisons</a></li>
+  <li><a href="#phase-5-database-integration" id="toc-phase-5-database-integration" class="nav-link" data-scroll-target="#phase-5-database-integration">Phase 5 — Database Integration</a>
+  <ul class="collapse">
+  <li><a href="#pr-98-hash-based-ids-2026-03-01" id="toc-pr-98-hash-based-ids-2026-03-01" class="nav-link" data-scroll-target="#pr-98-hash-based-ids-2026-03-01">PR #98 — Hash-based IDs (2026-03-01)</a></li>
+  <li><a href="#pr-97-automated-cross-validation-tests-2026-02-27" id="toc-pr-97-automated-cross-validation-tests-2026-02-27" class="nav-link" data-scroll-target="#pr-97-automated-cross-validation-tests-2026-02-27">PR #97 — Automated Cross-Validation Tests (2026-02-27)</a></li>
+  <li><a href="#pr-96-phase-5-genotype-trait-storage-2026-02-21" id="toc-pr-96-phase-5-genotype-trait-storage-2026-02-21" class="nav-link" data-scroll-target="#pr-96-phase-5-genotype-trait-storage-2026-02-21">PR #96 — Phase 5: Genotype &amp; Trait Storage (2026-02-21)</a></li>
+  <li><a href="#pr-95-documentation-site-2026-02-18" id="toc-pr-95-documentation-site-2026-02-18" class="nav-link" data-scroll-target="#pr-95-documentation-site-2026-02-18">PR #95 — Documentation Site (2026-02-18)</a></li>
+  <li><a href="#pr-93-cross-validation-framework-2026-02-17" id="toc-pr-93-cross-validation-framework-2026-02-17" class="nav-link" data-scroll-target="#pr-93-cross-validation-framework-2026-02-17">PR #93 — Cross-Validation Framework (2026-02-17)</a></li>
+  </ul></li>
+  <li><a href="#phase-4-db-path-qtl-analysis-assessment" id="toc-phase-4-db-path-qtl-analysis-assessment" class="nav-link" data-scroll-target="#phase-4-db-path-qtl-analysis-assessment">Phase 4 — DB-Path QTL Analysis &amp; Assessment</a>
+  <ul class="collapse">
+  <li><a href="#section" id="toc-section" class="nav-link" data-scroll-target="#section">2026-02-13</a></li>
+  </ul></li>
+  <li><a href="#phase-3-database-foundation" id="toc-phase-3-database-foundation" class="nav-link" data-scroll-target="#phase-3-database-foundation">Phase 3 — Database Foundation</a>
+  <ul class="collapse">
+  <li><a href="#phases-13-prior-to-2026-02-13" id="toc-phases-13-prior-to-2026-02-13" class="nav-link" data-scroll-target="#phases-13-prior-to-2026-02-13">Phases 1–3 (prior to 2026-02-13)</a></li>
+  </ul></li>
+  <li><a href="#early-pipeline-development-aprilmay-2025" id="toc-early-pipeline-development-aprilmay-2025" class="nav-link" data-scroll-target="#early-pipeline-development-aprilmay-2025">Early Pipeline Development (April–May 2025)</a>
+  <ul class="collapse">
+  <li><a href="#pr-30-2025-05-04-phenotype-simulation-fix" id="toc-pr-30-2025-05-04-phenotype-simulation-fix" class="nav-link" data-scroll-target="#pr-30-2025-05-04-phenotype-simulation-fix">PR #30 (2025-05-04) — Phenotype Simulation Fix</a></li>
+  <li><a href="#pr-29-2025-05-04-nqtl-and-effect-size-inputs" id="toc-pr-29-2025-05-04-nqtl-and-effect-size-inputs" class="nav-link" data-scroll-target="#pr-29-2025-05-04-nqtl-and-effect-size-inputs">PR #29 (2025-05-04) — nQTL and Effect Size Inputs</a></li>
+  <li><a href="#pr-25-2025-05-01-mitochondrial-chromosome-handling" id="toc-pr-25-2025-05-01-mitochondrial-chromosome-handling" class="nav-link" data-scroll-target="#pr-25-2025-05-01-mitochondrial-chromosome-handling">PR #25 (2025-05-01) — Mitochondrial Chromosome Handling</a></li>
+  <li><a href="#pr-17-2025-04-18-meta-tag-check" id="toc-pr-17-2025-04-18-meta-tag-check" class="nav-link" data-scroll-target="#pr-17-2025-04-18-meta-tag-check">PR #17 (2025-04-18) — Meta-tag Check</a></li>
+  <li><a href="#pr-8-2025-04-11-replace-find-with-get-processes" id="toc-pr-8-2025-04-11-replace-find-with-get-processes" class="nav-link" data-scroll-target="#pr-8-2025-04-11-replace-find-with-get-processes">PR #8 (2025-04-11) — Replace <code>FIND</code> with <code>GET</code> Processes</a></li>
+  <li><a href="#pr-2-default-strain-set-2025-04-04" id="toc-pr-2-default-strain-set-2025-04-04" class="nav-link" data-scroll-target="#pr-2-default-strain-set-2025-04-04">PR #2 — Default Strain Set (2025-04-04)</a></li>
+  <li><a href="#pr-1-resource-allocation-2025-04-04" id="toc-pr-1-resource-allocation-2025-04-04" class="nav-link" data-scroll-target="#pr-1-resource-allocation-2025-04-04">PR #1 — Resource Allocation (2025-04-04)</a></li>
+  <li><a href="#initial-commit-2025-03-26" id="toc-initial-commit-2025-03-26" class="nav-link" data-scroll-target="#initial-commit-2025-03-26">Initial Commit (2025-03-26)</a></li>
+  </ul></li>
   </ul>
 </nav>
     </div>
@@ -3959,8 +3953,8 @@ vertical-align: -.125em;
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">Assessment Cross-Validation</h1>
-<p class="subtitle lead">Comparing DB-path and legacy-path QTL assessment outputs</p>
+<h1 class="title">Changelog</h1>
+<p class="subtitle lead">Release history and notable changes</p>
 </div>
 
 
@@ -3971,7 +3965,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">March 5, 2026</p>
+      <p class="date">March 10, 2026</p>
     </div>
   </div>
   
@@ -3983,128 +3977,274 @@ vertical-align: -.125em;
 </header>
 
 
-<section id="purpose" class="level2">
-<h2 class="anchored" data-anchor-id="purpose">Purpose</h2>
-<p>The <code>nemascan-sims-nf</code> pipeline can produce QTL assessment results through two independent paths:</p>
+<p>All notable changes to <code>nemascan-sims-nf</code> are recorded here. The project does not use version tags; entries are organized by development phase and date.</p>
+<section id="unreleased-march-2026" class="level2">
+<h2 class="anchored" data-anchor-id="unreleased-march-2026">[Unreleased] — March 2026</h2>
+<section id="fixed" class="level3">
+<h3 class="anchored" data-anchor-id="fixed">Fixed</h3>
 <ul>
-<li><strong>DB-path</strong> (default) — stores GWA results in a Parquet/DuckDB database and performs QTL analysis by querying that database.</li>
-<li><strong>Legacy path</strong> (opt-in via <code>--legacy_assess</code>) — uses R scripts operating on intermediate files produced during the pipeline run.</li>
-</ul>
-<p>Both paths analyze the same GWA output from <code>GCTA_PERFORM_GWA</code> and should produce identical QTL detection, interval boundaries, and significance classifications. The cross-validation analysis quantifies their agreement using three per-replicate concordance scores.</p>
-</section>
-<section id="when-to-use-this" class="level2">
-<h2 class="anchored" data-anchor-id="when-to-use-this">When to Use This</h2>
-<p>Run the cross-validation when:</p>
-<ul>
-<li>Validating changes to the DB-path analysis code against the legacy path as a reference</li>
-<li>Verifying that a new pipeline deployment produces consistent results</li>
-<li>Comparing assessment outputs from different pipeline versions or configurations</li>
+<li><strong>Missing <code>versions.yml</code> in DB migration modules</strong> (<code>fix/versions_yml_db_migration</code>, 2026-03-05): Added <code>versions.yml</code> output to all 7 <code>modules/db_migration/*/main.nf</code> processes (<code>write_marker_set</code>, <code>write_genotype_matrix</code>, <code>write_gwa_to_db</code>, <code>write_trait_data</code>, <code>aggregate_metadata</code>, <code>analyze_qtl</code>, <code>assess_sims</code>). The pattern was established across all other module families (bcftools, GCTA, PLINK, R, Python) but had not been carried forward when the DB migration layer was added. All 7 processes now capture the R version and wire their <code>versions</code> output channel into <code>ch_versions</code> in <code>main.nf</code>.</li>
 </ul>
 </section>
-<section id="concordance-scores" class="level2">
-<h2 class="anchored" data-anchor-id="concordance-scores">Concordance Scores</h2>
-<p>For each <strong>mapping entry</strong> — a unique combination of simulation replicate (<code>nQTL</code>, <code>simREP</code>, <code>h2</code>, <code>maf</code>, <code>strain_set_id</code>), mapping method, and significance threshold — three scores are computed on a 0-to-1 scale:</p>
-<table class="caption-top table">
-<colgroup>
-<col style="width: 16%">
-<col style="width: 41%">
-<col style="width: 20%">
-<col style="width: 20%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Score</th>
-<th>What it measures</th>
-<th>1 means</th>
-<th>0 means</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><strong>Detection</strong></td>
-<td><code>Detected</code>/<code>Simulated</code> flag agreement per QTL row</td>
-<td>All QTL rows agree</td>
-<td>None agree</td>
-</tr>
-<tr class="even">
-<td><strong>Designation</strong></td>
-<td><code>designate_qtl()</code> outcome category agreement</td>
-<td>All designations match</td>
-<td>None match</td>
-</tr>
-<tr class="odd">
-<td><strong>Interval Overlap</strong></td>
-<td>Jaccard overlap of <code>[startPOS, endPOS]</code> intervals</td>
-<td>Boundaries match perfectly</td>
-<td>No overlap</td>
-</tr>
-</tbody>
-</table>
+<section id="fixed-1" class="level3">
+<h3 class="anchored" data-anchor-id="fixed-1">Fixed</h3>
+<p>&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD - <strong>Pipeline configuration gaps</strong> (<code>fix/pipeline_configuration_gaps</code>, 2026-03-05): - Added <code>--output_dir</code> parameter for stable, deterministic output directory naming. The date-based default (<code>Analysis_Results-{date}</code>) is preserved when <code>--output_dir</code> is not specified. - Added <code>nextflow_schema.json</code> — machine-readable parameter schema covering all pipeline parameters, compatible with nf-core tooling and IDE parameter validation. - Documented previously undocumented parameters <code>--alpha</code> and <code>--legacy_assess</code> in the README parameters table and <code>--help</code> output. - Parameterized hardcoded Rockfish cluster paths in <code>conf/rockfish.config</code>: <code>--slurm_account</code> (replaces hardcoded <code>eande106</code> in <code>clusterOptions</code>) and <code>--scratch_dir</code> (replaces hardcoded <code>/scratch4/eande106</code> in <code>workflow.workDir</code>). All Rockfish infrastructure params are now overridable without editing the config file. ======= - <strong>Stochastic script reproducibility</strong> (<code>fix/rand-seed-stochastic-scripts</code>, 2026-03-05): causal variant selection and effect size simulation are now fully reproducible across pipeline runs: - <code>bin/create_causal_vars.py</code> seeds <code>np.random.default_rng(rep)</code> at startup; all stochastic calls (<code>rng.choice</code>, <code>rng.gamma</code>, <code>rng.uniform</code>) use the seeded Generator. Previously, <code>np.random.default_rng()</code> was called without a seed, making results non-deterministic. - <code>bin/Create_Causal_QTLs.R</code> calls <code>set.seed(as.integer(rep))</code> before any stochastic draws (<code>rgamma</code>, <code>sample</code>, <code>runif</code>). - Both Nextflow modules (<code>PYTHON_SIMULATE_EFFECTS_GLOBAL</code>, <code>R_SIMULATE_EFFECTS_GLOBAL</code>, <code>R_SIMULATE_EFFECTS_LOCAL</code>) now pass <code>${rep}</code> as the seed argument to the scripts. - <code>trait_metadata_schema()</code> gains a new <code>sim_seed</code> (int32) field; <code>write_trait_metadata()</code> stores the seed used for each simulated trait, enabling exact post-hoc reproduction without the Nextflow cache. &gt;&gt;&gt;&gt;&gt;&gt;&gt; origin/reproducibility-updates</p>
 </section>
-<section id="running-the-cross-validation" class="level2">
-<h2 class="anchored" data-anchor-id="running-the-cross-validation">Running the Cross-Validation</h2>
-<section id="run-the-pipeline-with-both-paths" class="level3">
-<h3 class="anchored" data-anchor-id="run-the-pipeline-with-both-paths">1. Run the pipeline with both paths</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="va">NXF_VER</span><span class="op">=</span>24.10.4 <span class="ex">nextflow</span> run main.nf <span class="at">-profile</span> test,docker <span class="at">--legacy_assess</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>This produces two assessment TSVs in the output directory:</p>
+<section id="fixed-2" class="level3">
+<h3 class="anchored" data-anchor-id="fixed-2">Fixed</h3>
 <ul>
-<li><code>simulation_assessment_results.tsv</code> (legacy path)</li>
-<li><code>db_simulation_assessment_results.tsv</code> (DB path)</li>
-</ul>
-</section>
-<section id="run-the-automated-test-suite" class="level3">
-<h3 class="anchored" data-anchor-id="run-the-automated-test-suite">2. Run the automated test suite</h3>
-<p>The test file <code>tests/testthat/test-assessment_cross_validation.R</code> asserts that all three concordance scores are 1.0 for every mapping entry. It also verifies that <code>generate_mapping_id()</code> is deterministic: the same simulation parameters always produce the same 20-character hex <code>mapping_id</code> across repeated invocations. It runs as part of the standard test suite:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_LEGACY_ASSESSMENT</span><span class="op">=</span>/path/to/simulation_assessment_results.tsv <span class="dt">\</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_DB_ASSESSMENT</span><span class="op">=</span>/path/to/db_simulation_assessment_results.tsv <span class="dt">\</span></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>If using the <code>tests/collect_test_data.sh</code> helper:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> tests/collect_test_data.sh</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_LEGACY_ASSESSMENT</span><span class="op">=</span>tests/integration_data/simulation_assessment_results.tsv <span class="dt">\</span></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_DB_ASSESSMENT</span><span class="op">=</span>tests/integration_data/db_simulation_assessment_results.tsv <span class="dt">\</span></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>The tests skip automatically when the environment variables are not set, so unit-only runs are unaffected.</p>
-</section>
-<section id="render-the-interactive-notebook" class="level3">
-<h3 class="anchored" data-anchor-id="render-the-interactive-notebook">3. Render the interactive notebook</h3>
-<p>The notebook at <code>tests/notebooks/assessment_cross_validation.qmd</code> produces an HTML report with concordance tables, score distribution histograms, heatmaps, and per-QTL interval detail. To render it after a pipeline run:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> render tests/notebooks/assessment_cross_validation.qmd <span class="dt">\</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">-P</span> legacy_assessment:/path/to/simulation_assessment_results.tsv <span class="dt">\</span></span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">-P</span> db_assessment:/path/to/db_simulation_assessment_results.tsv <span class="dt">\</span></span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">-P</span> db_dir:/path/to/db</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Or set environment variables and render without <code>-P</code> flags:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">TEST_LEGACY_ASSESSMENT</span><span class="op">=</span>/path/to/simulation_assessment_results.tsv</span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">TEST_DB_ASSESSMENT</span><span class="op">=</span>/path/to/db_simulation_assessment_results.tsv</span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">TEST_DB_DIR</span><span class="op">=</span>/path/to/db</span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> render tests/notebooks/assessment_cross_validation.qmd</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>The rendered HTML is written to <code>tests/notebooks/assessment_cross_validation.html</code>.</p>
-</section>
-</section>
-<section id="notebook-contents" class="level2">
-<h2 class="anchored" data-anchor-id="notebook-contents">Notebook Contents</h2>
-<p>The notebook <code>tests/notebooks/assessment_cross_validation.qmd</code> contains:</p>
-<ol type="1">
-<li><p><strong>Data Loading &amp; Overview</strong> — reads both assessment TSVs, applies <code>designate_qtl()</code> to classify outcomes, and shows dimension/designation count comparison tables.</p></li>
-<li><p><strong>Per-Replicate Concordance</strong> — computes the three concordance scores for every mapping entry, then presents:</p>
+<li><strong>Pipeline configuration gaps</strong> (<code>fix/pipeline_configuration_gaps</code>, 2026-03-05):
 <ul>
-<li>Per-mapping concordance score table</li>
-<li>Score distribution histograms</li>
-<li>Mean concordance by method and threshold (table + heatmap)</li>
-<li>Per-QTL interval Jaccard detail with pass/fail summary</li>
+<li>Added <code>--output_dir</code> parameter for stable, deterministic output directory naming. The date-based default (<code>Analysis_Results-{date}</code>) is preserved when <code>--output_dir</code> is not specified.</li>
+<li>Added <code>nextflow_schema.json</code> — machine-readable parameter schema covering all pipeline parameters, compatible with nf-core tooling and IDE parameter validation.</li>
+<li>Documented previously undocumented parameters <code>--alpha</code> and <code>--legacy_assess</code> in the README parameters table and <code>--help</code> output.</li>
+<li>Parameterized hardcoded Rockfish cluster paths in <code>conf/rockfish.config</code>: <code>--slurm_account</code> (replaces hardcoded <code>eande106</code> in <code>clusterOptions</code>) and <code>--scratch_dir</code> (replaces hardcoded <code>/scratch4/eande106</code> in <code>workflow.workDir</code>). All Rockfish infrastructure params are now overridable without editing the config file.</li>
 </ul></li>
-</ol>
+</ul>
 </section>
-<section id="adapting-for-other-comparisons" class="level2">
-<h2 class="anchored" data-anchor-id="adapting-for-other-comparisons">Adapting for Other Comparisons</h2>
-<p>The notebook can be adapted to compare any two assessment TSVs that share the 35-column schema. To compare outputs from different pipeline versions or parameter configurations:</p>
-<ol type="1">
-<li>Copy the notebook to a working directory.</li>
-<li>Set <code>legacy_assessment_path</code> and <code>db_assessment_path</code> to point to the two TSVs being compared (the variable names reflect the original DB-vs-legacy use case but accept any conforming TSV).</li>
-<li>Render with Quarto as described above.</li>
-</ol>
-<p>The <code>normalize_algorithm_id()</code> helper handles the <code>algorithm_id</code> format difference between DB-path (<code>LMM-EXACT-INBRED_noPCA_EIGEN</code>) and legacy-path (<code>inbred_nopca_EIGEN</code>) by uppercasing and stripping the <code>LMM-EXACT-</code> prefix. If both TSVs use the same format, this normalization is a no-op.</p>
+<section id="fixed-3" class="level3">
+<h3 class="anchored" data-anchor-id="fixed-3">Fixed</h3>
+<ul>
+<li><strong>Stochastic script reproducibility</strong> (<code>fix/rand-seed-stochastic-scripts</code>, 2026-03-05): causal variant selection and effect size simulation are now fully reproducible across pipeline runs:
+<ul>
+<li><code>bin/create_causal_vars.py</code> seeds <code>np.random.default_rng(rep)</code> at startup; all stochastic calls (<code>rng.choice</code>, <code>rng.gamma</code>, <code>rng.uniform</code>) use the seeded Generator. Previously, <code>np.random.default_rng()</code> was called without a seed, making results non-deterministic.</li>
+<li><code>bin/Create_Causal_QTLs.R</code> calls <code>set.seed(as.integer(rep))</code> before any stochastic draws (<code>rgamma</code>, <code>sample</code>, <code>runif</code>).</li>
+<li>Both Nextflow modules (<code>PYTHON_SIMULATE_EFFECTS_GLOBAL</code>, <code>R_SIMULATE_EFFECTS_GLOBAL</code>, <code>R_SIMULATE_EFFECTS_LOCAL</code>) now pass <code>${rep}</code> as the seed argument to the scripts.</li>
+<li><code>trait_metadata_schema()</code> gains a new <code>sim_seed</code> (int32) field; <code>write_trait_metadata()</code> stores the seed used for each simulated trait, enabling exact post-hoc reproduction without the Nextflow cache.</li>
+</ul></li>
+</ul>
+</section>
+<section id="added" class="level3">
+<h3 class="anchored" data-anchor-id="added">Added</h3>
+<ul>
+<li><strong>Non-marker causal variants</strong> (<code>feature/add-nonmarker-cvs</code>, 2026-03-03): causal variants can now be drawn from a separately-configured variant pool rather than the marker SNP set. Key changes:
+<ul>
+<li>Strainfile format extended to 6 columns: <code>group</code>, <code>species</code>, <code>vcf</code>, <code>ms_maf</code>, <code>ms_ld</code>, <code>strains</code>. Species, VCF source, and marker-set thresholds are now per-group in the strainfile; <code>--vcf</code>, <code>--maf</code>, <code>--species</code>, <code>--vcf_release_id</code>, <code>--ms_maf</code>, and <code>--ms_ld</code> CLI parameters removed.</li>
+<li>New CLI parameters <code>--cv_maf</code> (default: each group’s <code>ms_maf</code>) and <code>--cv_ld</code> (default: 0.8) configure the causal variant pool MAF and LD thresholds independently of the marker SNP set.</li>
+<li>Two parallel PLINK runs per group: <code>PLINK_RECODE_MS_VCF</code> (marker SNP set, drives GWA) and <code>PLINK_RECODE_CV_VCF</code> (CV pool, drives causal variant selection). Mixed-species runs supported in a single pipeline invocation.</li>
+<li><code>PYTHON_SIMULATE_EFFECTS_GLOBAL</code> now selects causal variants from <code>CV_TO_SIMS.bim</code> (CV pool BIM); <code>GCTA_SIMULATE_PHENOTYPES</code> now uses <code>--bfile CV_TO_SIMS</code>.</li>
+<li>Marker set ID upgraded to v=2: SHA-256 now encodes <code>population</code>, <code>maf</code>, <code>species</code>, <code>vcf_release_id</code>, and <code>ms_ld</code>. CV parameters (<code>cv_maf</code>, <code>cv_ld</code>) are intentionally excluded from the hash.</li>
+<li><code>marker_set_metadata.parquet</code> gains three new columns: <code>species</code> (utf8), <code>vcf_release_id</code> (utf8), <code>ms_ld</code> (float64).</li>
+<li>DB write scripts (<code>write_marker_set.R</code>, <code>write_genotype_matrix.R</code>, <code>write_gwa_to_db.R</code>) and their Nextflow modules updated to accept and pass <code>--species</code>, <code>--vcf_release_id</code>, <code>--ms_ld</code>.</li>
+<li><code>aggregate_metadata.R</code> fallback path updated to emit <code>NA</code> for the three new columns when no metadata sidecars exist.</li>
+</ul></li>
+</ul>
+</section>
+<section id="fixed-4" class="level3">
+<h3 class="anchored" data-anchor-id="fixed-4">Fixed</h3>
+<ul>
+<li><strong>Python dependency pinning</strong> (<code>fix/python-requirements</code>, 2026-03-05): added <code>requirements.txt</code> at the repository root pinning <code>numpy==2.2.3</code> and <code>pandas==2.2.3</code> to the versions present in the <code>andersenlab/numpy:20250506</code> container. The <code>PYTHON_SIMULATE_EFFECTS_GLOBAL</code> <code>versions.yml</code> emission now also records <code>numpy</code> and <code>pandas</code> library versions alongside the Python interpreter version, providing runtime provenance in pipeline output logs.</li>
+</ul>
+</section>
+<section id="added-1" class="level3">
+<h3 class="anchored" data-anchor-id="added-1">Added</h3>
+<ul>
+<li><strong>R package lockfile</strong> (<code>fix/r_package_lockfile</code>, 2026-03-05): <code>renv.lock</code> committed at the project root records the exact versions of all R packages installed in the <code>andersenlab/r_packages:20250519</code> container. Provides a verifiable record of the software environment that produced simulation results and enables local environment reproduction via <code>renv::restore()</code>. <code>scripts/generate_renv_lock.sh</code> documents how to regenerate the lockfile when the container changes.</li>
+</ul>
+</section>
+<section id="added-2" class="level3">
+<h3 class="anchored" data-anchor-id="added-2">Added</h3>
+<ul>
+<li><strong>Strainfile provenance in marker set metadata</strong> (<code>fix/strain-file-not-hashed</code>, 2026-03-05): <code>marker_set_metadata.parquet</code> now records two new columns for reproducibility auditing:
+<ul>
+<li><code>strainfile_hash</code> (<code>utf8</code>) — SHA-256 hex digest of the complete strainfile, computed once at pipeline submission time (same value for all population groups in a run).</li>
+<li><code>strain_list</code> (<code>utf8</code>) — Comma-separated list of strain names used for the specific population group, derived from the strainfile at submission time.</li>
+<li>Both columns are optional/NA-safe: queries against databases produced before this change return <code>NULL</code> without error.</li>
+<li>Enables post-hoc verification that a database was produced with a particular strain set, and that the strainfile has not been modified between runs.</li>
+</ul></li>
+</ul>
+</section>
+<section id="changed" class="level3">
+<h3 class="anchored" data-anchor-id="changed">Changed</h3>
+<ul>
+<li><strong>Mapping data Parquet schema: FK columns removed</strong> (<code>reproducibility-updates</code>, 2026-03-10): <code>mappings/population={pop}/mapping_id={id}/data.parquet</code> now contains only the five measurement columns (<code>marker</code>, <code>AF1</code>, <code>BETA</code>, <code>SE</code>, <code>P</code>). The three foreign-key columns previously stored in every data file have been relocated:
+<ul>
+<li><code>mapping_id</code> — already encoded in the Hive directory path; DuckDB auto-promotes it as a virtual column when the directory tree is scanned, so no query changes are needed.</li>
+<li><code>marker_set_id</code> and <code>trait_id</code> — moved to <code>mappings_metadata.parquet</code>, accessible via the <code>metadata</code> DuckDB view. This removes constant-per-mapping columns from the millions-of-rows data files without losing any information.</li>
+</ul></li>
+</ul>
+</section>
+<section id="added-3" class="level3">
+<h3 class="anchored" data-anchor-id="added-3">Added</h3>
+<ul>
+<li><code>mappings_metadata.parquet</code> sidecar file written to the database root by <code>DB_MIGRATION_AGGREGATE_METADATA</code> — provides a single queryable index of all mapping runs without scanning every Hive partition. (2026-03-02)</li>
+</ul>
+</section>
+</section>
+<section id="phase-5-database-integration" class="level2">
+<h2 class="anchored" data-anchor-id="phase-5-database-integration">Phase 5 — Database Integration</h2>
+<section id="pr-98-hash-based-ids-2026-03-01" class="level3">
+<h3 class="anchored" data-anchor-id="pr-98-hash-based-ids-2026-03-01">PR #98 — Hash-based IDs (2026-03-01)</h3>
+<p>Replaced sequential or filename-derived identifiers with deterministic 12-character MD5 hex IDs, making all IDs stable across <code>-resume</code> runs.</p>
+<section id="added-4" class="level4">
+<h4 class="anchored" data-anchor-id="added-4">Added</h4>
+<ul>
+<li><code>generate_trait_id(group, maf, nqtl, effect, rep, h2)</code> — MD5 hash of concatenated parameters; used as the primary key for all per-trait Parquet files (<code>traits/</code>, <code>causal_variants/</code>, <code>phenotypes/</code>).</li>
+<li><code>generate_mapping_id(trait_id, mode, type)</code> — MD5 hash used as the Hive partition key under <code>mappings/population={pop}/mapping_id={id}/</code>.</li>
+<li><code>generate_marker_set_id(population, maf, species, vcf_release_id, ms_ld)</code> — SHA-256 hash (v=2) written to <code>marker_set_metadata.parquet</code> and used in the marker-set file names.</li>
+<li>Unit tests for all three hash functions in <code>test-hash_generation.R</code>, with golden-value assertions to catch silent hash drift.</li>
+</ul>
+</section>
+<section id="changed-1" class="level4">
+<h4 class="anchored" data-anchor-id="changed-1">Changed</h4>
+<ul>
+<li>Mappings Parquet schema reduced to core columns; accessible metadata (population, MAF, effect, nQTL, h2, replicate) is no longer duplicated in the mappings table — it is retrievable via the trait ID foreign key.</li>
+<li>Allele frequency (<code>AF</code>) column removed from the marker-set schema.</li>
+<li>Algorithm names standardized to <code>loco</code> / <code>inbred</code> across all pipeline paths (both DB and legacy) to replace inconsistent earlier labels.</li>
+<li>Trait storage tests updated to cover hash-based ID determinism and round-trip write/read.</li>
+</ul>
+</section>
+<section id="fixed-5" class="level4">
+<h4 class="anchored" data-anchor-id="fixed-5">Fixed</h4>
+<ul>
+<li>Query functions updated to remove the defunct <code>AF</code> join that referenced a column no longer in the schema.</li>
+<li>Trait <code>id</code> generation corrected to use the hash framework (previously still used a non-hash method after the schema change).</li>
+</ul>
+</section>
+</section>
+<section id="pr-97-automated-cross-validation-tests-2026-02-27" class="level3">
+<h3 class="anchored" data-anchor-id="pr-97-automated-cross-validation-tests-2026-02-27">PR #97 — Automated Cross-Validation Tests (2026-02-27)</h3>
+<section id="added-5" class="level4">
+<h4 class="anchored" data-anchor-id="added-5">Added</h4>
+<ul>
+<li><code>test-assessment_cross_validation.R</code> — compares <code>db_simulation_assessment_results.tsv</code> (DB path) against <code>simulation_assessment_results.tsv</code> (legacy path), computing per-replicate detection concordance, designation concordance, and interval overlap (Jaccard score).</li>
+<li><code>test-cross_validation.R</code> — round-trip check comparing Parquet DB contents against raw <code>.fastGWA</code>/<code>.mlma</code> files in the Nextflow work directory.</li>
+</ul>
+</section>
+</section>
+<section id="pr-96-phase-5-genotype-trait-storage-2026-02-21" class="level3">
+<h3 class="anchored" data-anchor-id="pr-96-phase-5-genotype-trait-storage-2026-02-21">PR #96 — Phase 5: Genotype &amp; Trait Storage (2026-02-21)</h3>
+<p>Extended the Parquet database to capture the full data needed for offline variance-explained estimation and richer downstream queries.</p>
+<section id="added-6" class="level4">
+<h4 class="anchored" data-anchor-id="added-6">Added</h4>
+<ul>
+<li><strong>Genotype matrix storage</strong> — <code>write_genotype_matrix()</code> / <code>read_genotype_matrix()</code> in <code>R/database.R</code>; long-format Parquet files (<code>{pop}_{maf}_genotypes.parquet</code>) written to <code>marker_sets/</code>.</li>
+<li><strong><code>DB_MIGRATION_WRITE_GENOTYPE_MATRIX</code></strong> Nextflow module (<code>modules/db_migration/write_genotype_matrix/</code>).</li>
+<li><strong>Trait data storage</strong> — three write functions (<code>write_trait_metadata()</code>, <code>write_causal_variants()</code>, <code>write_phenotype_data()</code>) and corresponding Parquet schemas in <code>R/database.R</code>.</li>
+<li><strong><code>DB_MIGRATION_WRITE_TRAIT_DATA</code></strong> Nextflow module (<code>modules/db_migration/write_trait_data/</code>); uses <code>.merge()</code> to align <code>GCTA_SIMULATE_PHENOTYPES</code> output channels by emission order.</li>
+<li>Phenotype stored in <code>phenotypes/</code> is the pre-upscaling GCTA <code>.phen</code> output (before <code>check_vp.py</code>), making the ANOVA SS ratio for offline variance-explained scale-invariant.</li>
+<li>Unit tests in <code>test-genotype_storage.R</code> and <code>test-trait_storage.R</code>.</li>
+<li>Test fixture: <code>tests/fixtures/test_genotype_matrix.tsv</code> (5 markers × 3 strains) and <code>tests/fixtures/test_sims.phen</code> (3-strain GCTA <code>.phen</code> file).</li>
+</ul>
+</section>
+<section id="changed-2" class="level4">
+<h4 class="anchored" data-anchor-id="changed-2">Changed</h4>
+<ul>
+<li><code>var.exp</code> column removed from <code>mappings_schema()</code> and <code>prepare_mapping_data()</code>; it was always <code>NA</code> in the DB path. Raw data for offline estimation is now available in <code>traits/</code>, <code>causal_variants/</code>, and <code>phenotypes/</code>.</li>
+<li>All DB write functions default to <code>overwrite = TRUE</code> to handle non-atomic <code>arrow::write_parquet()</code> writes — a crashed task leaves a partial file; retry with <code>overwrite = TRUE</code> replaces it cleanly.</li>
+<li>Narrow glob <code>_markers\\.parquet$</code> used in <code>R/queries.R</code> to exclude genotype files from the <code>markers</code> DuckDB view (genotype files share the <code>marker_sets/</code> directory but have a different schema).</li>
+<li>Database integration workflow made the default path; legacy R assessment is now opt-in via <code>--legacy_assess</code>.</li>
+</ul>
+</section>
+</section>
+<section id="pr-95-documentation-site-2026-02-18" class="level3">
+<h3 class="anchored" data-anchor-id="pr-95-documentation-site-2026-02-18">PR #95 — Documentation Site (2026-02-18)</h3>
+<section id="added-7" class="level4">
+<h4 class="anchored" data-anchor-id="added-7">Added</h4>
+<ul>
+<li>Quarto website in <code>docs/</code> published to GitHub Pages at <code>https://andersenlab.github.io/nemascan-sims-nf/</code>.</li>
+<li>One page per pipeline phase: Marker Set Generation, Trait Simulation, GWAS Mapping, QTL Detection &amp; Assessment, Database Structure.</li>
+<li>Development guide covering local rendering, publishing, testing, HPC execution, and project structure.</li>
+</ul>
+</section>
+</section>
+<section id="pr-93-cross-validation-framework-2026-02-17" class="level3">
+<h3 class="anchored" data-anchor-id="pr-93-cross-validation-framework-2026-02-17">PR #93 — Cross-Validation Framework (2026-02-17)</h3>
+<section id="added-8" class="level4">
+<h4 class="anchored" data-anchor-id="added-8">Added</h4>
+<ul>
+<li><code>cross-validation.qmd</code> documentation page explaining concordance methodology.</li>
+<li>Cross-validation assessment script computing concordance scores (detection, designation, interval overlap) between the DB path and legacy R path.</li>
+</ul>
+</section>
+</section>
+</section>
+<section id="phase-4-db-path-qtl-analysis-assessment" class="level2">
+<h2 class="anchored" data-anchor-id="phase-4-db-path-qtl-analysis-assessment">Phase 4 — DB-Path QTL Analysis &amp; Assessment</h2>
+<section id="section" class="level3">
+<h3 class="anchored" data-anchor-id="section">2026-02-13</h3>
+<p>The database-integrated QTL detection and simulation assessment path was introduced, enabling end-to-end analysis without exporting intermediate TSV files.</p>
+<section id="added-9" class="level4">
+<h4 class="anchored" data-anchor-id="added-9">Added</h4>
+<ul>
+<li><code>DB_MIGRATION_ANALYZE_QTL</code> and <code>DB_MIGRATION_ASSESS_SIMS</code> Nextflow modules.</li>
+<li><code>R/qtl_database.R</code> and <code>R/sim_performance.R</code> — database-native QTL grouping and simulation performance scoring.</li>
+<li><code>R/assessment.R</code> — shared assessment logic sourced directly by <code>db_migration/assess_sims</code> and the legacy <code>Assess_Sims.R</code> scripts.</li>
+<li>Modular helpers split <code>R_GET_GCTA_INTERVALS</code> (legacy) into two processes: QTL identification and simulation performance assessment.</li>
+<li>Warning emitted when duplicated markers are detected during loading (expected only when migrating legacy processed-mapping TSV files).</li>
+</ul>
+</section>
+</section>
+</section>
+<section id="phase-3-database-foundation" class="level2">
+<h2 class="anchored" data-anchor-id="phase-3-database-foundation">Phase 3 — Database Foundation</h2>
+<section id="phases-13-prior-to-2026-02-13" class="level3">
+<h3 class="anchored" data-anchor-id="phases-13-prior-to-2026-02-13">Phases 1–3 (prior to 2026-02-13)</h3>
+<p>Core Parquet database infrastructure: marker-set ingestion, GWA statistics storage, and DuckDB query layer.</p>
+<section id="added-10" class="level4">
+<h4 class="anchored" data-anchor-id="added-10">Added</h4>
+<ul>
+<li><code>DB_MIGRATION_WRITE_MARKER_SET</code> module — writes <code>{pop}_{maf}_markers.parquet</code> and <code>marker_set_metadata.parquet</code>; emits <code>val true</code> on <code>done</code> to gate downstream GWA writes.</li>
+<li><code>DB_MIGRATION_WRITE_GWA_TO_DB</code> module — Hive-partitioned GWA Parquet files under <code>mappings/population={pop}/mapping_id={id}/</code>; gated behind a <code>.collect()</code> barrier ensuring marker schemas exist first.</li>
+<li><code>R/database.R</code>, <code>R/queries.R</code>, <code>R/analysis.R</code> — shared R library for Parquet I/O, DuckDB views, and log₁₀P computation.</li>
+<li><code>safe_log10p()</code> in <code>R/analysis.R</code> — log₁₀P computed at query time, never stored; clamped at <code>LOG10P_MAX</code>.</li>
+</ul>
+</section>
+</section>
+</section>
+<section id="early-pipeline-development-aprilmay-2025" class="level2">
+<h2 class="anchored" data-anchor-id="early-pipeline-development-aprilmay-2025">Early Pipeline Development (April–May 2025)</h2>
+<p>Initial Nextflow pipeline scaffold and iterative stabilization.</p>
+<section id="pr-30-2025-05-04-phenotype-simulation-fix" class="level3">
+<h3 class="anchored" data-anchor-id="pr-30-2025-05-04-phenotype-simulation-fix">PR #30 (2025-05-04) — Phenotype Simulation Fix</h3>
+<ul>
+<li>Corrected <code>GCTA_SIMULATE_PHENOTYPES</code> output file name and argument parsing.</li>
+</ul>
+</section>
+<section id="pr-29-2025-05-04-nqtl-and-effect-size-inputs" class="level3">
+<h3 class="anchored" data-anchor-id="pr-29-2025-05-04-nqtl-and-effect-size-inputs">PR #29 (2025-05-04) — nQTL and Effect Size Inputs</h3>
+<ul>
+<li>Added <code>nqtl</code> and <code>effect</code> as explicit pipeline parameters passed to the causal variant selection step.</li>
+</ul>
+</section>
+<section id="pr-25-2025-05-01-mitochondrial-chromosome-handling" class="level3">
+<h3 class="anchored" data-anchor-id="pr-25-2025-05-01-mitochondrial-chromosome-handling">PR #25 (2025-05-01) — Mitochondrial Chromosome Handling</h3>
+<ul>
+<li>Fixed null-handling for <code>mito_name</code> parameter so optional mitochondrial exclusion works correctly.</li>
+</ul>
+</section>
+<section id="pr-17-2025-04-18-meta-tag-check" class="level3">
+<h3 class="anchored" data-anchor-id="pr-17-2025-04-18-meta-tag-check">PR #17 (2025-04-18) — Meta-tag Check</h3>
+<ul>
+<li>Fixed <code>metaid</code> typo causing process metadata lookup failure.</li>
+</ul>
+</section>
+<section id="pr-8-2025-04-11-replace-find-with-get-processes" class="level3">
+<h3 class="anchored" data-anchor-id="pr-8-2025-04-11-replace-find-with-get-processes">PR #8 (2025-04-11) — Replace <code>FIND</code> with <code>GET</code> Processes</h3>
+<ul>
+<li>Renamed VCF-strain extraction process for consistency with NemaScan module naming conventions.</li>
+</ul>
+</section>
+<section id="pr-2-default-strain-set-2025-04-04" class="level3">
+<h3 class="anchored" data-anchor-id="pr-2-default-strain-set-2025-04-04">PR #2 — Default Strain Set (2025-04-04)</h3>
+<ul>
+<li>Added <code>data/test/</code> strain list; pipeline defaults to test strain set when <code>--strainfile</code> is not provided.</li>
+</ul>
+</section>
+<section id="pr-1-resource-allocation-2025-04-04" class="level3">
+<h3 class="anchored" data-anchor-id="pr-1-resource-allocation-2025-04-04">PR #1 — Resource Allocation (2025-04-04)</h3>
+<ul>
+<li>First draft of per-process CPU/RAM/time resource configuration.</li>
+</ul>
+</section>
+<section id="initial-commit-2025-03-26" class="level3">
+<h3 class="anchored" data-anchor-id="initial-commit-2025-03-26">Initial Commit (2025-03-26)</h3>
+<ul>
+<li>First working pipeline scaffold: marker set generation, GCTA simulation, GWAS mapping, and legacy R-based QTL detection and assessment.</li>
+</ul>
 
 
+</section>
 </section>
 
 </main> <!-- /main -->

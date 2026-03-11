@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-03-01">
+<meta name="dcterms.date" content="2026-03-05">
 
 <title>Phase 4: QTL Detection &amp; Assessment – nemascan-sims-nf</title>
 <style>
@@ -3909,10 +3909,21 @@ vertical-align: -.125em;
     <a class="nav-link" href="./cross-validation.html"> 
 <span class="menu-text">Cross-Validation</span></a>
   </li>  
-  <li class="nav-item">
-    <a class="nav-link" href="./development.html"> 
-<span class="menu-text">Development</span></a>
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-development" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Development</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-development">    
+        <li>
+    <a class="dropdown-item" href="./development.html">
+ <span class="dropdown-text">Development</span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="./changelog.html">
+ <span class="dropdown-text">Changelog</span></a>
+  </li>  
+    </ul>
+  </li>
 </ul>
           </div> <!-- /navcollapse -->
             <div class="quarto-navbar-tools">
@@ -3976,7 +3987,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">March 1, 2026</p>
+      <p class="date">March 5, 2026</p>
     </div>
   </div>
   
@@ -4167,10 +4178,12 @@ vertical-align: -.125em;
 <section id="db_migration_write_marker_set" class="level3">
 <h3 class="anchored" data-anchor-id="db_migration_write_marker_set">1. DB_MIGRATION_WRITE_MARKER_SET</h3>
 <p><strong>Source:</strong> <code>modules/db_migration/write_marker_set/main.nf</code>  •  <strong>Script:</strong> <code>resources/usr/bin/write_marker_set.R</code></p>
-<p>Writes the LD-pruned marker set and EIGEN independent tests count to the Parquet database. One invocation per (group, maf) combination.</p>
+<p>Writes the LD-pruned marker set and EIGEN independent tests count to the Parquet database. One invocation per marker set (unique combination of group, MAF, species, VCF release, and LD threshold).</p>
 <p><strong>Command:</strong></p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">write_marker_set.R</span> <span class="at">--group</span> <span class="va">${group}</span> <span class="at">--maf</span> <span class="va">${maf}</span> <span class="at">--bim</span> <span class="va">${bim_file}</span> <span class="dt">\</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--eigen</span> <span class="va">${n_indep_tests}</span> <span class="at">--base_dir</span> <span class="va">${base_dir}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--eigen</span> <span class="va">${n_indep_tests}</span> <span class="dt">\</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--species</span> <span class="va">${species}</span> <span class="at">--vcf_release_id</span> <span class="va">${vcf_release_id}</span> <span class="at">--ms_ld</span> <span class="va">${ms_ld}</span> <span class="dt">\</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--base_dir</span> <span class="va">${base_dir}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <table class="caption-top table">
 <colgroup>
 <col style="width: 31%">
@@ -4193,13 +4206,25 @@ vertical-align: -.125em;
 </tr>
 <tr class="odd">
 <td><code>--bim</code></td>
-<td>Path to PLINK <code>.bim</code> file from <code>PLINK_RECODE_VCF</code></td>
+<td>Path to PLINK <code>.bim</code> file from <code>PLINK_RECODE_MS_VCF</code></td>
 </tr>
 <tr class="even">
 <td><code>--eigen</code></td>
 <td>Path to independent tests file from <code>LOCAL_COMPILE_EIGENS</code></td>
 </tr>
 <tr class="odd">
+<td><code>--species</code></td>
+<td>Species identifier (<code>c_elegans</code>, <code>c_briggsae</code>, etc.)</td>
+</tr>
+<tr class="even">
+<td><code>--vcf_release_id</code></td>
+<td>8-digit CaeNDR release date extracted from strainfile <code>vcf</code> column</td>
+</tr>
+<tr class="odd">
+<td><code>--ms_ld</code></td>
+<td>LD R² threshold used for marker SNP selection</td>
+</tr>
+<tr class="even">
 <td><code>--base_dir</code></td>
 <td>Database output directory</td>
 </tr>
@@ -4223,7 +4248,7 @@ vertical-align: -.125em;
 <tr class="odd">
 <td><code>generate_marker_set_id()</code></td>
 <td><code>R/database.R</code></td>
-<td>Compute deterministic 20-char SHA-256 marker set ID from population and MAF</td>
+<td>Compute deterministic 20-char SHA-256 marker set ID (v=2) from population, MAF, species, VCF release ID, and LD threshold</td>
 </tr>
 <tr class="even">
 <td><code>read_bim_file()</code></td>
@@ -4605,7 +4630,7 @@ vertical-align: -.125em;
 </tr>
 </tbody>
 </table>
-<p><strong>Trait ID:</strong> Computed via a two-step chain: <code>generate_marker_set_id(group, maf)</code> yields the parent 20-char SHA-256 marker-set hash; <code>generate_trait_id(marker_set_hash, nqtl, effect, rep, h2)</code> yields the trait hash. All IDs are 20-character truncated SHA-256 hashes. No Groovy counterpart. Stable across <code>-resume</code>.</p>
+<p><strong>Trait ID:</strong> Computed via a two-step chain: <code>generate_marker_set_id(group, maf, species, vcf_release_id, ms_ld)</code> (v=2) yields the parent 20-char SHA-256 marker-set hash; <code>generate_trait_id(marker_set_hash, nqtl, effect, rep, h2)</code> yields the trait hash. All IDs are 20-character truncated SHA-256 hashes. No Groovy counterpart. Stable across <code>-resume</code>.</p>
 <p><strong>Cardinality:</strong> 1 invocation per unique trait (nqtl × rep × h2 × maf × effect × group).</p>
 <p><strong>Inputs / Outputs:</strong></p>
 <table class="caption-top table">

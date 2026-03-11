@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-03-01">
+<meta name="dcterms.date" content="2026-03-06">
 
 <title>Phase 2: Trait Simulation – nemascan-sims-nf</title>
 <style>
@@ -3909,10 +3909,21 @@ vertical-align: -.125em;
     <a class="nav-link" href="./cross-validation.html"> 
 <span class="menu-text">Cross-Validation</span></a>
   </li>  
-  <li class="nav-item">
-    <a class="nav-link" href="./development.html"> 
-<span class="menu-text">Development</span></a>
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-development" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Development</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-development">    
+        <li>
+    <a class="dropdown-item" href="./development.html">
+ <span class="dropdown-text">Development</span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="./changelog.html">
+ <span class="dropdown-text">Changelog</span></a>
+  </li>  
+    </ul>
+  </li>
 </ul>
           </div> <!-- /navcollapse -->
             <div class="quarto-navbar-tools">
@@ -3968,7 +3979,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">March 1, 2026</p>
+      <p class="date">March 6, 2026</p>
     </div>
   </div>
   
@@ -3984,24 +3995,27 @@ vertical-align: -.125em;
 <h2 class="anchored" data-anchor-id="overview">Overview</h2>
 <p>The second phase of the pipeline transforms the LD-pruned PLINK binary filesets (from Phase 1) into simulated phenotype data with known causal variants. These outputs feed into GWAS mapping (Phase 3).</p>
 <p>The processing flow is:</p>
-<pre><code>PLINK binaries (from Phase 1)
- ├─ PYTHON_SIMULATE_EFFECTS_GLOBAL ──► causal_variants.txt
- │                                        │
- ▼                                        ▼
- GCTA_SIMULATE_PHENOTYPES ──────────► .phen + .par files
- │
- ▼
- PLINK_UPDATE_BY_H2 ──────────► Phenotype-annotated PLINK binaries
-                                 (to Phase 3: GWAS Mapping)</code></pre>
+<pre><code>MS PLINK binaries (PLINK_RECODE_MS_VCF, Phase 1)
+ └─► [Phase 3: GWAS Mapping — unchanged]
+
+CV PLINK binaries (PLINK_RECODE_CV_VCF, Phase 1)
+ └─► PYTHON_SIMULATE_EFFECTS_GLOBAL ──► causal_variants.txt
+       │ (cv_plink output: CV_TO_SIMS.*)
+       ▼
+      GCTA_SIMULATE_PHENOTYPES ──────► .phen + .par files
+       │ (MS plink pass-through: TO_SIMS.*)
+       ▼
+      PLINK_UPDATE_BY_H2 ───────────► Phenotype-annotated MS PLINK binaries
+                                       (to Phase 3: GWAS Mapping)</code></pre>
 <p>Each process is described below with the exact commands run, key parameters, and links to external tool documentation.</p>
 <p><strong>Cartesian product expansion:</strong> The <code>each</code> qualifiers on <code>rep</code>, <code>nqtl</code>, <code>effect</code>, and <code>h2</code> in the Nextflow process definitions create all parameter combinations. Every PLINK fileset from Phase 1 is crossed with every combination of replicate number, number of QTL, effect size distribution, and heritability value, so downstream processes run independently for each point in the parameter grid.</p>
 </section>
 <section id="python_simulate_effects_global" class="level2">
 <h2 class="anchored" data-anchor-id="python_simulate_effects_global">1. PYTHON_SIMULATE_EFFECTS_GLOBAL</h2>
 <p><strong>Source:</strong> <code>modules/python/simulate_effects_global/main.nf</code></p>
-<p>Selects random causal variants from the LD-pruned marker set and assigns effect sizes. This process executes the <code>bin/create_causal_vars.py</code> script.</p>
+<p>Selects random causal variants from the CV pool (the LD-pruned variant set produced by <code>PLINK_RECODE_CV_VCF</code>) and assigns effect sizes. This process executes the <code>bin/create_causal_vars.py</code> script. Using the CV pool rather than the marker SNP set allows causal variants to have lower MAF or higher LD than the GWA mapping panel, providing a more realistic simulation of causal architecture.</p>
 <p><strong>Command:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> create_causal_vars.py TO_SIMS.bim <span class="va">${nqtl}</span> <span class="va">${effect}</span></span>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> create_causal_vars.py CV_TO_SIMS.bim <span class="va">${nqtl}</span> <span class="va">${effect}</span> <span class="va">${rep}</span></span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="fu">mv</span> causal_vars.txt causal.variants.sim.<span class="va">${nqtl}</span>.<span class="va">${rep}</span>.txt</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <section id="script-functions" class="level3">
 <h3 class="anchored" data-anchor-id="script-functions">Script functions</h3>
@@ -4023,18 +4037,33 @@ vertical-align: -.125em;
 </tr>
 <tr class="even">
 <td><code>select_variants()</code></td>
-<td>Random sample of <code>nQTL</code> markers without replacement via <code>np.random.choice</code></td>
+<td>Random sample of <code>nQTL</code> markers without replacement via <code>rng.choice</code> (seeded Generator)</td>
 </tr>
 <tr class="odd">
 <td><code>simulate_effect_gamma()</code></td>
-<td>Gamma(shape=0.4, scale=1.66) distribution with random sign (+1 or -1)</td>
+<td>Gamma(shape=0.4, scale=1.66) distribution with random sign (+1 or -1); uses seeded Generator</td>
 </tr>
 <tr class="even">
 <td><code>simulate_effect_uniform()</code></td>
-<td>Uniform(low, high) distribution with random sign (+1 or -1)</td>
+<td>Uniform(low, high) distribution with random sign (+1 or -1); uses seeded Generator</td>
 </tr>
 </tbody>
 </table>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Note</span>Python dependency versions
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><code>create_causal_vars.py</code> depends on <code>numpy</code> and <code>pandas</code>. The exact versions validated with this pipeline are recorded in <code>requirements.txt</code> at the repository root (<code>numpy==2.2.3</code>, <code>pandas==2.2.3</code>) and correspond to the packages present in the <code>andersenlab/numpy:20250506</code> container. These versions are also captured at runtime in each task’s <code>versions.yml</code> output, so pipeline execution logs carry full library-version provenance.</p>
+<p>For local development outside the container:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-r</span> requirements.txt</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
 </section>
 <section id="effect-type-selection" class="level3">
 <h3 class="anchored" data-anchor-id="effect-type-selection">Effect type selection</h3>
@@ -4062,8 +4091,8 @@ vertical-align: -.125em;
 <tbody>
 <tr class="odd">
 <td>Input</td>
-<td><code>TO_SIMS.bim</code></td>
-<td>PLINK marker information file from Phase 1 (variant IDs in column 2)</td>
+<td><code>CV_TO_SIMS.bim</code></td>
+<td>PLINK marker information file from the CV pool (<code>PLINK_RECODE_CV_VCF</code>, Phase 1); variant IDs in column 2</td>
 </tr>
 <tr class="even">
 <td>Input</td>
@@ -4078,7 +4107,7 @@ vertical-align: -.125em;
 <tr class="even">
 <td>Input</td>
 <td><code>rep</code> (val)</td>
-<td>Replicate number (used only in output filename)</td>
+<td>Replicate number; used as RNG seed and in output filename</td>
 </tr>
 <tr class="odd">
 <td>Output</td>
@@ -4087,6 +4116,19 @@ vertical-align: -.125em;
 </tr>
 </tbody>
 </table>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Note</span>Reproducibility: RNG seeding
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><code>create_causal_vars.py</code> seeds NumPy’s <code>np.random.default_rng(rep)</code> at startup, so identical <code>rep</code> values always produce the same causal variant selection and effect sizes. The seed value (<code>rep</code>) is stored as <code>sim_seed</code> in the trait metadata Parquet file for post-hoc verification.</p>
+</div>
+</div>
 </section>
 <section id="example-output" class="level3">
 <h3 class="anchored" data-anchor-id="example-output">Example output</h3>
@@ -4104,14 +4146,14 @@ vertical-align: -.125em;
 <p><strong>Source:</strong> <code>modules/gcta/simulate_phenotypes/main.nf</code></p>
 <p>Uses <a href="https://yanglab.westlake.edu.cn/software/gcta/#GWASSimulation">GCTA’s GWAS Simulation</a> functionality to simulate quantitative phenotypes from the causal variants selected in step 1.</p>
 <p><strong>Command:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">gcta64</span> <span class="at">--bfile</span> TO_SIMS <span class="dt">\</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>     <span class="at">--simu-qt</span> <span class="dt">\</span></span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>     <span class="at">--simu-causal-loci</span> <span class="va">${causal_variants}</span> <span class="dt">\</span></span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>     <span class="at">--simu-hsq</span> <span class="va">${h2}</span> <span class="dt">\</span></span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>     <span class="at">--simu-rep</span> 1 <span class="dt">\</span></span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>     <span class="at">--autosome-num</span> 6 <span class="dt">\</span></span>
-<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>     <span class="at">--thread-num</span> <span class="va">${task</span><span class="er">.cpus</span><span class="va">}</span> <span class="dt">\</span></span>
-<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>     <span class="at">--out</span> <span class="va">${nqtl}</span>_<span class="va">${rep}</span>_<span class="va">${h2}</span>_<span class="va">${maf}</span>_<span class="va">${effect}</span>_<span class="va">${group}</span>_sims</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">gcta64</span> <span class="at">--bfile</span> CV_TO_SIMS <span class="dt">\</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>     <span class="at">--simu-qt</span> <span class="dt">\</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>     <span class="at">--simu-causal-loci</span> <span class="va">${causal_variants}</span> <span class="dt">\</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>     <span class="at">--simu-hsq</span> <span class="va">${h2}</span> <span class="dt">\</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>     <span class="at">--simu-rep</span> <span class="va">${rep}</span> <span class="dt">\</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>     <span class="at">--autosome-num</span> 6 <span class="dt">\</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>     <span class="at">--thread-num</span> 1 <span class="dt">\</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>     <span class="at">--out</span> <span class="va">${nqtl}</span>_<span class="va">${rep}</span>_<span class="va">${h2}</span>_<span class="va">${maf}</span>_<span class="va">${effect}</span>_<span class="va">${group}</span>_sims</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <table class="caption-top table">
 <colgroup>
 <col style="width: 40%">
@@ -4137,19 +4179,39 @@ vertical-align: -.125em;
 <td>Target heritability (h<sup>2</sup>); from the <code>--h2</code> pipeline parameter, crossed in via <code>each h2</code></td>
 </tr>
 <tr class="even">
-<td><code>--simu-rep 1</code></td>
-<td>Single replicate per GCTA call (pipeline-level <code>--reps</code> parameter controls repetition via Nextflow <code>each</code>)</td>
+<td><code>--simu-rep ${rep}</code></td>
+<td>Number of phenotype replicates GCTA generates in a single call; used as an RNG-advancement workaround — see note below</td>
 </tr>
 <tr class="odd">
 <td><code>--autosome-num 6</code></td>
 <td><em>C. elegans</em> has 6 chromosomes (5 autosomes + X)</td>
 </tr>
 <tr class="even">
-<td><code>--thread-num</code></td>
-<td>Number of threads</td>
+<td><code>--thread-num 1</code></td>
+<td>Pinned to 1 thread for deterministic floating-point results; multi-threaded BLAS introduces non-deterministic reduction order</td>
 </tr>
 </tbody>
 </table>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Note</span>Replicate RNG strategy: <code>--simu-rep ${rep}</code> with awk trimming
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>GCTA has no <code>--seed</code> flag. When pipeline replicates run in parallel (as is typical on an HPC cluster), tasks starting near-simultaneously can receive the same time-based seed and therefore produce identical phenotype draws — defeating the purpose of replication.</p>
+<p><strong>Workaround:</strong> Pass <code>--simu-rep ${rep}</code> instead of <code>--simu-rep 1</code>. With <code>--simu-rep N</code>, GCTA generates N independent phenotype columns in the output <code>.phen</code> file (columns: <code>FID IID pheno1 pheno2 ... phenoN</code>). Because each additional column consumes more of GCTA’s internal RNG, replicate N draws from a different position in the random sequence even if two tasks share the same initial seed.</p>
+<p><strong>In-process trimming:</strong> Immediately after the GCTA call, an awk step extracts only the N-th phenotype column and overwrites the <code>.phen</code> file in place:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">awk</span> <span class="at">-v</span> col=<span class="va">$((${rep}</span> <span class="op">+</span> <span class="dv">2</span><span class="va">))</span> <span class="st">&#39;{print $1, $2, $col}&#39;</span> sims.phen <span class="op">&gt;</span> sims.phen.tmp</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="fu">mv</span> sims.phen.tmp sims.phen</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The column index is <code>rep + 2</code> because column 1 is FID, column 2 is IID, and the phenotype columns begin at column 3. This trims the file back to the standard 3-column format (<code>FID IID value</code>) before it is emitted, so no downstream consumers require any changes.</p>
+<p><strong>The <code>.par</code> file is unaffected</strong> — GCTA always outputs one row per causal variant regardless of <code>--simu-rep N</code>.</p>
+<p><strong>Edge case <code>rep=1</code>:</strong> <code>col = 1 + 2 = 3</code>. The awk step extracts the only column that exists — a no-op that preserves identical behaviour to the previous <code>--simu-rep 1</code> setting.</p>
+</div>
+</div>
 <section id="inputs-outputs-1" class="level3">
 <h3 class="anchored" data-anchor-id="inputs-outputs-1">Inputs / Outputs</h3>
 <table class="caption-top table">
@@ -4168,8 +4230,8 @@ vertical-align: -.125em;
 <tbody>
 <tr class="odd">
 <td>Input</td>
-<td><code>TO_SIMS.bed/.bim/.fam</code></td>
-<td>PLINK binary fileset from Phase 1</td>
+<td><code>CV_TO_SIMS.bed/.bim/.fam</code></td>
+<td>CV pool PLINK binary fileset (from <code>PYTHON_SIMULATE_EFFECTS_GLOBAL.out.cv_plink</code>); contains genotypes for all causal variants</td>
 </tr>
 <tr class="even">
 <td>Input</td>
@@ -4205,13 +4267,15 @@ vertical-align: -.125em;
 <div class="callout-body-container callout-body">
 <p>The <code>.phen</code> and <code>.par</code> outputs are captured by the DB path before the mode-crossing (<code>GCTA_MAKE_GRM</code>). <code>DB_MIGRATION_WRITE_TRAIT_DATA</code> stores trait metadata, causal variants, and pre-upscaled phenotype values in the database for future offline variance-explained estimation. The phenotype values passed to <code>PLINK_UPDATE_BY_H2</code> and ultimately to GWAS mapping may differ (upscaled by <code>check_vp.py</code>), but the ANOVA SS ratio used for offline estimation is scale-invariant.</p>
 <p><strong>Trait ID generation:</strong> Each simulated trait is assigned a deterministic 20-character SHA-256 hash identifier (<code>trait_id</code>). The ID is the second level of the canonical three-level hash hierarchy used throughout the database:</p>
-<pre><code>marker_set_id  (SHA-256 of &quot;v=1|population=...|maf=...&quot;)
+<pre><code>marker_set_id  (SHA-256 of &quot;v=2|population=...|maf=...|species=...|vcf_release_id=...|ms_ld=...&quot;)
   └── trait_id (SHA-256 of &quot;v=1|parent={marker_set_hash}|nqtl=...|effect=...|rep=...|h2=...&quot;)
         └── mapping_id (SHA-256 of &quot;v=1|parent={trait_hash}|algorithm=...|pca=...&quot;)</code></pre>
 <p>The <code>trait_id</code> is computed in <code>write_trait_data.R</code> as:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>ms_id    <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(opt<span class="sc">$</span>group, <span class="fu">as.numeric</span>(opt<span class="sc">$</span>maf))</span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>trait    <span class="ot">&lt;-</span> <span class="fu">generate_trait_id</span>(ms_id<span class="sc">$</span>hash, opt<span class="sc">$</span>nqtl, opt<span class="sc">$</span>effect, opt<span class="sc">$</span>rep, opt<span class="sc">$</span>h2)</span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>trait_id <span class="ot">&lt;-</span> trait<span class="sc">$</span>hash  <span class="co"># 20-character lowercase hex string</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>ms_id    <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(opt<span class="sc">$</span>group, <span class="fu">as.numeric</span>(opt<span class="sc">$</span>maf),</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>                                   opt<span class="sc">$</span>species, opt<span class="sc">$</span>vcf_release_id,</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>                                   <span class="fu">as.numeric</span>(opt<span class="sc">$</span>ms_ld))</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>trait    <span class="ot">&lt;-</span> <span class="fu">generate_trait_id</span>(ms_id<span class="sc">$</span>hash, opt<span class="sc">$</span>nqtl, opt<span class="sc">$</span>effect, opt<span class="sc">$</span>rep, opt<span class="sc">$</span>h2)</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>trait_id <span class="ot">&lt;-</span> trait<span class="sc">$</span>hash  <span class="co"># 20-character lowercase hex string</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>The hash is derived from this input string, where <code>h2</code> and <code>maf</code> are serialized with <code>sprintf(&quot;%.10f&quot;, as.numeric(...))</code> and <code>nqtl</code>/<code>rep</code> are serialized with <code>as.integer()</code>:</p>
 <pre><code>v=1|parent={marker_set_hash}|nqtl={nqtl}|effect={effect}|rep={rep}|h2={h2}</code></pre>
 <p>The human-readable <code>trait_hash_string</code> and the parent <code>marker_set_id</code> are stored once in the trait metadata file (within the <code>traits/</code> directory). The short 20-character <code>trait_id</code> hash serves as the join key in data files and is passed as the parent hash when generating downstream <code>mapping_id</code> values in Phase 3.</p>
@@ -4261,18 +4325,18 @@ NIC274 NIC274 -22.5104</code></pre>
 <p><strong>Source:</strong> <code>modules/plink/update_by_h2/main.nf</code></p>
 <p>Integrates the simulated phenotype values into the PLINK binary fileset and renames the output files to include all simulation parameters. This produces the phenotype-annotated PLINK files used by Phase 3 (GWAS Mapping).</p>
 <p><strong>Command:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ex">plink</span> <span class="at">--bfile</span> TO_SIMS <span class="dt">\</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--make-bed</span> <span class="dt">\</span></span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--snps-only</span> <span class="dt">\</span></span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--biallelic-only</span> <span class="dt">\</span></span>
-<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--maf</span> <span class="va">${maf}</span> <span class="dt">\</span></span>
-<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--set-missing-var-ids</span> @:# <span class="dt">\</span></span>
-<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--geno</span> <span class="dt">\</span></span>
-<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--recode</span> <span class="dt">\</span></span>
-<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--out</span> TO_SIMS_<span class="va">${nqtl}</span>_<span class="va">${rep}</span>_<span class="va">${h2}</span>_<span class="va">${maf}</span>_<span class="va">${effect}</span>_<span class="va">${group}</span> <span class="dt">\</span></span>
-<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">--allow-extra-chr</span> <span class="dt">\</span></span>
-<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">--allow-no-sex</span> <span class="dt">\</span></span>
-<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">--pheno</span> <span class="va">${nqtl}</span>_<span class="va">${rep}</span>_<span class="va">${h2}</span>_<span class="va">${maf}</span>_<span class="va">${effect}</span>_<span class="va">${group}</span>_sims.pheno</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="ex">plink</span> <span class="at">--bfile</span> TO_SIMS <span class="dt">\</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--make-bed</span> <span class="dt">\</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--snps-only</span> <span class="dt">\</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--biallelic-only</span> <span class="dt">\</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--maf</span> <span class="va">${maf}</span> <span class="dt">\</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--set-missing-var-ids</span> @:# <span class="dt">\</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--geno</span> <span class="dt">\</span></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--recode</span> <span class="dt">\</span></span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--out</span> TO_SIMS_<span class="va">${nqtl}</span>_<span class="va">${rep}</span>_<span class="va">${h2}</span>_<span class="va">${maf}</span>_<span class="va">${effect}</span>_<span class="va">${group}</span> <span class="dt">\</span></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">--allow-extra-chr</span> <span class="dt">\</span></span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">--allow-no-sex</span> <span class="dt">\</span></span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">--pheno</span> <span class="va">${nqtl}</span>_<span class="va">${rep}</span>_<span class="va">${h2}</span>_<span class="va">${maf}</span>_<span class="va">${effect}</span>_<span class="va">${group}</span>_sims.pheno</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -4357,7 +4421,7 @@ NIC274 NIC274 -22.5104</code></pre>
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>The filtering flags (<code>--snps-only</code>, <code>--biallelic-only</code>, <code>--maf</code>, <code>--set-missing-var-ids</code>, <code>--geno</code>) are the same as those used in Phase 1’s <code>PLINK_RECODE_VCF</code>. They are re-applied here for consistency across all PLINK commands in the pipeline, even though the input data has already been filtered.</p>
+<p>The filtering flags (<code>--snps-only</code>, <code>--biallelic-only</code>, <code>--maf</code>, <code>--set-missing-var-ids</code>, <code>--geno</code>) are the same as those used in Phase 1’s <code>PLINK_RECODE_MS_VCF</code> / <code>PLINK_RECODE_CV_VCF</code>. They are re-applied here for consistency across all PLINK commands in the pipeline, even though the input data has already been filtered.</p>
 </div>
 </div>
 <section id="inputs-outputs-2" class="level3">

@@ -8,7 +8,7 @@
 
 <meta name="dcterms.date" content="2026-03-05">
 
-<title>Assessment Cross-Validation – nemascan-sims-nf</title>
+<title>Functional Validation: Non-Marker Causal Variants – nemascan-sims-nf</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -3906,7 +3906,7 @@ vertical-align: -.125em;
 <span class="menu-text">Database Structure</span></a>
   </li>  
   <li class="nav-item">
-    <a class="nav-link active" href="./cross-validation.html" aria-current="page"> 
+    <a class="nav-link" href="./cross-validation.html"> 
 <span class="menu-text">Cross-Validation</span></a>
   </li>  
   <li class="nav-item dropdown ">
@@ -3940,17 +3940,33 @@ vertical-align: -.125em;
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#purpose" id="toc-purpose" class="nav-link active" data-scroll-target="#purpose">Purpose</a></li>
-  <li><a href="#when-to-use-this" id="toc-when-to-use-this" class="nav-link" data-scroll-target="#when-to-use-this">When to Use This</a></li>
-  <li><a href="#concordance-scores" id="toc-concordance-scores" class="nav-link" data-scroll-target="#concordance-scores">Concordance Scores</a></li>
-  <li><a href="#running-the-cross-validation" id="toc-running-the-cross-validation" class="nav-link" data-scroll-target="#running-the-cross-validation">Running the Cross-Validation</a>
+  <li><a href="#overview" id="toc-overview" class="nav-link active" data-scroll-target="#overview">1. Overview</a></li>
+  <li><a href="#strainfile-format" id="toc-strainfile-format" class="nav-link" data-scroll-target="#strainfile-format">2. Strainfile Format</a>
   <ul class="collapse">
-  <li><a href="#run-the-pipeline-with-both-paths" id="toc-run-the-pipeline-with-both-paths" class="nav-link" data-scroll-target="#run-the-pipeline-with-both-paths">1. Run the pipeline with both paths</a></li>
-  <li><a href="#run-the-automated-test-suite" id="toc-run-the-automated-test-suite" class="nav-link" data-scroll-target="#run-the-automated-test-suite">2. Run the automated test suite</a></li>
-  <li><a href="#render-the-interactive-notebook" id="toc-render-the-interactive-notebook" class="nav-link" data-scroll-target="#render-the-interactive-notebook">3. Render the interactive notebook</a></li>
+  <li><a href="#before-2-column-feature-database-integration" id="toc-before-2-column-feature-database-integration" class="nav-link" data-scroll-target="#before-2-column-feature-database-integration">Before (2-column, <code>feature-database-integration</code>)</a></li>
+  <li><a href="#after-6-column-tsv-this-branch" id="toc-after-6-column-tsv-this-branch" class="nav-link" data-scroll-target="#after-6-column-tsv-this-branch">After (6-column TSV, this branch)</a></li>
+  <li><a href="#three-species-strainfile" id="toc-three-species-strainfile" class="nav-link" data-scroll-target="#three-species-strainfile">Three-species strainfile</a></li>
   </ul></li>
-  <li><a href="#notebook-contents" id="toc-notebook-contents" class="nav-link" data-scroll-target="#notebook-contents">Notebook Contents</a></li>
-  <li><a href="#adapting-for-other-comparisons" id="toc-adapting-for-other-comparisons" class="nav-link" data-scroll-target="#adapting-for-other-comparisons">Adapting for Other Comparisons</a></li>
+  <li><a href="#marker-set-id-v2-hash-function" id="toc-marker-set-id-v2-hash-function" class="nav-link" data-scroll-target="#marker-set-id-v2-hash-function">3. Marker Set ID — v=2 Hash Function</a></li>
+  <li><a href="#dual-plink-pipeline" id="toc-dual-plink-pipeline" class="nav-link" data-scroll-target="#dual-plink-pipeline">4. Dual PLINK Pipeline</a>
+  <ul class="collapse">
+  <li><a href="#aliased-module-imports" id="toc-aliased-module-imports" class="nav-link" data-scroll-target="#aliased-module-imports">Aliased module imports</a></li>
+  <li><a href="#channel-fan-out" id="toc-channel-fan-out" class="nav-link" data-scroll-target="#channel-fan-out">Channel fan-out</a></li>
+  <li><a href="#module-change-each-maf-val-maf" id="toc-module-change-each-maf-val-maf" class="nav-link" data-scroll-target="#module-change-each-maf-val-maf">Module change: <code>each maf</code> → <code>val maf</code></a></li>
+  <li><a href="#data-flow-diagram" id="toc-data-flow-diagram" class="nav-link" data-scroll-target="#data-flow-diagram">Data-flow diagram</a></li>
+  <li><a href="#process-selector-nextflow.config" id="toc-process-selector-nextflow.config" class="nav-link" data-scroll-target="#process-selector-nextflow.config">Process selector (<code>nextflow.config</code>)</a></li>
+  </ul></li>
+  <li><a href="#cv-binary-routing-through-simulation" id="toc-cv-binary-routing-through-simulation" class="nav-link" data-scroll-target="#cv-binary-routing-through-simulation">5. CV Binary Routing Through Simulation</a>
+  <ul class="collapse">
+  <li><a href="#why-gcta-must-use-the-cv-binary" id="toc-why-gcta-must-use-the-cv-binary" class="nav-link" data-scroll-target="#why-gcta-must-use-the-cv-binary">Why GCTA must use the CV binary</a></li>
+  <li><a href="#tap-fix-for-three-subscriber-queue-channel" id="toc-tap-fix-for-three-subscriber-queue-channel" class="nav-link" data-scroll-target="#tap-fix-for-three-subscriber-queue-channel"><code>.tap{}</code> fix for three-subscriber queue channel</a></li>
+  </ul></li>
+  <li><a href="#unit-tests" id="toc-unit-tests" class="nav-link" data-scroll-target="#unit-tests">6. Unit Tests</a></li>
+  <li><a href="#pipeline-stub-runs" id="toc-pipeline-stub-runs" class="nav-link" data-scroll-target="#pipeline-stub-runs">7. Pipeline Stub Runs</a>
+  <ul class="collapse">
+  <li><a href="#a.-single-species-test-profile" id="toc-a.-single-species-test-profile" class="nav-link" data-scroll-target="#a.-single-species-test-profile">7a. Single-species (<code>test</code> profile)</a></li>
+  <li><a href="#b.-three-species-test_three_species-profile" id="toc-b.-three-species-test_three_species-profile" class="nav-link" data-scroll-target="#b.-three-species-test_three_species-profile">7b. Three-species (<code>test_three_species</code> profile)</a></li>
+  </ul></li>
   </ul>
 </nav>
     </div>
@@ -3959,8 +3975,8 @@ vertical-align: -.125em;
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">Assessment Cross-Validation</h1>
-<p class="subtitle lead">Comparing DB-path and legacy-path QTL assessment outputs</p>
+<h1 class="title">Functional Validation: Non-Marker Causal Variants</h1>
+<p class="subtitle lead">feature/add-nonmarker-cvs → feature-database-integration</p>
 </div>
 
 
@@ -3983,128 +3999,428 @@ vertical-align: -.125em;
 </header>
 
 
-<section id="purpose" class="level2">
-<h2 class="anchored" data-anchor-id="purpose">Purpose</h2>
-<p>The <code>nemascan-sims-nf</code> pipeline can produce QTL assessment results through two independent paths:</p>
-<ul>
-<li><strong>DB-path</strong> (default) — stores GWA results in a Parquet/DuckDB database and performs QTL analysis by querying that database.</li>
-<li><strong>Legacy path</strong> (opt-in via <code>--legacy_assess</code>) — uses R scripts operating on intermediate files produced during the pipeline run.</li>
-</ul>
-<p>Both paths analyze the same GWA output from <code>GCTA_PERFORM_GWA</code> and should produce identical QTL detection, interval boundaries, and significance classifications. The cross-validation analysis quantifies their agreement using three per-replicate concordance scores.</p>
+<section id="overview" class="level2">
+<h2 class="anchored" data-anchor-id="overview">1. Overview</h2>
+<p>The <code>feature/add-nonmarker-cvs</code> branch extends the pipeline to allow causal variants (CVs) to be drawn from a separately-configured variant pool that is independent of the GWA marker SNP set. Previously all causal variants had to be present in the marker SNP set — they were the same PLINK binary. This restriction was lifted by introducing a second, parallel PLINK run (the <strong>CV pool</strong>) for each strain group, whose MAF and LD thresholds can be set independently of the GWA marker set.</p>
+<p>This branch is <strong>22 commits ahead</strong> of <code>feature-database-integration</code> (13 step-branch merges, fixup commits, and new test data). Changes touch: the strainfile format, CLI parameters, the PLINK module, <code>main.nf</code> channel routing, Python effect simulation, GCTA phenotype inputs, the R hash framework (<code>database.R</code>), three DB-write R scripts and their Nextflow modules, and the test suite.</p>
+<p>This notebook covers:</p>
+<ol type="1">
+<li>Strainfile format (2-column → 6-column)</li>
+<li>Marker set ID hash — v=2 function demonstration (live R evaluation)</li>
+<li>Dual PLINK pipeline wiring</li>
+<li>CV binary routing through simulation</li>
+<li>Unit test results</li>
+<li>Pipeline stub runs (single-species <code>test</code> and three-species <code>test_three_species</code>)</li>
+</ol>
+<hr>
 </section>
-<section id="when-to-use-this" class="level2">
-<h2 class="anchored" data-anchor-id="when-to-use-this">When to Use This</h2>
-<p>Run the cross-validation when:</p>
-<ul>
-<li>Validating changes to the DB-path analysis code against the legacy path as a reference</li>
-<li>Verifying that a new pipeline deployment produces consistent results</li>
-<li>Comparing assessment outputs from different pipeline versions or configurations</li>
-</ul>
+<section id="strainfile-format" class="level2">
+<h2 class="anchored" data-anchor-id="strainfile-format">2. Strainfile Format</h2>
+<section id="before-2-column-feature-database-integration" class="level3">
+<h3 class="anchored" data-anchor-id="before-2-column-feature-database-integration">Before (2-column, <code>feature-database-integration</code>)</h3>
+<p>The old format was a space-separated file with no header. Each line had a group name and a comma-separated strain list. VCF source, species, MAF threshold, and LD threshold were all supplied via CLI parameters (<code>--vcf</code>, <code>--species</code>, <code>--maf</code>, <code>--ms_ld</code>).</p>
+<pre><code>ce.test.200strains AB1,BRC20067,BRC20263,...</code></pre>
 </section>
-<section id="concordance-scores" class="level2">
-<h2 class="anchored" data-anchor-id="concordance-scores">Concordance Scores</h2>
-<p>For each <strong>mapping entry</strong> — a unique combination of simulation replicate (<code>nQTL</code>, <code>simREP</code>, <code>h2</code>, <code>maf</code>, <code>strain_set_id</code>), mapping method, and significance threshold — three scores are computed on a 0-to-1 scale:</p>
+<section id="after-6-column-tsv-this-branch" class="level3">
+<h3 class="anchored" data-anchor-id="after-6-column-tsv-this-branch">After (6-column TSV, this branch)</h3>
+<p>The new format is a tab-separated file <strong>with a header row</strong>. Each row is a complete, self-contained strain group specification. The <code>--vcf</code>, <code>--species</code>, <code>--maf</code>, <code>--ms_maf</code>, and <code>--ms_ld</code> CLI parameters are removed.</p>
+<pre><code>group   species vcf ms_maf  ms_ld   strains
+ce.test.200strains  c_elegans   data/test/test.20210901.vcf.gz  0.05    0.8 AB1,BRC20067,...</code></pre>
+<p>Column definitions:</p>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 16%">
-<col style="width: 41%">
-<col style="width: 20%">
-<col style="width: 20%">
+<col style="width: 29%">
+<col style="width: 22%">
+<col style="width: 48%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Score</th>
-<th>What it measures</th>
-<th>1 means</th>
-<th>0 means</th>
+<th>Column</th>
+<th>Type</th>
+<th>Description</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>Detection</strong></td>
-<td><code>Detected</code>/<code>Simulated</code> flag agreement per QTL row</td>
-<td>All QTL rows agree</td>
-<td>None agree</td>
+<td><code>group</code></td>
+<td>string</td>
+<td>Unique strain group identifier; used in file naming and DB keys</td>
 </tr>
 <tr class="even">
-<td><strong>Designation</strong></td>
-<td><code>designate_qtl()</code> outcome category agreement</td>
-<td>All designations match</td>
-<td>None match</td>
+<td><code>species</code></td>
+<td>string</td>
+<td><code>c_elegans</code>, <code>c_briggsae</code>, or <code>c_tropicalis</code>; controls CaeNDR URL construction</td>
 </tr>
 <tr class="odd">
-<td><strong>Interval Overlap</strong></td>
-<td>Jaccard overlap of <code>[startPOS, endPOS]</code> intervals</td>
-<td>Boundaries match perfectly</td>
-<td>No overlap</td>
+<td><code>vcf</code></td>
+<td>string</td>
+<td>8-digit CaeNDR release date <strong>or</strong> path to a VCF file</td>
+</tr>
+<tr class="even">
+<td><code>ms_maf</code></td>
+<td>float</td>
+<td>Minor allele frequency threshold for the <strong>marker SNP set</strong></td>
+</tr>
+<tr class="odd">
+<td><code>ms_ld</code></td>
+<td>float</td>
+<td>LD R² pruning threshold for the <strong>marker SNP set</strong></td>
+</tr>
+<tr class="even">
+<td><code>strains</code></td>
+<td>string</td>
+<td>Comma-separated strain list</td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="running-the-cross-validation" class="level2">
-<h2 class="anchored" data-anchor-id="running-the-cross-validation">Running the Cross-Validation</h2>
-<section id="run-the-pipeline-with-both-paths" class="level3">
-<h3 class="anchored" data-anchor-id="run-the-pipeline-with-both-paths">1. Run the pipeline with both paths</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="va">NXF_VER</span><span class="op">=</span>24.10.4 <span class="ex">nextflow</span> run main.nf <span class="at">-profile</span> test,docker <span class="at">--legacy_assess</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>This produces two assessment TSVs in the output directory:</p>
+<section id="three-species-strainfile" class="level3">
+<h3 class="anchored" data-anchor-id="three-species-strainfile">Three-species strainfile</h3>
+<p>The new <code>test_three_species</code> profile uses <code>data/test/test_strains_three_species.txt</code> with 9 groups spanning all three supported <em>Caenorhabditis</em> species:</p>
+<pre><code>group   species vcf ms_maf  ms_ld   strains
+ce.test c_elegans   data/test/test_ce.20250625.vcf.gz   0.05    0.8 AB1,BBA2,...
+ce.test.popA    c_elegans   data/test/test_ce.20250625.vcf.gz   0.05    0.8 AB1,BBA2,...
+ce.test.popB    c_elegans   data/test/test_ce.20250625.vcf.gz   0.05    0.8 ECA1937,...
+cb.test c_briggsae  data/test/test_cb.20250626.vcf.gz   0.05    0.8 AF16,BRC20069,...
+cb.test.popA    c_briggsae  data/test/test_cb.20250626.vcf.gz   0.05    0.8 AF16,...
+cb.test.popB    c_briggsae  data/test/test_cb.20250626.vcf.gz   0.05    0.8 ECA1143,...
+ct.test c_tropicalis    data/test/test_ct.20250627.vcf.gz   0.05    0.8 BRC20391,...
+ct.test.popA    c_tropicalis    data/test/test_ct.20250627.vcf.gz   0.05    0.8 BRC20391,...
+ct.test.popB    c_tropicalis    data/test/test_ct.20250627.vcf.gz   0.05    0.8 JU2505,...</code></pre>
+<p>Because <code>species</code> and <code>vcf</code> are per-row, a single pipeline invocation can mix <em>C. elegans</em>, <em>C. briggsae</em>, and <em>C. tropicalis</em> groups.</p>
+<hr>
+</section>
+</section>
+<section id="marker-set-id-v2-hash-function" class="level2">
+<h2 class="anchored" data-anchor-id="marker-set-id-v2-hash-function">3. Marker Set ID — v=2 Hash Function</h2>
+<p>The marker set ID hash was upgraded from v=1 (2 parameters: <code>population</code>, <code>maf</code>) to v=2 (5 parameters: <code>population</code>, <code>maf</code>, <code>species</code>, <code>vcf_release_id</code>, <code>ms_ld</code>). The version prefix is encoded in the hash input string, making v=1 and v=2 hashes structurally incompatible — any existing DB built with v=1 hashes must be regenerated.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">Sys.setenv</span>(<span class="at">NEMASCAN_R_LIB =</span> <span class="fu">normalizePath</span>(<span class="st">&quot;../R&quot;</span>))</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="fu">source</span>(<span class="st">&quot;../R/setup.R&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Some features are not enabled in this build of Arrow. Run `arrow_info()` for more information.</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The repository you retrieved Arrow from did not include all of Arrow&#39;s features.
+You can install a fully-featured version by running:
+`install.packages(&#39;arrow&#39;, repos = &#39;https://apache.r-universe.dev&#39;)`.</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>
+Attaching package: &#39;arrow&#39;</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following object is masked from &#39;package:utils&#39;:
+
+    timestamp</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Loading required package: DBI</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>
+Attaching package: &#39;dplyr&#39;</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following objects are masked from &#39;package:data.table&#39;:
+
+    between, first, last</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following objects are masked from &#39;package:stats&#39;:
+
+    filter, lag</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following objects are masked from &#39;package:base&#39;:
+
+    intersect, setdiff, setequal, union</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># v=2: now includes species, vcf_release_id, ms_ld</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>ms <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(<span class="st">&quot;ce.test&quot;</span>, <span class="fl">0.05</span>, <span class="st">&quot;c_elegans&quot;</span>, <span class="st">&quot;20220216&quot;</span>, <span class="fl">0.8</span>)</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>ms<span class="sc">$</span>hash         <span class="co"># → &quot;db39e634ef0bfa76e1bd&quot;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] &quot;db39e634ef0bfa76e1bd&quot;</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>ms<span class="sc">$</span>hash_string  <span class="co"># → &quot;v=2|population=ce.test|maf=0.0500000000|...&quot;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] &quot;v=2|population=ce.test|maf=0.0500000000|species=c_elegans|vcf_release_id=20220216|ms_ld=0.8000000000&quot;</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Show trait and mapping ID chain</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>tr  <span class="ot">&lt;-</span> <span class="fu">generate_trait_id</span>(ms<span class="sc">$</span>hash, <span class="dv">5</span>, <span class="st">&quot;gamma&quot;</span>, <span class="dv">1</span>, <span class="fl">0.8</span>)</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>map <span class="ot">&lt;-</span> <span class="fu">generate_mapping_id</span>(tr<span class="sc">$</span>hash, <span class="st">&quot;inbred&quot;</span>, <span class="cn">TRUE</span>)</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;marker_set_id :&quot;</span>, ms<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>marker_set_id : db39e634ef0bfa76e1bd </code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;trait_id      :&quot;</span>, tr<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>trait_id      : aadfdfe371a917896ad6 </code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;mapping_id    :&quot;</span>, map<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>mapping_id    : c7e06e757cd1102e6092 </code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Sensitivity: changing species changes the marker set hash</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>ms_cb <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(<span class="st">&quot;ce.test&quot;</span>, <span class="fl">0.05</span>, <span class="st">&quot;c_briggsae&quot;</span>, <span class="st">&quot;20220216&quot;</span>, <span class="fl">0.8</span>)</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;c_elegans hash :&quot;</span>, ms<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>c_elegans hash : db39e634ef0bfa76e1bd </code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;c_briggsae hash:&quot;</span>, ms_cb<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>c_briggsae hash: 9c823083ae97aa17bc39 </code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;hashes equal?  :&quot;</span>, ms<span class="sc">$</span>hash <span class="sc">==</span> ms_cb<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)  <span class="co"># → FALSE</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>hashes equal?  : FALSE </code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="co"># CV parameters are NOT in the hash — runs differing only in cv_maf/cv_ld reuse the same marker set record</span></span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>ms2 <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(<span class="st">&quot;ce.test&quot;</span>, <span class="fl">0.05</span>, <span class="st">&quot;c_elegans&quot;</span>, <span class="st">&quot;20220216&quot;</span>, <span class="fl">0.8</span>)</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;same hash on rerun?:&quot;</span>, ms<span class="sc">$</span>hash <span class="sc">==</span> ms2<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)  <span class="co"># → TRUE</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>same hash on rerun?: TRUE </code></pre>
+</div>
+</div>
+<div class="callout callout-style-default callout-important callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Important
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>CV parameters are not included in the marker set ID.</strong> Runs differing only in <code>--cv_maf</code> / <code>--cv_ld</code> reuse the same marker SNP set record. This is intentional — the GWA marker panel is independent of which variants are drawn as causal.</p>
+</div>
+</div>
+<hr>
+</section>
+<section id="dual-plink-pipeline" class="level2">
+<h2 class="anchored" data-anchor-id="dual-plink-pipeline">4. Dual PLINK Pipeline</h2>
+<section id="aliased-module-imports" class="level3">
+<h3 class="anchored" data-anchor-id="aliased-module-imports">Aliased module imports</h3>
+<p><code>main.nf</code> imports <code>PLINK_RECODE_VCF</code> twice under different aliases:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb32"><pre class="sourceCode groovy code-with-copy"><code class="sourceCode groovy"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>include <span class="op">{</span> PLINK_RECODE_VCF <span class="kw">as</span> PLINK_RECODE_MS_VCF <span class="op">}</span> from <span class="st">&#39;./modules/plink/recode_vcf/main&#39;</span></span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>include <span class="op">{</span> PLINK_RECODE_VCF <span class="kw">as</span> PLINK_RECODE_CV_VCF <span class="op">}</span> from <span class="st">&#39;./modules/plink/recode_vcf/main&#39;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="channel-fan-out" class="level3">
+<h3 class="anchored" data-anchor-id="channel-fan-out">Channel fan-out</h3>
+<p>After VCF renaming, the renamed VCF is forked with <code>.tap{}</code> before the two parallel PLINK calls to avoid queue-channel double-consumption:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb33"><pre class="sourceCode groovy code-with-copy"><code class="sourceCode groovy"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>BCFTOOLS_RENAME_CHROMS<span class="op">.</span>out<span class="op">.</span>vcf</span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span><span class="fu">tap</span> <span class="op">{</span> ch_renamed_for_ms <span class="op">}</span></span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span><span class="fu">tap</span> <span class="op">{</span> ch_renamed_for_cv <span class="op">}</span></span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a><span class="co">// Marker SNP set — uses per-group ms_maf and ms_ld from strainfile</span></span>
+<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a><span class="fu">PLINK_RECODE_MS_VCF</span><span class="op">(</span></span>
+<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a>    ch_renamed_for_ms<span class="op">,</span></span>
+<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a>    ch_mito_num<span class="op">,</span></span>
+<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a>    ch_sf<span class="op">.</span>ms_maf_vals<span class="op">.</span><span class="fu">map</span> <span class="op">{</span> meta<span class="op">,</span> ms_maf <span class="op">-&gt;</span> ms_maf <span class="op">},</span></span>
+<span id="cb33-10"><a href="#cb33-10" aria-hidden="true" tabindex="-1"></a>    ch_sf<span class="op">.</span>ms_ld_vals<span class="op">.</span><span class="fu">map</span>  <span class="op">{</span> meta<span class="op">,</span> ms_ld  <span class="op">-&gt;</span> ms_ld  <span class="op">}</span></span>
+<span id="cb33-11"><a href="#cb33-11" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span>
+<span id="cb33-12"><a href="#cb33-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-13"><a href="#cb33-13" aria-hidden="true" tabindex="-1"></a><span class="co">// Causal variant pool — uses global cv_maf/cv_ld (or per-group ms_maf fallback)</span></span>
+<span id="cb33-14"><a href="#cb33-14" aria-hidden="true" tabindex="-1"></a><span class="fu">PLINK_RECODE_CV_VCF</span><span class="op">(</span></span>
+<span id="cb33-15"><a href="#cb33-15" aria-hidden="true" tabindex="-1"></a>    ch_renamed_for_cv<span class="op">,</span></span>
+<span id="cb33-16"><a href="#cb33-16" aria-hidden="true" tabindex="-1"></a>    ch_mito_num<span class="op">,</span></span>
+<span id="cb33-17"><a href="#cb33-17" aria-hidden="true" tabindex="-1"></a>    ch_sf<span class="op">.</span>cv_maf_vals<span class="op">.</span><span class="fu">map</span> <span class="op">{</span> meta<span class="op">,</span> cv_maf_eff <span class="op">-&gt;</span> cv_maf_eff <span class="op">},</span></span>
+<span id="cb33-18"><a href="#cb33-18" aria-hidden="true" tabindex="-1"></a>    <span class="bu">Channel</span><span class="op">.</span><span class="fu">value</span><span class="op">(</span>cv_ld<span class="op">)</span></span>
+<span id="cb33-19"><a href="#cb33-19" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="module-change-each-maf-val-maf" class="level3">
+<h3 class="anchored" data-anchor-id="module-change-each-maf-val-maf">Module change: <code>each maf</code> → <code>val maf</code></h3>
+<p>The PLINK module input was changed from <code>each maf</code> (which creates a Cartesian product over a list of MAF values) to <code>val maf</code> (which receives a single pre-resolved value per upstream item). A new <code>val ld</code> input was added for the LD threshold:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb34"><pre class="sourceCode groovy code-with-copy"><code class="sourceCode groovy"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="co">// modules/plink/recode_vcf/main.nf</span></span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>input<span class="op">:</span></span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>tuple <span class="fu">val</span><span class="op">(</span>meta<span class="op">),</span> <span class="fu">path</span><span class="op">(</span>vcf<span class="op">),</span> <span class="fu">path</span><span class="op">(</span>vcf_index<span class="op">)</span></span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>val mito_name</span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>val maf          <span class="co">// was: each maf — val runs once per upstream item (no Cartesian product)</span></span>
+<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a>val ld           <span class="co">// LD R² threshold for --indep-pairwise; was hardcoded 0.8</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="data-flow-diagram" class="level3">
+<h3 class="anchored" data-anchor-id="data-flow-diagram">Data-flow diagram</h3>
+<pre><code>VCF (per group)
+  │
+  ▼
+BCFTOOLS_EXTRACT_STRAINS → BCFTOOLS_RENAME_CHROMS
+                                        │
+                    ┌───────────────────┤ .tap{}
+                    ▼                   ▼
+           ch_renamed_for_ms   ch_renamed_for_cv
+                    │                   │
+                    ▼                   ▼
+        PLINK_RECODE_MS_VCF   PLINK_RECODE_CV_VCF
+        (ms_maf, ms_ld)        (cv_maf, cv_ld)
+                    │                   │
+              TO_SIMS.*           CV_TO_SIMS.*
+        (GWA marker set)        (CV variant pool)</code></pre>
+</section>
+<section id="process-selector-nextflow.config" class="level3">
+<h3 class="anchored" data-anchor-id="process-selector-nextflow.config">Process selector (<code>nextflow.config</code>)</h3>
+<p><code>ext.tag</code> disambiguates SLURM job names when both aliases run for the same group:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb36"><pre class="sourceCode groovy code-with-copy"><code class="sourceCode groovy"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>process <span class="op">{</span></span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>    withName<span class="op">:</span> <span class="st">&#39;PLINK_RECODE_MS_VCF&#39;</span> <span class="op">{</span></span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>        ext<span class="op">.</span>tag <span class="op">=</span> <span class="op">{</span> <span class="st">&quot;</span><span class="ss">${</span>meta<span class="op">.</span>id<span class="ss">}</span><span class="st">_MS&quot;</span> <span class="op">}</span></span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a>    withName<span class="op">:</span> <span class="st">&#39;PLINK_RECODE_CV_VCF&#39;</span> <span class="op">{</span></span>
+<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a>        ext<span class="op">.</span>tag <span class="op">=</span> <span class="op">{</span> <span class="st">&quot;</span><span class="ss">${</span>meta<span class="op">.</span>id<span class="ss">}</span><span class="st">_CV&quot;</span> <span class="op">}</span></span>
+<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<hr>
+</section>
+</section>
+<section id="cv-binary-routing-through-simulation" class="level2">
+<h2 class="anchored" data-anchor-id="cv-binary-routing-through-simulation">5. CV Binary Routing Through Simulation</h2>
+<section id="why-gcta-must-use-the-cv-binary" class="level3">
+<h3 class="anchored" data-anchor-id="why-gcta-must-use-the-cv-binary">Why GCTA must use the CV binary</h3>
+<p>Causal variants are sampled from <code>CV_TO_SIMS.bim</code> by <code>PYTHON_SIMULATE_EFFECTS_GLOBAL</code>. These variants may <strong>not</strong> be in <code>TO_SIMS.bim</code> (the marker SNP set) if <code>cv_maf &lt; ms_maf</code> or if LD pruning removed them from the marker set. Because GCTA’s <code>--simu-qt</code> requires the causal variants to be present in the input <code>--bfile</code>, phenotype simulation must use the CV binary (<code>--bfile CV_TO_SIMS</code>), not the marker set binary.</p>
+</section>
+<section id="tap-fix-for-three-subscriber-queue-channel" class="level3">
+<h3 class="anchored" data-anchor-id="tap-fix-for-three-subscriber-queue-channel"><code>.tap{}</code> fix for three-subscriber queue channel</h3>
+<p><code>ch_sf.marker_set_params</code> is a Nextflow queue channel emitting one item per strain group. In DSL2, queue channels are consumed once — if three downstream processes each try to read from the same channel, emissions are distributed round-robin instead of broadcast. The fix uses <code>.tap{}</code> to clone the channel before any subscriber reads it:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb37"><pre class="sourceCode groovy code-with-copy"><code class="sourceCode groovy"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="co">// ch_sf.marker_set_params is a queue channel — fan out with .tap{} before</span></span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a><span class="co">// 3 subscribers consume it (write_marker_set, write_genotype_matrix, write_gwa_to_db).</span></span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a><span class="co">// Without this, DSL2 distributes emissions round-robin among competing readers.</span></span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>ch_sf<span class="op">.</span>marker_set_params</span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span><span class="fu">tap</span> <span class="op">{</span> ch_marker_set_params_for_ms <span class="op">}</span></span>
+<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span><span class="fu">tap</span> <span class="op">{</span> ch_marker_set_params_for_gm <span class="op">}</span></span>
+<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span><span class="fu">set</span> <span class="op">{</span> ch_marker_set_params_for_gwa <span class="op">}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Each of the three DB-write processes receives a complete, independent copy of the marker-set parameter tuples.</p>
+<hr>
+</section>
+</section>
+<section id="unit-tests" class="level2">
+<h2 class="anchored" data-anchor-id="unit-tests">6. Unit Tests</h2>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb38"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><strong>Pre-captured output (2026-03-03):</strong></p>
+<pre><code>assessment_cross_validation: SSSSS
+assessment: .....................................................................
+cross_validation: SSSSSS
+db_structure: SSSSSSSSSSSSSSSSSSS
+genotype_storage: ...................
+hash_generation: ...........................................................................
+library_check: .................
+module_sourcing: ...............
+read_bim: ...
+read_raw_gwa: ..........
+safe_log10p: .........
+schema_changes: .....................
+significance: ...
+trait_storage: ...........................................
+write_gwa_to_db: ......
+
+══ Skipped ═════════════════════════════════════════════════════════════════════
+  (30 integration tests skipped — require TEST_DB_DIR / TEST_LEGACY_ASSESSMENT env vars)
+
+══ DONE ════════════════════════════════════════════════════════════════════════</code></pre>
 <ul>
-<li><code>simulation_assessment_results.tsv</code> (legacy path)</li>
-<li><code>db_simulation_assessment_results.tsv</code> (DB path)</li>
-</ul>
-</section>
-<section id="run-the-automated-test-suite" class="level3">
-<h3 class="anchored" data-anchor-id="run-the-automated-test-suite">2. Run the automated test suite</h3>
-<p>The test file <code>tests/testthat/test-assessment_cross_validation.R</code> asserts that all three concordance scores are 1.0 for every mapping entry. It also verifies that <code>generate_mapping_id()</code> is deterministic: the same simulation parameters always produce the same 20-character hex <code>mapping_id</code> across repeated invocations. It runs as part of the standard test suite:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_LEGACY_ASSESSMENT</span><span class="op">=</span>/path/to/simulation_assessment_results.tsv <span class="dt">\</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_DB_ASSESSMENT</span><span class="op">=</span>/path/to/db_simulation_assessment_results.tsv <span class="dt">\</span></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>If using the <code>tests/collect_test_data.sh</code> helper:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> tests/collect_test_data.sh</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_LEGACY_ASSESSMENT</span><span class="op">=</span>tests/integration_data/simulation_assessment_results.tsv <span class="dt">\</span></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_DB_ASSESSMENT</span><span class="op">=</span>tests/integration_data/db_simulation_assessment_results.tsv <span class="dt">\</span></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>The tests skip automatically when the environment variables are not set, so unit-only runs are unaffected.</p>
-</section>
-<section id="render-the-interactive-notebook" class="level3">
-<h3 class="anchored" data-anchor-id="render-the-interactive-notebook">3. Render the interactive notebook</h3>
-<p>The notebook at <code>tests/notebooks/assessment_cross_validation.qmd</code> produces an HTML report with concordance tables, score distribution histograms, heatmaps, and per-QTL interval detail. To render it after a pipeline run:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> render tests/notebooks/assessment_cross_validation.qmd <span class="dt">\</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">-P</span> legacy_assessment:/path/to/simulation_assessment_results.tsv <span class="dt">\</span></span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">-P</span> db_assessment:/path/to/db_simulation_assessment_results.tsv <span class="dt">\</span></span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">-P</span> db_dir:/path/to/db</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Or set environment variables and render without <code>-P</code> flags:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">TEST_LEGACY_ASSESSMENT</span><span class="op">=</span>/path/to/simulation_assessment_results.tsv</span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">TEST_DB_ASSESSMENT</span><span class="op">=</span>/path/to/db_simulation_assessment_results.tsv</span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">TEST_DB_DIR</span><span class="op">=</span>/path/to/db</span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> render tests/notebooks/assessment_cross_validation.qmd</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>The rendered HTML is written to <code>tests/notebooks/assessment_cross_validation.html</code>.</p>
-</section>
-</section>
-<section id="notebook-contents" class="level2">
-<h2 class="anchored" data-anchor-id="notebook-contents">Notebook Contents</h2>
-<p>The notebook <code>tests/notebooks/assessment_cross_validation.qmd</code> contains:</p>
-<ol type="1">
-<li><p><strong>Data Loading &amp; Overview</strong> — reads both assessment TSVs, applies <code>designate_qtl()</code> to classify outcomes, and shows dimension/designation count comparison tables.</p></li>
-<li><p><strong>Per-Replicate Concordance</strong> — computes the three concordance scores for every mapping entry, then presents:</p>
+<li><code>.</code> = pass, <code>S</code> = skipped (integration test, requires env vars)</li>
+<li><code>hash_generation</code> (71 tests) includes golden-value assertions:
 <ul>
-<li>Per-mapping concordance score table</li>
-<li>Score distribution histograms</li>
-<li>Mean concordance by method and threshold (table + heatmap)</li>
-<li>Per-QTL interval Jaccard detail with pass/fail summary</li>
+<li><code>generate_marker_set_id(&quot;ce.test&quot;, 0.05, &quot;c_elegans&quot;, &quot;20220216&quot;, 0.8)$hash</code> → <code>&quot;db39e634ef0bfa76e1bd&quot;</code></li>
+<li><code>generate_trait_id(&quot;db39e634ef0bfa76e1bd&quot;, 5, &quot;gamma&quot;, 1, 0.8)$hash</code> → <code>&quot;aadfdfe371a917896ad6&quot;</code></li>
+<li><code>generate_mapping_id(&quot;aadfdfe371a917896ad6&quot;, &quot;inbred&quot;, TRUE)$hash</code> → <code>&quot;c7e06e757cd1102e6092&quot;</code></li>
 </ul></li>
-</ol>
+<li>The three test files updated in this PR: <code>test-genotype_storage.R</code>, <code>test-trait_storage.R</code>, and <code>test-write_gwa_to_db.R</code> were updated to use the 5-parameter v=2 signature and new golden values.</li>
+</ul>
+<hr>
 </section>
-<section id="adapting-for-other-comparisons" class="level2">
-<h2 class="anchored" data-anchor-id="adapting-for-other-comparisons">Adapting for Other Comparisons</h2>
-<p>The notebook can be adapted to compare any two assessment TSVs that share the 35-column schema. To compare outputs from different pipeline versions or parameter configurations:</p>
-<ol type="1">
-<li>Copy the notebook to a working directory.</li>
-<li>Set <code>legacy_assessment_path</code> and <code>db_assessment_path</code> to point to the two TSVs being compared (the variable names reflect the original DB-vs-legacy use case but accept any conforming TSV).</li>
-<li>Render with Quarto as described above.</li>
-</ol>
-<p>The <code>normalize_algorithm_id()</code> helper handles the <code>algorithm_id</code> format difference between DB-path (<code>LMM-EXACT-INBRED_noPCA_EIGEN</code>) and legacy-path (<code>inbred_nopca_EIGEN</code>) by uppercasing and stripping the <code>LMM-EXACT-</code> prefix. If both TSVs use the same format, this normalization is a no-op.</p>
+<section id="pipeline-stub-runs" class="level2">
+<h2 class="anchored" data-anchor-id="pipeline-stub-runs">7. Pipeline Stub Runs</h2>
+<section id="a.-single-species-test-profile" class="level3">
+<h3 class="anchored" data-anchor-id="a.-single-species-test-profile">7a. Single-species (<code>test</code> profile)</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb40"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="va">NXF_VER</span><span class="op">=</span>24.10.5 <span class="ex">nextflow</span> run . <span class="at">-profile</span> test <span class="at">-stub-run</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<blockquote class="blockquote">
+<p>Note: Nextflow <code>&gt;=24.10.0,&lt;25.0.0</code> is required (manifest guard). The <code>&gt;&gt;</code> publish block syntax is a 24.x preview feature not supported in 25.x.</p>
+</blockquote>
+<p><strong>Pre-captured output (2026-03-03):</strong></p>
+<pre><code>N E X T F L O W  ~  version 24.10.5
+Launching `./main.nf` DSL2 - revision: 85f6398865
+
+Strainfile                              = .../data/test/test_strains.txt
+Number of QTLs/phenotype simulated      = .../data/test/fixed_architecture/nqtl.csv
+Phenotype heritability file             = .../data/test/fixed_architecture/h2.csv
+Number of replicates to simulate        = 1
+Causal variant MAF                      = (per-group ms_maf)
+Causal variant LD threshold             = 0.8
+
+executor &gt;  local (48)
+
+BCFTOOLS_CREATE_GENOTYPE_MATRIX (ce.test.200strains_0.05)           ✔
+BCFTOOLS_EXTRACT_STRAINS (ce.test.200strains)                        ✔
+BCFTOOLS_RENAME_CHROMS (ce.test.200strains)                          ✔
+DB_MIGRATION_AGGREGATE_METADATA (aggregate)                          ✔
+DB_MIGRATION_ANALYZE_QTL × 8   (BF/EIGEN × inbred/loco × pca/nopca) ✔
+DB_MIGRATION_ASSESS_SIMS × 8                                         ✔
+DB_MIGRATION_WRITE_GENOTYPE_MATRIX (ce.test.200strains_0.05)         ✔
+DB_MIGRATION_WRITE_GWA_TO_DB × 4  (inbred/loco × pca/nopca)         ✔
+DB_MIGRATION_WRITE_MARKER_SET (ce.test.200strains_0.05)              ✔
+DB_MIGRATION_WRITE_TRAIT_DATA (ce.test.200strains_5_1_0.8)           ✔
+GCTA_MAKE_GRM × 2              (inbred, loco)                        ✔
+GCTA_PERFORM_GWA × 4           (inbred/loco × pca/nopca)             ✔
+GCTA_SIMULATE_PHENOTYPES (5 1 0.8 gamma ce.test.200strains_0.05)     ✔
+LOCAL_COMPILE_EIGENS (ce.test.200strains 0.05)                       ✔
+LOCAL_GET_CONTIG_INFO (ce.test.200strains)                           ✔
+PLINK_RECODE_CV_VCF (ce.test.200strains_0.05)                        ✔  ← new
+PLINK_RECODE_MS_VCF (ce.test.200strains_0.05)                        ✔  ← new alias
+PLINK_UPDATE_BY_H2 (5 1 0.8 gamma ce.test.200strains_0.05)           ✔
+PYTHON_CHECK_VP × 2            (inbred, loco)                        ✔
+PYTHON_SIMULATE_EFFECTS_GLOBAL (5 1 gammace.test.200strains_0.05)    ✔
+R_FIND_GENOTYPE_MATRIX_EIGEN × 6 (chromosomes 1–6)                  ✔
+
+Exit 0 — 48 tasks, 0 errors</code></pre>
+<p>Both <code>PLINK_RECODE_MS_VCF</code> and <code>PLINK_RECODE_CV_VCF</code> appear as separate tasks for the same strain group — confirming the dual-PLINK wiring is active.</p>
+<hr>
+</section>
+<section id="b.-three-species-test_three_species-profile" class="level3">
+<h3 class="anchored" data-anchor-id="b.-three-species-test_three_species-profile">7b. Three-species (<code>test_three_species</code> profile)</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb42"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="va">NXF_VER</span><span class="op">=</span>24.10.5 <span class="ex">nextflow</span> run . <span class="at">-profile</span> test_three_species <span class="at">-stub-run</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><strong>Pre-captured output (2026-03-03):</strong></p>
+<pre><code>N E X T F L O W  ~  version 24.10.5
+Launching `./main.nf` DSL2 - revision: 85f6398865
+
+Strainfile  = .../data/test/test_strains_three_species.txt
+executor &gt;  local (416 tasks)
+
+Groups processed (9 total):
+  c_elegans:    ce.test, ce.test.popA, ce.test.popB
+  c_briggsae:   cb.test, cb.test.popA, cb.test.popB
+  c_tropicalis: ct.test, ct.test.popA, ct.test.popB
+
+PLINK runs submitted (18 = 9 groups × 2 aliases):
+  PLINK_RECODE_CV_VCF (cb.test.popB_0.05)    ✔
+  PLINK_RECODE_MS_VCF (cb.test.popB_0.05)    ✔
+  PLINK_RECODE_MS_VCF (ce.test.popB_0.05)    ✔
+  PLINK_RECODE_MS_VCF (ce.test.popA_0.05)    ✔
+  PLINK_RECODE_CV_VCF (ce.test.popB_0.05)    ✔
+  PLINK_RECODE_CV_VCF (ce.test.popA_0.05)    ✔
+  PLINK_RECODE_CV_VCF (cb.test.popA_0.05)    ✔
+  PLINK_RECODE_MS_VCF (cb.test_0.05)         ✔
+  PLINK_RECODE_CV_VCF (cb.test_0.05)         ✔
+  PLINK_RECODE_MS_VCF (cb.test.popA_0.05)    ✔
+  PLINK_RECODE_CV_VCF (ct.test.popA_0.05)    ✔
+  PLINK_RECODE_MS_VCF (ct.test.popA_0.05)    ✔
+  PLINK_RECODE_CV_VCF (ct.test_0.05)         ✔
+  PLINK_RECODE_MS_VCF (ct.test_0.05)         ✔
+  PLINK_RECODE_CV_VCF (ce.test_0.05)         ✔
+  PLINK_RECODE_MS_VCF (ce.test_0.05)         ✔
+  PLINK_RECODE_CV_VCF (ct.test.popB_0.05)    ✔
+  PLINK_RECODE_MS_VCF (ct.test.popB_0.05)    ✔
+
+All 9 species groups routed correctly.
+Exit 0 — 416 tasks, 0 errors</code></pre>
+<p>All three species (<code>c_elegans</code>, <code>c_briggsae</code>, <code>c_tropicalis</code>) are handled in a single invocation with no cross-contamination of species-specific VCF paths.</p>
 
 
+</section>
 </section>
 
 </main> <!-- /main -->
