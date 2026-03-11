@@ -141,7 +141,7 @@ make_join_key <- function(df) {
   df %>%
     dplyr::mutate(
       norm_alg = normalize_algorithm_id(algorithm_id),
-      join_key = paste(nQTL, simREP, h2, maf, effect_distribution,
+      join_key = paste(nQTL, simREP, h2, maf,
         strain_set_id, norm_alg, QTL,
         sep = "|"
       )
