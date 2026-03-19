@@ -16,6 +16,7 @@ notes
 Analysis_Results-*
 pipeline-info
 work
+.stfolder
 
 # Full C. elegans VCF (22GB)
 WI.*.vcf.gz
