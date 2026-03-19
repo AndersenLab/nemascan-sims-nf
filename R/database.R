@@ -175,6 +175,11 @@ get_threshold_params <- function(population, maf, alpha = 0.05, base_dir = "data
   n_markers <- ms_meta$n_markers
   n_independent <- ms_meta$n_independent_tests
 
+  # NOTE: bf_threshold here uses the marker-set n_markers (from the PLINK .bim file).
+  # This may differ from the actual GWA output row count when GCTA internally excludes
+  # near-singular markers. Callers that need concordance with the legacy BF computation
+  # (which uses sum(log10p > 0) from the GWA output) must override n_markers with
+  # nrow(mapping_data) — see analyze_qtl.R and assess_sims.R Step 3.
   # Calculate thresholds
   bf_threshold <- -log10(alpha / n_markers)
   eigen_threshold <- if (!is.na(n_independent) && n_independent > 0) {
