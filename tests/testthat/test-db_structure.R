@@ -140,7 +140,11 @@ test_that("marker_set_metadata contains strainfile_hash and strain_list", {
 
 test_that("marker set parquet has correct schema", {
   skip_if_no_db()
-  ms <- read_marker_set(expected_population, 0.05, db_dir)
+  ms_meta <- read_marker_set_metadata(expected_population, 0.05, db_dir)
+  if (is.null(ms_meta)) skip("marker set metadata not found in TEST_DB_DIR")
+  ms <- read_marker_set(expected_population, 0.05,
+                        ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld),
+                        db_dir)
 
   expected_cols <- c("marker_set_id", "marker", "CHROM", "POS", "A1", "A2")
   expect_true(all(expected_cols %in% names(ms)))
