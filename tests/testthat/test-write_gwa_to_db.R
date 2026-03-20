@@ -6,7 +6,7 @@ test_that("fastGWA data writes to database with correct schema and values", {
   params <- list(nqtl = 5L, rep = 1L, h2 = 0.8, maf = 0.05, effect = "gamma",
                  population = "test_pop", algorithm = "inbred", pca = TRUE)
   ms_id   <- generate_marker_set_id(params$population, params$maf, "c_elegans", "20220216", 0.8)
-  trait   <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
+  trait   <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2, 0.05, 0.8)
   mapping <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
 
   write_mapping_partitioned(df, params, ms_id, trait, db_dir)
@@ -59,7 +59,7 @@ test_that("mlma data writes with correct LOCO metadata", {
   params <- list(nqtl = 5L, rep = 1L, h2 = 0.8, maf = 0.05, effect = "gamma",
                  population = "test_pop", algorithm = "loco", pca = FALSE)
   ms_id   <- generate_marker_set_id(params$population, params$maf, "c_elegans", "20220216", 0.8)
-  trait   <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
+  trait   <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2, 0.05, 0.8)
   mapping <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
 
   write_mapping_partitioned(df, params, ms_id, trait, db_dir)
@@ -80,7 +80,7 @@ test_that("PCA=TRUE and PCA=FALSE produce different mapping_ids", {
                       population = "test_pop", algorithm = "inbred")
   ms_id  <- generate_marker_set_id(params_base$population, params_base$maf, "c_elegans", "20220216", 0.8)
   trait  <- generate_trait_id(ms_id$hash, params_base$nqtl, params_base$effect,
-                               params_base$rep, params_base$h2)
+                               params_base$rep, params_base$h2, 0.05, 0.8)
 
   mapping_pca    <- generate_mapping_id(trait$hash, params_base$algorithm, TRUE)
   mapping_nopca  <- generate_mapping_id(trait$hash, params_base$algorithm, FALSE)
@@ -127,7 +127,7 @@ test_that("write_mapping_metadata() creates meta.parquet with required columns",
   params <- list(nqtl = 5L, rep = 1L, h2 = 0.8, maf = 0.05, effect = "gamma",
                  population = "test_pop", algorithm = "inbred", pca = TRUE)
   ms_id   <- generate_marker_set_id(params$population, params$maf, "c_elegans", "20220216", 0.8)
-  trait   <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
+  trait   <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2, 0.05, 0.8)
   mapping <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
 
   write_mapping_metadata(params, ms_id, trait, n_markers = 500L, base_dir = db_dir)
