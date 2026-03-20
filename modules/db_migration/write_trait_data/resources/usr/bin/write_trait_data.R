@@ -20,9 +20,12 @@ option_list <- list(
   make_option("--effect",     type = "character"),
   make_option("--rep",        type = "integer"),
   make_option("--h2",         type = "double"),
-  make_option("--pheno_file", type = "character"),
-  make_option("--par_file",   type = "character"),
-  make_option("--base_dir",   type = "character")
+  make_option("--pheno_file",        type = "character"),
+  make_option("--par_file",          type = "character"),
+  make_option("--base_dir",          type = "character"),
+  make_option("--causal_geno_file",  type = "character"),
+  make_option("--cv_maf_effective",  type = "double"),
+  make_option("--cv_ld",             type = "double")
 )
 
 opt <- parse_args(OptionParser(option_list = option_list))
@@ -66,7 +69,9 @@ ms_id <- generate_marker_set_id(
 )
 
 # Compute trait ID (child of marker set)
-trait    <- generate_trait_id(ms_id$hash, opt$nqtl, opt$effect, opt$rep, opt$h2)
+trait    <- generate_trait_id(ms_id$hash, opt$nqtl, opt$effect, opt$rep, opt$h2,
+                               as.numeric(opt$cv_maf_effective),
+                               as.numeric(opt$cv_ld))
 trait_id <- trait$hash
 
 message("Writing trait data: trait_id=", trait_id,
@@ -78,14 +83,16 @@ write_trait_metadata(
   trait_id          = trait_id,
   trait_hash_string = trait$hash_string,
   marker_set_id     = ms_id$hash,
-  nqtl       = opt$nqtl,
-  rep        = opt$rep,
-  sim_seed   = as.integer(opt$rep),
-  h2         = opt$h2,
-  maf        = opt$maf,
-  effect     = opt$effect,
-  population = opt$group,
-  base_dir   = opt$base_dir
+  nqtl             = opt$nqtl,
+  rep              = opt$rep,
+  sim_seed         = as.integer(opt$rep),
+  h2               = opt$h2,
+  maf              = opt$maf,
+  effect           = opt$effect,
+  population       = opt$group,
+  cv_maf_effective = as.numeric(opt$cv_maf_effective),
+  cv_ld            = as.numeric(opt$cv_ld),
+  base_dir         = opt$base_dir
 )
 
 # Write causal variants
@@ -100,6 +107,13 @@ write_phenotype_data(
   pheno_file = opt$pheno_file,
   trait_id   = trait_id,
   base_dir   = opt$base_dir
+)
+
+# Write per-trait causal genotypes (enables var.exp for non-marker CV positions)
+write_causal_genotypes(
+  causal_geno_file = opt$causal_geno_file,
+  trait_id         = trait_id,
+  base_dir         = opt$base_dir
 )
 
 message("Done: trait data written for trait_id=", trait_id)
