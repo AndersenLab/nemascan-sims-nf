@@ -318,7 +318,7 @@ write_gwa_to_db: ......
 ### 7a. Single-species (`test` profile)
 
 ```bash
-NXF_VER=24.10.5 nextflow run . -profile test -stub-run
+nextflow run . -profile test -stub-run
 ```
 
 > Note: Nextflow `>=24.10.0,<25.0.0` is required (manifest guard). The `>>` publish
@@ -372,7 +372,7 @@ same strain group — confirming the dual-PLINK wiring is active.
 ### 7b. Three-species (`test_three_species` profile)
 
 ```bash
-NXF_VER=24.10.5 nextflow run . -profile test_three_species -stub-run
+nextflow run . -profile test_three_species -stub-run
 ```
 
 **Pre-captured output (2026-03-03):**
