@@ -4,6 +4,7 @@ date: today
 format:
   gfm:
     preview-mode: raw
+engine: knitr
 ---
 
 <!-- 
