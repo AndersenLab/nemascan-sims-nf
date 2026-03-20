@@ -27,6 +27,9 @@ process PYTHON_SIMULATE_EFFECTS_GLOBAL {
         path("CV_TO_SIMS.bed"),  path("CV_TO_SIMS.bim"),  path("CV_TO_SIMS.fam"),
         path("CV_TO_SIMS.map"),  path("CV_TO_SIMS.nosex"), path("CV_TO_SIMS.ped"), path("CV_TO_SIMS.log"),
         emit: cv_plink
+  tuple val(group), val(maf), val(nqtl), val(effect), val(rep),
+        path("causal_genotypes.sim.${nqtl}.${rep}.tsv"),
+        emit: causal_genotypes
   path "versions.yml", emit: versions
 
   when:
@@ -49,6 +52,7 @@ process PYTHON_SIMULATE_EFFECTS_GLOBAL {
   stub:
   """
     touch causal.variants.sim.${nqtl}.${rep}.txt
+    touch causal_genotypes.sim.${nqtl}.${rep}.tsv
     touch CV_TO_SIMS.bed
     touch CV_TO_SIMS.bim
     touch CV_TO_SIMS.fam
