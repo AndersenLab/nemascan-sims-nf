@@ -4,7 +4,7 @@ process DB_MIGRATION_ANALYZE_QTL {
     tag "${threshold} ${nqtl} ${rep} ${h2} ${effect} ${mode} ${type} ${group}_${maf}"
 
     input:
-    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix), val(type), val(threshold)
+    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix), val(type), val(threshold), val(cv_maf_effective), val(cv_ld)
     tuple path(pheno_file), path(par_file)
     val base_dir
     val ci_size
@@ -12,7 +12,7 @@ process DB_MIGRATION_ANALYZE_QTL {
     val alpha
 
     output:
-    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix), val(type), val(threshold), emit: params
+    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix), val(type), val(threshold), val(cv_maf_effective), val(cv_ld), emit: params
     tuple path(pheno_file), path(par_file), emit: pheno
     path "*_qtl_regions.tsv", emit: regions
     val true, emit: done
@@ -25,6 +25,7 @@ process DB_MIGRATION_ANALYZE_QTL {
         --group ${group} --maf ${maf} --nqtl ${nqtl} --effect ${effect} \
         --rep ${rep} --h2 ${h2} --mode ${mode} --type ${type} \
         --threshold ${threshold} \
+        --cv_maf_effective ${cv_maf_effective} --cv_ld ${cv_ld} \
         --base_dir ${base_dir} --ci_size ${ci_size} --snp_grouping ${snp_grouping} \
         --alpha ${alpha}
 
