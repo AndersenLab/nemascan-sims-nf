@@ -247,10 +247,10 @@ query_mapping_data <- function(population = NULL, maf = NULL, h2 = NULL,
       mk.A1,
       mk.A2
     FROM mappings m
-    LEFT JOIN markers mk
-      ON m.marker_set_id = mk.marker_set_id
-      AND m.marker = mk.marker
     LEFT JOIN metadata mm ON m.mapping_id = mm.mapping_id
+    LEFT JOIN markers mk
+      ON mm.marker_set_id = mk.marker_set_id
+      AND m.marker = mk.marker
     {where_clause}
     ORDER BY m.mapping_id, mk.CHROM, mk.POS
   ")
@@ -329,10 +329,10 @@ query_for_threshold_analysis <- function(mapping_id, base_dir = "data/db", con =
       m.population,
       mm.maf
     FROM mappings m
-    LEFT JOIN markers mk
-      ON m.marker_set_id = mk.marker_set_id
-      AND m.marker = mk.marker
     LEFT JOIN metadata mm ON m.mapping_id = mm.mapping_id
+    LEFT JOIN markers mk
+      ON mm.marker_set_id = mk.marker_set_id
+      AND m.marker = mk.marker
     WHERE m.mapping_id = '{mapping_id}'
     ORDER BY mk.CHROM, mk.POS, m.marker
   "))
@@ -397,10 +397,10 @@ query_bulk_for_threshold_analysis <- function(mapping_ids, base_dir = "data/db",
       m.population,
       mm.maf
     FROM mappings m
-    LEFT JOIN markers mk
-      ON m.marker_set_id = mk.marker_set_id
-      AND m.marker = mk.marker
     LEFT JOIN metadata mm ON m.mapping_id = mm.mapping_id
+    LEFT JOIN markers mk
+      ON mm.marker_set_id = mk.marker_set_id
+      AND m.marker = mk.marker
     WHERE m.mapping_id IN ({ids_quoted})
     ORDER BY m.mapping_id, mk.CHROM, mk.POS, m.marker
   "))

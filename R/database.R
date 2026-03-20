@@ -175,6 +175,11 @@ get_threshold_params <- function(population, maf, alpha = 0.05, base_dir = "data
   n_markers <- ms_meta$n_markers
   n_independent <- ms_meta$n_independent_tests
 
+  # NOTE: bf_threshold here uses the marker-set n_markers (from the PLINK .bim file).
+  # This may differ from the actual GWA output row count when GCTA internally excludes
+  # near-singular markers. Callers that need concordance with the legacy BF computation
+  # (which uses sum(log10p > 0) from the GWA output) must override n_markers with
+  # nrow(mapping_data) — see analyze_qtl.R and assess_sims.R Step 3.
   # Calculate thresholds
   bf_threshold <- -log10(alpha / n_markers)
   eigen_threshold <- if (!is.na(n_independent) && n_independent > 0) {
@@ -258,9 +263,6 @@ markers_schema <- function() {
 #' @return Arrow schema object
 mappings_schema <- function() {
   arrow::schema(
-    marker_set_id = arrow::utf8(),   # FK → markers + marker_set_metadata
-    trait_id      = arrow::utf8(),   # FK → trait_metadata
-    mapping_id    = arrow::utf8(),   # partition key; FK → mappings_metadata
     marker        = arrow::utf8(),
     AF1           = arrow::float64(),
     BETA          = arrow::float64(),
@@ -1518,9 +1520,6 @@ write_mapping_partitioned <- function(df, params, ms_id, trait_id, base_dir = "d
   mapping_id <- mapping$hash
 
   mapping_df <- prepare_mapping_data(df, params)
-  mapping_df$mapping_id    <- mapping_id
-  mapping_df$marker_set_id <- ms_id$hash
-  mapping_df$trait_id      <- trait_id$hash
 
   partition_path <- get_partition_path(params$population, mapping_id, base_dir)
   dir.create(partition_path, recursive = TRUE, showWarnings = FALSE)
