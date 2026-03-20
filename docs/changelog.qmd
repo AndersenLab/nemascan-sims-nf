@@ -14,6 +14,17 @@ not use version tags; entries are organized by development phase and date.
 ## [Unreleased] — March 2026
 
 ### Fixed
+- **Eigen calculation uses full decomposition (Li & Ji 2005)** (`fix-eigen-calculation`, 2026-03-20):
+  Replaced the `RSpectra::eigs_sym()` partial-decomposition while-loop in
+  `bin/Get_GenoMatrix_Eigen.R` with a full `eigen()` decomposition implementing the Li & Ji
+  (2005) method. The old code clipped eigenvalues >1 to exactly 1 and stopped accumulating
+  when the incremental sum stopped growing — missing the fractional contributions of small
+  eigenvalues and causing `n_independent_tests` to be ~2 orders of magnitude too low. The
+  corrected formula sums 1 for each λ > 1 and the fractional part of each λ ≤ 1, producing a
+  stricter EIGEN significance threshold. The `RSpectra` package dependency is removed.
+  Integration test data regenerated to reflect the corrected threshold.
+
+### Fixed
 - **Missing `versions.yml` in DB migration modules** (`fix/versions_yml_db_migration`, 2026-03-05):
   Added `versions.yml` output to all 7 `modules/db_migration/*/main.nf` processes
   (`write_marker_set`, `write_genotype_matrix`, `write_gwa_to_db`, `write_trait_data`,
