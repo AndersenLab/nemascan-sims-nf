@@ -51,7 +51,7 @@ process GCTA_PERFORM_GWA {
         COVAR=""
     fi
 
-    awk '{print $2}' TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bim > plink_snplist.txt
+    awk '{print \$2}' TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bim > plink_snplist.txt
 
     gcta64 \${COMMAND} \\
         --bfile TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group} \\
