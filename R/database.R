@@ -474,6 +474,11 @@ generate_trait_id <- function(marker_set_hash, nqtl, effect, rep, h2) {
 #' @param pca Logical scalar (TRUE/FALSE). Derived from opt$type == "pca" in write_gwa_to_db.R
 #' @return list with $hash (20-char lowercase hex) and $hash_string (human-readable input)
 #'
+#' @note Callers must pass a scalar trait_hash string (from generate_trait_id()$hash), not a
+#'   params list. To resolve a mapping ID from a filename-parsed params object, first call
+#'   read_marker_set_metadata() -> generate_marker_set_id() -> generate_trait_id() ->
+#'   generate_mapping_id(trait$hash, params$algorithm, params$pca)$hash.
+#'
 #' hash_schema_version prefix "v=1": increment if hash construction rules change; existing DBs regenerated
 generate_mapping_id <- function(trait_hash, algorithm, pca) {
   if (!requireNamespace("digest", quietly = TRUE)) {
