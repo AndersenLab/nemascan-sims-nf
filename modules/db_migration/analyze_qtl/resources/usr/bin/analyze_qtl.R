@@ -107,9 +107,15 @@ log_msg(paste("Queried", nrow(mapping_data), "markers from database"))
 threshold_params <- get_threshold_params(opt$group, as.numeric(opt$maf), opt$alpha, opt$base_dir)
 
 # Step 3: Calculate threshold
+# BF uses nrow(mapping_data): the number of markers GCTA actually output statistics for.
+# This matches the legacy Get_GCTA_Intervals.R behaviour (sum(log10p > 0)), which counts
+# GWA output rows rather than the LD-pruned marker set size. The marker set parquet may
+# contain more entries than the GWA output when GCTA internally excludes near-singular
+# markers — using the marker set count would inflate the BF denominator and shift the
+# threshold, causing CI boundary mismatches vs the legacy path.
 threshold_method <- toupper(opt$threshold)
 if (threshold_method == "BF") {
-  threshold <- calculate_threshold("BF", n_markers = threshold_params$n_markers, alpha = opt$alpha)
+  threshold <- calculate_threshold("BF", n_markers = nrow(mapping_data), alpha = opt$alpha)
 } else if (threshold_method == "EIGEN") {
   threshold <- calculate_threshold("EIGEN", n_independent = threshold_params$n_independent_tests, alpha = opt$alpha)
 } else {

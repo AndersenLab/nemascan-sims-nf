@@ -1,0 +1,56 @@
+---
+title: "Bug Report"
+date: today
+params:
+  title: "Untitled Bug"
+  nf_version: ""
+  executor: "local"
+  command: ""
+  error: ""
+  config: ""
+  context: ""
+format: gfm
+engine: knitr
+---
+
+# Bug Report: `r params$title`
+
+**Date:** `r Sys.Date()`
+**Nextflow version:** `r params$nf_version`
+**Executor:** `r params$executor`
+
+---
+
+## Description
+
+<!-- What went wrong? Be specific about which step or process failed. -->
+
+## Command Used
+
+```bash
+`r params$command`
+```
+
+## Error Output
+
+<!-- Paste from .nextflow.log or work/xx/yyyy*/.command.err -->
+
+```
+`r params$error`
+```
+
+## Config / Profile
+
+<!-- Paste only the relevant sections — process resources, executor settings, param overrides -->
+
+```groovy
+`r params$config`
+```
+
+## Additional Context
+
+`r params$context`
+
+---
+
+*Generated with the Quarto GitHub Issue Framework. Submit via `gh issue create --title "<title>" --label "bug" --body-file <this_file>.md`*

@@ -35,12 +35,14 @@ process PYTHON_SIMULATE_EFFECTS_GLOBAL {
   script:
   def args = task.ext.args ?: ''
   """
-      python ${create_causal_qtls} CV_TO_SIMS.bim ${nqtl} ${effect}
+      python ${create_causal_qtls} CV_TO_SIMS.bim ${nqtl} ${effect} ${rep}
       mv causal_vars.txt causal.variants.sim.${nqtl}.${rep}.txt
 
   cat <<-END_VERSIONS > versions.yml
       "${task.process}":
           python: \$( python --version 2>&1 | cut -d' ' -f2 )
+          numpy: \$( python -c "import numpy; print(numpy.__version__)" )
+          pandas: \$( python -c "import pandas; print(pandas.__version__)" )
   END_VERSIONS
   """
 
@@ -57,7 +59,9 @@ process PYTHON_SIMULATE_EFFECTS_GLOBAL {
 
   cat <<-END_VERSIONS > versions.yml
       "${task.process}":
-          python: \$( python --version 2>&1 | cut -d' ' -f2 )
+          python: stub
+          numpy: stub
+          pandas: stub
   END_VERSIONS
 
   """

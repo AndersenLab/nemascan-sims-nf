@@ -41,7 +41,7 @@ time via DuckDB. The database contains five data domains:
  │   └── phenotypes/
  │       └── {trait_id}_phenotype.parquet        ◄── pre-upscaled phenotype values
  ├── mappings_metadata.parquet                   ◄── mapping summary table
- └── marker_set_metadata.parquet                 ◄── EIGEN + marker counts
+ └── marker_set_metadata.parquet                 ◄── EIGEN + marker counts + strainfile provenance
 ```
 
 All Parquet files use Snappy compression. Schemas are defined as Arrow schema
@@ -106,6 +106,8 @@ Within a marker set, `marker` (equivalently `CHROM` + `POS`) is unique.
 | `n_markers` | `int32` | Total number of markers |
 | `n_independent_tests` | `float64` | Independent tests from EIGEN decomposition |
 | `eigen_source_file` | `utf8` | EIGEN source filename |
+| `strainfile_hash` | `utf8` | SHA-256 hex of the complete strainfile at submission time |
+| `strain_list` | `utf8` | Comma-separated strain names used for this population group |
 | `created_at` | `timestamp[us]` | Write timestamp |
 
 **Key:** `marker_set_id` uniquely identifies a record.
@@ -235,9 +237,6 @@ before writing.
 
 | Column | Arrow Type | Description |
 |--------|-----------|-------------|
-| `marker_set_id` | `utf8` | FK → `markers` and `marker_set_metadata` |
-| `trait_id` | `utf8` | FK → `trait_metadata` (direct parent) |
-| `mapping_id` | `utf8` | 20-char SHA-256 hash (partition key; FK → `mappings_metadata`) |
 | `marker` | `utf8` | Variant identifier in `CHROM:POS` format |
 | `AF1` | `float64` | Allele frequency from GWA output |
 | `BETA` | `float64` | Effect size estimate |
@@ -245,11 +244,14 @@ before writing.
 | `P` | `float64` | P-value from association test |
 
 ::: {.callout-note}
-Simulation parameters (`nqtl`, `rep`, `h2`, `effect`, `algorithm`, `pca`,
-`population`, `maf`) are no longer stored per data row. They are recoverable
-without divergence risk via FK joins to `mappings_metadata` (on `mapping_id`)
-and `marker_set_metadata` (on `marker_set_id`). This eliminates redundant
-constant-per-mapping columns from the ~millions-of-rows data files.
+`mapping_id` is the Hive partition key (encoded in the directory path
+`mappings/population={pop}/mapping_id={id}/`) and is auto-promoted by DuckDB
+when the directory tree is scanned — it does not appear as a column inside the
+Parquet file. `marker_set_id` and `trait_id` are stored in
+`mappings_metadata.parquet` (accessed via the `metadata` DuckDB view) and are
+not repeated in the data files. Simulation parameters (`nqtl`, `rep`, `h2`,
+`effect`, `algorithm`, `pca`, `population`, `maf`) are recoverable via
+`mappings_metadata` without duplicating them across millions of data rows.
 :::
 
 **Source:** `R/database.R::mappings_schema()`,
@@ -431,6 +433,7 @@ trait_id <- trait$hash   # 20-char hex string
 | `marker_set_id` | `utf8` | FK → marker set metadata (parent link) |
 | `nqtl` | `int32` | Number of simulated causal QTLs |
 | `rep` | `int32` | Simulation replicate number |
+| `sim_seed` | `int32` | Integer seed used for RNG initialization in causal variant and effect size simulation; equals `rep` for runs using the default seed strategy |
 | `h2` | `float64` | Simulated heritability |
 | `maf` | `float64` | MAF threshold |
 | `effect` | `utf8` | Effect size distribution (e.g. `"gamma"`) |

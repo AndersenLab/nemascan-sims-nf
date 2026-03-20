@@ -15,6 +15,9 @@ test_that("fastGWA data writes to database with correct schema and values", {
   partition_path <- get_partition_path("test_pop", mapping$hash, db_dir)
   parquet_path <- file.path(partition_path, "data.parquet")
   expect_true(file.exists(parquet_path))
+  expect_true(dir.exists(partition_path),
+    label = "partition directory created with correct mapping hash"
+  )
 
   # Read back and verify
   result <- arrow::read_parquet(parquet_path)
@@ -28,11 +31,19 @@ test_that("fastGWA data writes to database with correct schema and values", {
   expect_equal(result$BETA, df$BETA)
   expect_equal(result$AF1, df$AF1)
 
-  # Verify FK columns are present
-  expect_true("marker_set_id" %in% names(result))
-  expect_true("trait_id" %in% names(result))
-  expect_match(unique(result$mapping_id), "^[0-9a-f]{20}$")
-  expect_false("mapping_hash_string" %in% names(result))
+  # Verify FK columns are absent from data.parquet
+  expect_false("mapping_id" %in% names(result),
+    label = "mapping_id absent from data.parquet (partition key only)"
+  )
+  expect_false("marker_set_id" %in% names(result),
+    label = "marker_set_id absent from data.parquet (in mappings_metadata only)"
+  )
+  expect_false("trait_id" %in% names(result),
+    label = "trait_id absent from data.parquet (in mappings_metadata only)"
+  )
+  expect_false("mapping_hash_string" %in% names(result),
+    label = "mapping_hash_string absent from data.parquet"
+  )
 
   # Verify redundant params not stored per-row
   expect_false("nqtl" %in% names(result))
@@ -56,7 +67,12 @@ test_that("mlma data writes with correct LOCO metadata", {
   partition_path <- get_partition_path("test_pop", mapping$hash, db_dir)
   result <- arrow::read_parquet(file.path(partition_path, "data.parquet"))
 
-  expect_match(unique(result$mapping_id), "^[0-9a-f]{20}$")
+  expect_false("mapping_id" %in% names(result),
+    label = "mapping_id absent from data.parquet (partition key only)"
+  )
+  expect_true("marker" %in% names(result),
+    label = "marker column present in data.parquet"
+  )
 })
 
 test_that("PCA=TRUE and PCA=FALSE produce different mapping_ids", {
@@ -79,7 +95,9 @@ test_that("marker set creation from bim file works end-to-end", {
   marker_df <- read_bim_file(fixture_path("test.bim"))
   write_marker_set(marker_df, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir,
                    overwrite = TRUE,
-                   n_independent_tests = 1234)
+                   n_independent_tests = 1234,
+                   strainfile_hash = paste(rep("a", 64), collapse = ""),
+                   strain_list = "strain1,strain2")
 
   # Verify marker set
   ms <- read_marker_set("test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir)
@@ -135,12 +153,16 @@ test_that("overwrite = TRUE replaces existing marker set on retry", {
   marker_df <- read_bim_file(fixture_path("test.bim"))
 
   write_marker_set(marker_df, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir,
-                   overwrite = TRUE, n_independent_tests = 1234)
+                   overwrite = TRUE, n_independent_tests = 1234,
+                   strainfile_hash = paste(rep("a", 64), collapse = ""),
+                   strain_list = "strain1,strain2")
   meta1 <- read_marker_set_metadata("test_pop", 0.05, db_dir)
   expect_equal(meta1$n_independent_tests, 1234)
 
   write_marker_set(marker_df, "test_pop", 0.05, "c_elegans", "20220216", 0.8, db_dir,
-                   overwrite = TRUE, n_independent_tests = 5678)
+                   overwrite = TRUE, n_independent_tests = 5678,
+                   strainfile_hash = paste(rep("a", 64), collapse = ""),
+                   strain_list = "strain1,strain2")
   meta2 <- read_marker_set_metadata("test_pop", 0.05, db_dir)
   expect_equal(meta2$n_independent_tests, 5678)
 })
