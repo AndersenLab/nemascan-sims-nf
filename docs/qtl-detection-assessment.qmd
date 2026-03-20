@@ -68,7 +68,7 @@ significant call for each marker. The pipeline supports three methods:
 | Method | Formula | Source |
 |--------|---------|--------|
 | BF (Bonferroni) | `-log10(alpha / n_markers)` | Total marker count from the marker set |
-| EIGEN | `-log10(alpha / n_independent_tests)` | Eigenvalue decomposition of the genotype matrix |
+| EIGEN | `-log10(alpha / n_independent_tests)` | Full eigenvalue decomposition of the genotype correlation matrix per chromosome, summing integer parts (λ > 1 → 1) and fractional parts of all eigenvalues (Li & Ji 2005) |
 | User-defined | Numeric value used directly | Passed via `--sthresh` parameter |
 
 Where `alpha` defaults to 0.05. The threshold is applied on the `-log10(p)`

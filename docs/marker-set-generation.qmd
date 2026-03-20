@@ -263,6 +263,10 @@ which writes the LD-pruned marker list to
 ms_ld)` by `generate_marker_set_id()` in `R/database.R`. `DB_MIGRATION_WRITE_MARKER_SET`
 also requires `n_indep_tests` (number of independent tests from EIGEN analysis) before it
 can run; it stores this alongside the marker list in `marker_set_metadata.parquet`.
+`n_indep_tests` is computed by `R_FIND_GENOTYPE_MATRIX_EIGEN` using full eigendecomposition
+of the genotype correlation matrix per chromosome (Li & Ji 2005): for each eigenvalue λ,
+contribute 1 if λ > 1, else the fractional part of λ. Chromosome counts are summed by
+`LOCAL_COMPILE_EIGENS`.
 
 The `CV_TO_SIMS.*` binary (CV run output) is not written to the database. It is passed to
 Phase 2 (`PYTHON_SIMULATE_EFFECTS_GLOBAL`) for causal variant selection, then forwarded to
