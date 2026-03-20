@@ -13,6 +13,70 @@ not use version tags; entries are organized by development phase and date.
 
 ## [Unreleased] — March 2026
 
+### Fixed
+- **Missing `versions.yml` in DB migration modules** (`fix/versions_yml_db_migration`, 2026-03-05):
+  Added `versions.yml` output to all 7 `modules/db_migration/*/main.nf` processes
+  (`write_marker_set`, `write_genotype_matrix`, `write_gwa_to_db`, `write_trait_data`,
+  `aggregate_metadata`, `analyze_qtl`, `assess_sims`). The pattern was established across
+  all other module families (bcftools, GCTA, PLINK, R, Python) but had not been carried
+  forward when the DB migration layer was added. All 7 processes now capture the R version
+  and wire their `versions` output channel into `ch_versions` in `main.nf`.
+
+### Fixed
+<<<<<<< HEAD
+- **Pipeline configuration gaps** (`fix/pipeline_configuration_gaps`, 2026-03-05):
+  - Added `--output_dir` parameter for stable, deterministic output directory naming.
+    The date-based default (`Analysis_Results-{date}`) is preserved when `--output_dir`
+    is not specified.
+  - Added `nextflow_schema.json` — machine-readable parameter schema covering all pipeline
+    parameters, compatible with nf-core tooling and IDE parameter validation.
+  - Documented previously undocumented parameters `--alpha` and `--legacy_assess` in the
+    README parameters table and `--help` output.
+  - Parameterized hardcoded Rockfish cluster paths in `conf/rockfish.config`: `--slurm_account`
+    (replaces hardcoded `eande106` in `clusterOptions`) and `--scratch_dir` (replaces hardcoded
+    `/scratch4/eande106` in `workflow.workDir`). All Rockfish infrastructure params are now
+    overridable without editing the config file.
+=======
+- **Stochastic script reproducibility** (`fix/rand-seed-stochastic-scripts`, 2026-03-05): causal variant
+  selection and effect size simulation are now fully reproducible across pipeline runs:
+  - `bin/create_causal_vars.py` seeds `np.random.default_rng(rep)` at startup; all stochastic calls
+    (`rng.choice`, `rng.gamma`, `rng.uniform`) use the seeded Generator. Previously, `np.random.default_rng()`
+    was called without a seed, making results non-deterministic.
+  - `bin/Create_Causal_QTLs.R` calls `set.seed(as.integer(rep))` before any stochastic draws (`rgamma`,
+    `sample`, `runif`).
+  - Both Nextflow modules (`PYTHON_SIMULATE_EFFECTS_GLOBAL`, `R_SIMULATE_EFFECTS_GLOBAL`,
+    `R_SIMULATE_EFFECTS_LOCAL`) now pass `${rep}` as the seed argument to the scripts.
+  - `trait_metadata_schema()` gains a new `sim_seed` (int32) field; `write_trait_metadata()` stores the
+    seed used for each simulated trait, enabling exact post-hoc reproduction without the Nextflow cache.
+>>>>>>> origin/reproducibility-updates
+
+### Fixed
+- **Pipeline configuration gaps** (`fix/pipeline_configuration_gaps`, 2026-03-05):
+  - Added `--output_dir` parameter for stable, deterministic output directory naming.
+    The date-based default (`Analysis_Results-{date}`) is preserved when `--output_dir`
+    is not specified.
+  - Added `nextflow_schema.json` — machine-readable parameter schema covering all pipeline
+    parameters, compatible with nf-core tooling and IDE parameter validation.
+  - Documented previously undocumented parameters `--alpha` and `--legacy_assess` in the
+    README parameters table and `--help` output.
+  - Parameterized hardcoded Rockfish cluster paths in `conf/rockfish.config`: `--slurm_account`
+    (replaces hardcoded `eande106` in `clusterOptions`) and `--scratch_dir` (replaces hardcoded
+    `/scratch4/eande106` in `workflow.workDir`). All Rockfish infrastructure params are now
+    overridable without editing the config file.
+
+### Fixed
+- **Stochastic script reproducibility** (`fix/rand-seed-stochastic-scripts`, 2026-03-05): causal variant
+  selection and effect size simulation are now fully reproducible across pipeline runs:
+  - `bin/create_causal_vars.py` seeds `np.random.default_rng(rep)` at startup; all stochastic calls
+    (`rng.choice`, `rng.gamma`, `rng.uniform`) use the seeded Generator. Previously, `np.random.default_rng()`
+    was called without a seed, making results non-deterministic.
+  - `bin/Create_Causal_QTLs.R` calls `set.seed(as.integer(rep))` before any stochastic draws (`rgamma`,
+    `sample`, `runif`).
+  - Both Nextflow modules (`PYTHON_SIMULATE_EFFECTS_GLOBAL`, `R_SIMULATE_EFFECTS_GLOBAL`,
+    `R_SIMULATE_EFFECTS_LOCAL`) now pass `${rep}` as the seed argument to the scripts.
+  - `trait_metadata_schema()` gains a new `sim_seed` (int32) field; `write_trait_metadata()` stores the
+    seed used for each simulated trait, enabling exact post-hoc reproduction without the Nextflow cache.
+
 ### Added
 - **Non-marker causal variants** (`feature/add-nonmarker-cvs`, 2026-03-03): causal variants
   can now be drawn from a separately-configured variant pool rather than the marker SNP set.
@@ -39,6 +103,47 @@ not use version tags; entries are organized by development phase and date.
     `--ms_ld`.
   - `aggregate_metadata.R` fallback path updated to emit `NA` for the three new columns
     when no metadata sidecars exist.
+
+### Fixed
+- **Python dependency pinning** (`fix/python-requirements`, 2026-03-05): added
+  `requirements.txt` at the repository root pinning `numpy==2.2.3` and
+  `pandas==2.2.3` to the versions present in the `andersenlab/numpy:20250506`
+  container. The `PYTHON_SIMULATE_EFFECTS_GLOBAL` `versions.yml` emission now
+  also records `numpy` and `pandas` library versions alongside the Python
+  interpreter version, providing runtime provenance in pipeline output logs.
+
+### Added
+- **R package lockfile** (`fix/r_package_lockfile`, 2026-03-05): `renv.lock`
+  committed at the project root records the exact versions of all R packages
+  installed in the `andersenlab/r_packages:20250519` container. Provides a
+  verifiable record of the software environment that produced simulation results
+  and enables local environment reproduction via `renv::restore()`.
+  `scripts/generate_renv_lock.sh` documents how to regenerate the lockfile when
+  the container changes.
+
+### Added
+- **Strainfile provenance in marker set metadata** (`fix/strain-file-not-hashed`, 2026-03-05):
+  `marker_set_metadata.parquet` now records two new columns for reproducibility auditing:
+  - `strainfile_hash` (`utf8`) — SHA-256 hex digest of the complete strainfile, computed
+    once at pipeline submission time (same value for all population groups in a run).
+  - `strain_list` (`utf8`) — Comma-separated list of strain names used for the specific
+    population group, derived from the strainfile at submission time.
+  - Both columns are optional/NA-safe: queries against databases produced before this
+    change return `NULL` without error.
+  - Enables post-hoc verification that a database was produced with a particular strain
+    set, and that the strainfile has not been modified between runs.
+
+### Changed
+- **Mapping data Parquet schema: FK columns removed** (`reproducibility-updates`, 2026-03-10):
+  `mappings/population={pop}/mapping_id={id}/data.parquet` now contains only the five
+  measurement columns (`marker`, `AF1`, `BETA`, `SE`, `P`). The three foreign-key columns
+  previously stored in every data file have been relocated:
+  - `mapping_id` — already encoded in the Hive directory path; DuckDB auto-promotes it
+    as a virtual column when the directory tree is scanned, so no query changes are needed.
+  - `marker_set_id` and `trait_id` — moved to `mappings_metadata.parquet`, accessible
+    via the `metadata` DuckDB view.
+  This removes constant-per-mapping columns from the millions-of-rows data files without
+  losing any information.
 
 ### Added
 - `mappings_metadata.parquet` sidecar file written to the database root by

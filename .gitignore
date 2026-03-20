@@ -16,6 +16,7 @@ notes
 Analysis_Results-*
 pipeline-info
 work
+.stfolder
 
 # Full C. elegans VCF (22GB)
 WI.*.vcf.gz
@@ -40,3 +41,4 @@ tests/.nf-work/
 
 # Quarto rendered site
 docs/_site/
+.stfolder/syncthing-folder-ebca5e.txt

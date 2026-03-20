@@ -175,6 +175,11 @@ get_threshold_params <- function(population, maf, alpha = 0.05, base_dir = "data
   n_markers <- ms_meta$n_markers
   n_independent <- ms_meta$n_independent_tests
 
+  # NOTE: bf_threshold here uses the marker-set n_markers (from the PLINK .bim file).
+  # This may differ from the actual GWA output row count when GCTA internally excludes
+  # near-singular markers. Callers that need concordance with the legacy BF computation
+  # (which uses sum(log10p > 0) from the GWA output) must override n_markers with
+  # nrow(mapping_data) — see analyze_qtl.R and assess_sims.R Step 3.
   # Calculate thresholds
   bf_threshold <- -log10(alpha / n_markers)
   eigen_threshold <- if (!is.na(n_independent) && n_independent > 0) {
@@ -258,9 +263,6 @@ markers_schema <- function() {
 #' @return Arrow schema object
 mappings_schema <- function() {
   arrow::schema(
-    marker_set_id = arrow::utf8(),   # FK → markers + marker_set_metadata
-    trait_id      = arrow::utf8(),   # FK → trait_metadata
-    mapping_id    = arrow::utf8(),   # partition key; FK → mappings_metadata
     marker        = arrow::utf8(),
     AF1           = arrow::float64(),
     BETA          = arrow::float64(),
@@ -315,6 +317,8 @@ marker_set_metadata_schema <- function() {
     n_markers              = arrow::int32(),
     n_independent_tests    = arrow::float64(),
     eigen_source_file      = arrow::utf8(),
+    strainfile_hash        = arrow::utf8(),
+    strain_list            = arrow::utf8(),
     created_at             = arrow::timestamp("us")
   )
 }
@@ -347,6 +351,7 @@ trait_metadata_schema <- function() {
     marker_set_id     = arrow::utf8(),
     nqtl              = arrow::int32(),
     rep               = arrow::int32(),
+    sim_seed          = arrow::int32(),
     h2                = arrow::float64(),
     maf               = arrow::float64(),
     effect            = arrow::utf8(),
@@ -469,6 +474,11 @@ generate_trait_id <- function(marker_set_hash, nqtl, effect, rep, h2) {
 #' @param pca Logical scalar (TRUE/FALSE). Derived from opt$type == "pca" in write_gwa_to_db.R
 #' @return list with $hash (20-char lowercase hex) and $hash_string (human-readable input)
 #'
+#' @note Callers must pass a scalar trait_hash string (from generate_trait_id()$hash), not a
+#'   params list. To resolve a mapping ID from a filename-parsed params object, first call
+#'   read_marker_set_metadata() -> generate_marker_set_id() -> generate_trait_id() ->
+#'   generate_mapping_id(trait$hash, params$algorithm, params$pca)$hash.
+#'
 #' hash_schema_version prefix "v=1": increment if hash construction rules change; existing DBs regenerated
 generate_mapping_id <- function(trait_hash, algorithm, pca) {
   if (!requireNamespace("digest", quietly = TRUE)) {
@@ -559,7 +569,9 @@ marker_set_exists <- function(population, maf, species, vcf_release_id, ms_ld, b
 write_marker_set <- function(df, population, maf, species, vcf_release_id, ms_ld,
                              base_dir = "data/db",
                              overwrite = TRUE, n_independent_tests = NA_real_,
-                             eigen_source_file = NA_character_) {
+                             eigen_source_file = NA_character_,
+                             strainfile_hash,
+                             strain_list) {
   init_database(base_dir)
   config <- .make_db_config(base_dir)
 
@@ -602,6 +614,8 @@ write_marker_set <- function(df, population, maf, species, vcf_release_id, ms_ld
     marker_set_hash_string = ms_id$hash_string,  # stored once in metadata only
     n_independent_tests    = n_independent_tests,
     eigen_source_file      = eigen_source_file,
+    strainfile_hash        = strainfile_hash,
+    strain_list            = strain_list,
     base_dir               = base_dir
   )
 
@@ -790,6 +804,7 @@ get_trait_metadata_path <- function(trait_id, base_dir) {
 #' @param marker_set_id Parent marker set hash from generate_marker_set_id()$hash
 #' @param nqtl Number of QTLs
 #' @param rep Replicate number
+#' @param sim_seed Integer seed used for the stochastic simulation
 #' @param h2 Heritability
 #' @param maf MAF threshold
 #' @param effect Effect distribution
@@ -797,7 +812,7 @@ get_trait_metadata_path <- function(trait_id, base_dir) {
 #' @param base_dir Database base directory
 #' @param overwrite Overwrite existing file (default TRUE for retry safety)
 write_trait_metadata <- function(trait_id, trait_hash_string, marker_set_id,
-                                 nqtl, rep, h2, maf, effect,
+                                 nqtl, rep, sim_seed, h2, maf, effect,
                                  population, base_dir, overwrite = TRUE) {
   out_path <- get_trait_metadata_path(trait_id, base_dir)
   if (file.exists(out_path) && !overwrite) {
@@ -809,6 +824,7 @@ write_trait_metadata <- function(trait_id, trait_hash_string, marker_set_id,
     marker_set_id     = as.character(marker_set_id),
     nqtl       = as.integer(nqtl),
     rep        = as.integer(rep),
+    sim_seed   = as.integer(sim_seed),
     h2         = as.numeric(h2),
     maf        = as.numeric(maf),
     effect     = as.character(effect),
@@ -1021,6 +1037,8 @@ write_marker_set_metadata <- function(population, maf, species, vcf_release_id, 
                                        hash_schema_version = "v=2",
                                        n_independent_tests = NA_real_,
                                        eigen_source_file = NA_character_,
+                                       strainfile_hash,
+                                       strain_list,
                                        base_dir = "data/db") {
   config <- .make_db_config(base_dir)
   metadata_path <- get_marker_set_metadata_path(base_dir)
@@ -1037,6 +1055,8 @@ write_marker_set_metadata <- function(population, maf, species, vcf_release_id, 
     n_markers              = as.integer(n_markers),
     n_independent_tests    = as.numeric(n_independent_tests),
     eigen_source_file      = as.character(eigen_source_file),
+    strainfile_hash        = as.character(strainfile_hash),
+    strain_list            = as.character(strain_list),
     created_at             = Sys.time(),
     stringsAsFactors       = FALSE
   )
@@ -1505,9 +1525,6 @@ write_mapping_partitioned <- function(df, params, ms_id, trait_id, base_dir = "d
   mapping_id <- mapping$hash
 
   mapping_df <- prepare_mapping_data(df, params)
-  mapping_df$mapping_id    <- mapping_id
-  mapping_df$marker_set_id <- ms_id$hash
-  mapping_df$trait_id      <- trait_id$hash
 
   partition_path <- get_partition_path(params$population, mapping_id, base_dir)
   dir.create(partition_path, recursive = TRUE, showWarnings = FALSE)

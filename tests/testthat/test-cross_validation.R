@@ -76,7 +76,12 @@ test_that("DB mapping P and BETA values match raw GWA source files", {
     params <- parse_inline_gwa_filename(gwa_file)
     if (is.null(params)) next
 
-    mapping_id <- generate_mapping_id(params)
+    ms_meta <- read_marker_set_metadata(params$population, params$maf, db_dir)
+    if (is.null(ms_meta)) next
+    ms_id <- generate_marker_set_id(params$population, params$maf,
+                                    ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld))
+    trait <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
+    mapping_id <- generate_mapping_id(trait$hash, params$algorithm, params$pca)$hash
 
     # Read raw GWA file
     raw_df <- tryCatch(
@@ -136,7 +141,12 @@ test_that("DB SE values match raw GWA source files", {
     params <- parse_inline_gwa_filename(gwa_file)
     if (is.null(params)) next
 
-    mapping_id <- generate_mapping_id(params)
+    ms_meta <- read_marker_set_metadata(params$population, params$maf, db_dir)
+    if (is.null(ms_meta)) next
+    ms_id <- generate_marker_set_id(params$population, params$maf,
+                                    ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld))
+    trait <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
+    mapping_id <- generate_mapping_id(trait$hash, params$algorithm, params$pca)$hash
     raw_df <- tryCatch(read_raw_gwa_file(gwa_file, verbose = FALSE),
                        error = function(e) NULL)
     if (is.null(raw_df)) next
@@ -169,7 +179,12 @@ test_that("DB AF1 values match raw GWA source files", {
     params <- parse_inline_gwa_filename(gwa_file)
     if (is.null(params)) next
 
-    mapping_id <- generate_mapping_id(params)
+    ms_meta <- read_marker_set_metadata(params$population, params$maf, db_dir)
+    if (is.null(ms_meta)) next
+    ms_id <- generate_marker_set_id(params$population, params$maf,
+                                    ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld))
+    trait <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
+    mapping_id <- generate_mapping_id(trait$hash, params$algorithm, params$pca)$hash
     raw_df <- tryCatch(read_raw_gwa_file(gwa_file, verbose = FALSE),
                        error = function(e) NULL)
     if (is.null(raw_df)) next
@@ -243,29 +258,5 @@ test_that("marker counts in metadata match actual partition row counts", {
 
     expect_equal(nrow(db_df), meta_row$n_markers[1],
                  label = paste("marker count consistency for", mid))
-  }
-})
-
-test_that("marker set count matches number of markers in mappings", {
-  skip_if_no_cross_validation()
-
-  meta <- get_metadata(db_dir)
-  if (nrow(meta) == 0) skip("No metadata")
-
-  # Get a mapping and check its marker count against the marker set
-  mid <- meta$mapping_id[1]
-  pop <- meta$population[1]
-  maf_val <- meta$maf[1]
-
-  ms <- read_marker_set(pop, maf_val, db_dir)
-  mapping_data <- tryCatch({
-    suppressWarnings(query_by_mapping_id(mid, db_dir))
-  }, error = function(e) NULL)
-
-  if (!is.null(mapping_data) && nrow(mapping_data) > 0) {
-    # Mapping row count should equal marker set row count
-    # (each mapping has exactly one row per marker in the marker set)
-    expect_equal(nrow(mapping_data), nrow(ms),
-                 label = "mapping rows should equal marker set size")
   }
 })
