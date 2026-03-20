@@ -237,9 +237,6 @@ before writing.
 
 | Column | Arrow Type | Description |
 |--------|-----------|-------------|
-| `marker_set_id` | `utf8` | FK → `markers` and `marker_set_metadata` |
-| `trait_id` | `utf8` | FK → `trait_metadata` (direct parent) |
-| `mapping_id` | `utf8` | 20-char SHA-256 hash (partition key; FK → `mappings_metadata`) |
 | `marker` | `utf8` | Variant identifier in `CHROM:POS` format |
 | `AF1` | `float64` | Allele frequency from GWA output |
 | `BETA` | `float64` | Effect size estimate |
@@ -247,11 +244,14 @@ before writing.
 | `P` | `float64` | P-value from association test |
 
 ::: {.callout-note}
-Simulation parameters (`nqtl`, `rep`, `h2`, `effect`, `algorithm`, `pca`,
-`population`, `maf`) are no longer stored per data row. They are recoverable
-without divergence risk via FK joins to `mappings_metadata` (on `mapping_id`)
-and `marker_set_metadata` (on `marker_set_id`). This eliminates redundant
-constant-per-mapping columns from the ~millions-of-rows data files.
+`mapping_id` is the Hive partition key (encoded in the directory path
+`mappings/population={pop}/mapping_id={id}/`) and is auto-promoted by DuckDB
+when the directory tree is scanned — it does not appear as a column inside the
+Parquet file. `marker_set_id` and `trait_id` are stored in
+`mappings_metadata.parquet` (accessed via the `metadata` DuckDB view) and are
+not repeated in the data files. Simulation parameters (`nqtl`, `rep`, `h2`,
+`effect`, `algorithm`, `pca`, `population`, `maf`) are recoverable via
+`mappings_metadata` without duplicating them across millions of data rows.
 :::
 
 **Source:** `R/database.R::mappings_schema()`,

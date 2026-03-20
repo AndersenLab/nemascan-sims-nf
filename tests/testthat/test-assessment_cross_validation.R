@@ -136,17 +136,19 @@ normalize_algorithm_id <- function(alg_id) {
   toupper(sub("^LMM-EXACT-", "", toupper(alg_id)))
 }
 
-# Helper: create a mapping key for joining rows across the two assessments
-make_join_key <- function(df) {
+# Helper: normalize and add join columns to a data frame for cross-path joining.
+# All columns that discriminate rows (effect_distribution, norm_alg) must be present
+# so that the join is 1-to-1 per (mapping, QTL). Dropping any discriminating column
+# creates a many-to-many relationship because the same QTL position appears once per
+# (effect_distribution × algorithm) combination.
+add_join_cols <- function(df) {
   df %>%
-    dplyr::mutate(
-      norm_alg = normalize_algorithm_id(algorithm_id),
-      join_key = paste(nQTL, simREP, h2, maf, effect_distribution,
-        strain_set_id, norm_alg, QTL,
-        sep = "|"
-      )
-    )
+    dplyr::mutate(norm_alg = normalize_algorithm_id(algorithm_id))
 }
+
+# Columns that uniquely identify one (mapping, QTL) row in both assessment outputs.
+qtl_join_cols <- c("nQTL", "simREP", "h2", "maf", "effect_distribution",
+                   "strain_set_id", "norm_alg", "QTL")
 
 # Mapping group columns (replicate identity + method/threshold via norm_alg)
 mapping_group <- c("nQTL", "simREP", "h2", "maf", "strain_set_id", "norm_alg")
@@ -159,18 +161,21 @@ interval_jaccard <- function(start_a, end_a, start_b, end_b) {
   ifelse(union == 0, 1, intersection / union)
 }
 
-# Helper: join QTL rows from both paths on the composite key
+# Helper: join QTL rows from both paths on the typed multi-column key.
+# Uses explicit column-by-column join (not a concatenated string) so that
+# mismatches on any single dimension are surfaced clearly in test failures.
+# relationship = "one-to-one" turns silent many-to-many into an error.
 build_joined_assessment <- function() {
   legacy <- read_legacy_assessment(legacy_assessment_path) %>%
     designate_qtl() %>%
-    make_join_key()
+    add_join_cols()
   db_assess <- read_db_assessment(db_assessment_path) %>%
     designate_qtl() %>%
-    make_join_key()
+    add_join_cols()
 
   dplyr::inner_join(
     legacy %>%
-      dplyr::select(join_key, norm_alg,
+      dplyr::select(dplyr::all_of(qtl_join_cols), norm_alg,
         nQTL, simREP, h2, maf, strain_set_id,
         designation_legacy = designation,
         Detected_legacy = Detected, Simulated_legacy = Simulated,
@@ -178,13 +183,14 @@ build_joined_assessment <- function() {
         endPOS_legacy = endPOS
       ),
     db_assess %>%
-      dplyr::select(join_key,
+      dplyr::select(dplyr::all_of(qtl_join_cols),
         designation_db = designation,
         Detected_db = Detected, Simulated_db = Simulated,
         startPOS_db = startPOS, peakPOS_db = peakPOS,
         endPOS_db = endPOS
       ),
-    by = "join_key"
+    by = qtl_join_cols,
+    relationship = "one-to-one"
   )
 }
 
@@ -404,17 +410,26 @@ test_that("Simulated.QTL.VarExp is populated in DB assessment output", {
 test_that("Simulated.QTL.VarExp is concordant between DB and legacy paths", {
   skip_if_no_assessment_cross_validation()
 
-  legacy    <- read_legacy_assessment(legacy_assessment_path)
-  db_assess <- read_db_assessment(db_assessment_path)
+  legacy    <- read_legacy_assessment(legacy_assessment_path) %>%
+    dplyr::mutate(norm_alg = normalize_algorithm_id(algorithm_id))
+  db_assess <- read_db_assessment(db_assessment_path) %>%
+    dplyr::mutate(norm_alg = normalize_algorithm_id(algorithm_id))
+
+  # Join key must include effect_distribution and norm_alg to avoid many-to-many:
+  # the same QTL position appears once per (effect_distribution × algorithm) combination,
+  # so omitting either column causes one legacy row to match multiple DB rows.
+  join_cols <- c("QTL", "nQTL", "simREP", "h2", "maf", "strain_set_id",
+                 "effect_distribution", "norm_alg")
 
   joined <- dplyr::inner_join(
     legacy %>%
-      dplyr::select(QTL, nQTL, simREP, h2, maf, strain_set_id,
+      dplyr::select(dplyr::all_of(join_cols),
                     varexp_legacy = Simulated.QTL.VarExp),
     db_assess %>%
-      dplyr::select(QTL, nQTL, simREP, h2, maf, strain_set_id,
+      dplyr::select(dplyr::all_of(join_cols),
                     varexp_db     = Simulated.QTL.VarExp),
-    by = c("QTL", "nQTL", "simREP", "h2", "maf", "strain_set_id")
+    by = join_cols,
+    relationship = "one-to-one"
   ) %>%
     dplyr::filter(!is.na(varexp_legacy), !is.na(varexp_db))
 

@@ -47,7 +47,7 @@ if (length(meta_files) == 0) {
   # will still fail for those mappings. Re-run without -resume to fix.
   warning(
     "No meta.parquet sidecars found — falling back to data.parquet scan. ",
-    "Simulation parameters (maf, nqtl, h2, etc.) will be NA. ",
+    "Simulation parameters (maf, nqtl, h2, etc.) and FK references (marker_set_id, trait_id) will be NA. ",
     "Re-run without -resume to generate complete metadata."
   )
   data_files <- list.files(
@@ -63,29 +63,29 @@ if (length(meta_files) == 0) {
   }
   metadata_list <- lapply(data_files, function(f) {
     tryCatch({
-      df <- as.data.frame(arrow::read_parquet(
-        f, col_select = c("mapping_id", "marker_set_id", "trait_id")
-      ))
-      df <- df[!duplicated(df$mapping_id), , drop = FALSE]
-      df$n_markers           <- nrow(as.data.frame(arrow::read_parquet(f)))
-      df$processed_at        <- Sys.time()
-      df$processing_version  <- "2.1.0-nf"
-      # Simulation parameters not recoverable from data.parquet
-      df$maf                 <- NA_real_
-      df$nqtl                <- NA_integer_
-      df$rep                 <- NA_integer_
-      df$h2                  <- NA_real_
-      df$effect              <- NA_character_
-      df$algorithm           <- NA_character_
-      df$pca                 <- NA
-      df$population          <- NA_character_
-      df$hash_schema_version <- NA_character_
-      df$mapping_hash_string <- NA_character_
-      df$source_file         <- NA_character_
-      df$species             <- NA_character_
-      df$vcf_release_id      <- NA_character_
-      df$ms_ld               <- NA_real_
-      df
+      partition_dir <- dirname(f)
+      mapping_id    <- sub("^mapping_id=", "", basename(partition_dir))
+      n_markers     <- nrow(as.data.frame(arrow::read_parquet(f)))
+      data.frame(
+        mapping_id          = mapping_id,
+        marker_set_id       = NA_character_,
+        trait_id            = NA_character_,
+        n_markers           = as.integer(n_markers),
+        processed_at        = Sys.time(),
+        processing_version  = "2.1.0-nf",
+        maf                 = NA_real_,
+        nqtl                = NA_integer_,
+        rep                 = NA_integer_,
+        h2                  = NA_real_,
+        effect              = NA_character_,
+        algorithm           = NA_character_,
+        pca                 = NA,
+        population          = NA_character_,
+        hash_schema_version = NA_character_,
+        mapping_hash_string = NA_character_,
+        source_file         = NA_character_,
+        stringsAsFactors    = FALSE
+      )
     }, error = function(e) { warning(paste("Failed to read:", f, "-", e$message)); NULL })
   })
 } else {

@@ -6,17 +6,33 @@ test_that("mappings_schema excludes N and log10p, includes AF1", {
   expect_false("log10p" %in% field_names)
 })
 
-test_that("mappings_schema has exactly 8 fields", {
+test_that("mappings_schema has exactly 5 fields", {
   s <- mappings_schema()
-  expect_equal(length(names(s)), 8L)
+  expect_equal(length(names(s)), 5L)
 })
 
-test_that("mappings_schema contains FK columns marker_set_id, trait_id, mapping_id", {
-  s <- mappings_schema()
-  field_names <- names(s)
-  expect_true("marker_set_id" %in% field_names)
-  expect_true("trait_id" %in% field_names)
-  expect_true("mapping_id" %in% field_names)
+test_that("mappings_schema excludes FK columns (partition key and metadata only)", {
+  schema_names <- names(mappings_schema())
+
+  # FK columns removed — mapping_id is Hive partition key; marker_set_id and
+  # trait_id are in mappings_metadata.parquet (the metadata view), not data files
+  expect_false("mapping_id" %in% schema_names,
+    label = "mapping_id absent from mappings_schema (partition key)"
+  )
+  expect_false("marker_set_id" %in% schema_names,
+    label = "marker_set_id absent from mappings_schema (in metadata only)"
+  )
+  expect_false("trait_id" %in% schema_names,
+    label = "trait_id absent from mappings_schema (in metadata only)"
+  )
+
+  # Data columns present
+  expect_true("marker" %in% schema_names)
+  expect_true("AF1" %in% schema_names)
+  expect_true("BETA" %in% schema_names)
+  expect_true("SE" %in% schema_names)
+  expect_true("P" %in% schema_names)
+  expect_equal(length(schema_names), 5L, label = "exactly 5 columns in mappings_schema")
 })
 
 test_that("mappings_schema does not contain redundant per-row constant columns", {

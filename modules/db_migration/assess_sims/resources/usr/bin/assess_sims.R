@@ -142,10 +142,12 @@ if (nrow(mapping_data) == 0) {
 }
 
 # Compute threshold (needed for analyze_mapping to add peak annotations)
+# BF uses nrow(mapping_data): actual GCTA output count, matching legacy Get_GCTA_Intervals.R.
+# See analyze_qtl.R Step 3 comment for the full explanation.
 threshold_params <- get_threshold_params(opt$group, as.numeric(opt$maf), opt$alpha, opt$base_dir)
 threshold_method <- toupper(opt$threshold)
 if (threshold_method == "BF") {
-  threshold <- calculate_threshold("BF", n_markers = threshold_params$n_markers, alpha = opt$alpha)
+  threshold <- calculate_threshold("BF", n_markers = nrow(mapping_data), alpha = opt$alpha)
 } else if (threshold_method == "EIGEN") {
   threshold <- calculate_threshold("EIGEN", n_independent = threshold_params$n_independent_tests, alpha = opt$alpha)
 } else {

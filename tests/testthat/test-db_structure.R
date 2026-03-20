@@ -17,7 +17,7 @@ skip_if_no_db <- function() {
 }
 
 # Expected population for test profile (override with TEST_POPULATION env var)
-expected_population <- Sys.getenv("TEST_POPULATION", unset = "ce.test.13strains")
+expected_population <- Sys.getenv("TEST_POPULATION", unset = "ce.test.200strains")
 
 # ── Directory Structure ──────────────────────────────────────────────────────
 
@@ -66,8 +66,10 @@ test_that("mapping partitions exist in Hive-style structure", {
   )
 
   # Check mapping_id sub-partitions contain data.parquet
-  data_files <- list.files(mappings_dir, pattern = "data\\.parquet$",
-                           recursive = TRUE, full.names = TRUE)
+  data_files <- list.files(mappings_dir,
+    pattern = "data\\.parquet$",
+    recursive = TRUE, full.names = TRUE
+  )
   expect_gt(length(data_files), 0, label = "at least one mapping data.parquet")
 })
 
@@ -84,12 +86,17 @@ test_that("marker_set_metadata.parquet has required columns and valid data", {
   ms_meta <- arrow::read_parquet(file.path(db_dir, "marker_set_metadata.parquet"))
 
   # Required columns
-  expected_cols <- c("marker_set_id", "marker_set_hash_string", "hash_schema_version",
-                     "population", "maf", "n_markers", "n_independent_tests",
-                     "eigen_source_file", "strainfile_hash", "strain_list", "created_at")
+  expected_cols <- c(
+    "marker_set_id", "marker_set_hash_string", "hash_schema_version",
+    "population", "maf", "n_markers", "n_independent_tests",
+    "eigen_source_file", "strainfile_hash", "strain_list", "created_at"
+  )
   expect_true(all(expected_cols %in% names(ms_meta)),
-              label = paste("marker_set_metadata columns:",
-                            paste(setdiff(expected_cols, names(ms_meta)), collapse = ", ")))
+    label = paste(
+      "marker_set_metadata columns:",
+      paste(setdiff(expected_cols, names(ms_meta)), collapse = ", ")
+    )
+  )
 
   # At least one record
 
@@ -108,21 +115,27 @@ test_that("marker_set_metadata contains strainfile_hash and strain_list", {
   ms_meta <- arrow::read_parquet(file.path(db_dir, "marker_set_metadata.parquet"))
 
   expect_true("strainfile_hash" %in% names(ms_meta),
-              label = "strainfile_hash column present")
+    label = "strainfile_hash column present"
+  )
   expect_true("strain_list" %in% names(ms_meta),
-              label = "strain_list column present")
+    label = "strain_list column present"
+  )
 
   # strainfile_hash must be populated (required, not NA) and 64-char SHA-256 hex
   expect_true(all(!is.na(ms_meta$strainfile_hash)),
-              label = "strainfile_hash must not be NA")
+    label = "strainfile_hash must not be NA"
+  )
   expect_true(all(grepl("^[0-9a-f]{64}$", ms_meta$strainfile_hash)),
-              label = "strainfile_hash should be 64-char lowercase hex SHA-256")
+    label = "strainfile_hash should be 64-char lowercase hex SHA-256"
+  )
 
   # strain_list must be populated and non-empty
   expect_true(all(!is.na(ms_meta$strain_list)),
-              label = "strain_list must not be NA")
+    label = "strain_list must not be NA"
+  )
   expect_true(all(nchar(ms_meta$strain_list) > 0),
-              label = "strain_list should be non-empty")
+    label = "strain_list should be non-empty"
+  )
 })
 
 test_that("marker set parquet has correct schema", {
@@ -134,7 +147,8 @@ test_that("marker set parquet has correct schema", {
   expect_gt(nrow(ms), 0)
   # marker_set_hash_string must NOT be in the data file (metadata only)
   expect_false("marker_set_hash_string" %in% names(ms),
-               label = "marker_set_hash_string absent from data file")
+    label = "marker_set_hash_string absent from data file"
+  )
   expect_false("AF1" %in% names(ms), label = "AF1 absent from marker data schema")
   expect_false("population" %in% names(ms), label = "population absent from marker data schema")
   expect_false("maf" %in% names(ms), label = "maf absent from marker data schema")
@@ -151,20 +165,27 @@ test_that("mappings_metadata.parquet has required columns", {
   skip_if_no_db()
   meta <- get_metadata(db_dir)
 
-  expected_cols <- c("mapping_id", "population", "maf", "nqtl", "rep",
-                     "h2", "effect", "algorithm", "pca", "trait",
-                     "n_markers", "source_file", "processed_at",
-                     "processing_version")
+  expected_cols <- c(
+    "mapping_id", "population", "maf", "nqtl", "rep",
+    "h2", "effect", "algorithm", "pca", "trait",
+    "n_markers", "source_file", "processed_at",
+    "processing_version"
+  )
   present <- expected_cols[expected_cols %in% names(meta)]
   # Allow some optional columns (source_file, processed_at, processing_version
   # may come from aggregate_metadata.R which uses slightly different column set)
-  core_cols <- c("mapping_id", "mapping_hash_string", "trait_id",
-                 "marker_set_id", "hash_schema_version",
-                 "population", "maf", "nqtl", "rep",
-                 "h2", "effect", "algorithm", "pca", "n_markers")
+  core_cols <- c(
+    "mapping_id", "mapping_hash_string", "trait_id",
+    "marker_set_id", "hash_schema_version",
+    "population", "maf", "nqtl", "rep",
+    "h2", "effect", "algorithm", "pca", "n_markers"
+  )
   expect_true(all(core_cols %in% names(meta)),
-              label = paste("missing core columns:",
-                            paste(setdiff(core_cols, names(meta)), collapse = ", ")))
+    label = paste(
+      "missing core columns:",
+      paste(setdiff(core_cols, names(meta)), collapse = ", ")
+    )
+  )
 })
 
 test_that("hash_string columns are present in metadata files and absent from data files", {
@@ -173,17 +194,21 @@ test_that("hash_string columns are present in metadata files and absent from dat
   # mapping_hash_string must be in mappings_metadata, absent from data partitions
   meta <- get_metadata(db_dir)
   expect_true("mapping_hash_string" %in% names(meta),
-              label = "mapping_hash_string present in mappings_metadata.parquet")
+    label = "mapping_hash_string present in mappings_metadata.parquet"
+  )
 
   data_files <- list.files(file.path(db_dir, "mappings"),
-                           pattern = "data\\.parquet$",
-                           recursive = TRUE, full.names = TRUE)
+    pattern = "data\\.parquet$",
+    recursive = TRUE, full.names = TRUE
+  )
   if (length(data_files) > 0) {
     first_data <- arrow::read_parquet(data_files[1])
     expect_false("mapping_hash_string" %in% names(first_data),
-                 label = "mapping_hash_string absent from mapping data.parquet")
+      label = "mapping_hash_string absent from mapping data.parquet"
+    )
     expect_false("mapping_id" %in% names(first_data),
-                 label = "mapping_id absent from mapping data.parquet (partition key only)")
+      label = "mapping_id absent from mapping data.parquet (partition key only)"
+    )
   }
 })
 
@@ -195,7 +220,8 @@ test_that("mappings_metadata has correct row count for test profile", {
   # 2 modes (inbred, loco) × 2 types (pca, nopca) = 4 mappings
   expected_count <- as.integer(Sys.getenv("TEST_EXPECTED_MAPPINGS", unset = "4"))
   expect_equal(nrow(meta), expected_count,
-               label = paste("expected", expected_count, "mappings, got", nrow(meta)))
+    label = paste("expected", expected_count, "mappings, got", nrow(meta))
+  )
 })
 
 test_that("algorithm values are valid", {
@@ -204,9 +230,13 @@ test_that("algorithm values are valid", {
 
   valid_algorithms <- c("inbred", "loco")
   expect_true(all(meta$algorithm %in% valid_algorithms),
-              label = paste("unexpected algorithms:",
-                            paste(setdiff(unique(meta$algorithm), valid_algorithms),
-                                  collapse = ", ")))
+    label = paste(
+      "unexpected algorithms:",
+      paste(setdiff(unique(meta$algorithm), valid_algorithms),
+        collapse = ", "
+      )
+    )
+  )
 
   # Both algorithms should be present for a full run
   expect_setequal(unique(meta$algorithm), valid_algorithms)
@@ -227,7 +257,8 @@ test_that("mapping IDs are 20-character lowercase hex hashes", {
   meta <- get_metadata(db_dir)
 
   expect_true(all(grepl("^[0-9a-f]{20}$", meta$mapping_id)),
-              label = "all mapping IDs should be 20-char lowercase hex")
+    label = "all mapping IDs should be 20-char lowercase hex"
+  )
 })
 
 # ── Database Queryability ────────────────────────────────────────────────────
@@ -290,13 +321,15 @@ test_that("get_threshold_params() returns valid thresholds", {
 test_that("all mapping partitions have non-empty data", {
   skip_if_no_db()
   data_files <- list.files(file.path(db_dir, "mappings"),
-                           pattern = "data\\.parquet$",
-                           recursive = TRUE, full.names = TRUE)
+    pattern = "data\\.parquet$",
+    recursive = TRUE, full.names = TRUE
+  )
 
   for (f in data_files) {
     df <- arrow::read_parquet(f)
     expect_gt(nrow(df), 0,
-              label = paste("non-empty parquet:", basename(dirname(f))))
+      label = paste("non-empty parquet:", basename(dirname(f)))
+    )
   }
 })
 
@@ -335,7 +368,8 @@ test_that("var.exp is absent or NA for inline-path mappings", {
       WHERE \"var.exp\" IS NOT NULL
     ")
     expect_equal(result$non_null_varexp[1], 0,
-                 label = "var.exp should be NA for inline-path databases")
+      label = "var.exp should be NA for inline-path databases"
+    )
   } else {
     succeed("var.exp column absent — expected for inline-path databases")
   }
