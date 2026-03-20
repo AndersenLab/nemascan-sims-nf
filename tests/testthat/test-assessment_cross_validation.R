@@ -221,7 +221,7 @@ test_that("generate_mapping_id() is deterministic across invocations", {
   trait1 <- generate_trait_id(ms1$hash, as.integer(params_row$nQTL),
                               params_row$effect_distribution,
                               as.integer(params_row$simREP),
-                              as.numeric(params_row$h2))
+                              as.numeric(params_row$h2), 0.05, 0.8)
   map1   <- generate_mapping_id(trait1$hash, algorithm, pca)
 
   # Second independent computation with identical params — tests determinism
@@ -237,7 +237,7 @@ test_that("generate_mapping_id() is deterministic across invocations", {
   trait2 <- generate_trait_id(ms2$hash, as.integer(params_row$nQTL),
                               params_row$effect_distribution,
                               as.integer(params_row$simREP),
-                              as.numeric(params_row$h2))
+                              as.numeric(params_row$h2), 0.05, 0.8)
   map2   <- generate_mapping_id(trait2$hash, algorithm, pca)
 
   expect_equal(map1$hash, map2$hash,
