@@ -253,7 +253,7 @@ The lockfile covers packages used by `R_.*` Nextflow processes (`bin/` scripts):
 
 | Script | Key packages |
 |--------|-------------|
-| `bin/Get_GenoMatrix_Eigen.R` | Rcpp, dplyr, tidyr, ggplot2, stringr, readr, glue, purrr, coop, RSpectra |
+| `bin/Get_GenoMatrix_Eigen.R` | Rcpp, dplyr, tidyr, ggplot2, stringr, readr, glue, purrr, coop |
 | `bin/Create_Causal_QTLs.R` | dplyr, tidyr, ggplot2, stringr, readr, IRanges, fuzzyjoin, glue, purrr |
 | `bin/Get_GCTA_Intervals.R` | dplyr, tidyr, ggplot2, stringr, readr, glue, purrr, ggbeeswarm |
 | `bin/Assess_Sims.R` | dplyr, tidyr, data.table, GenomicRanges, purrr, glue |
