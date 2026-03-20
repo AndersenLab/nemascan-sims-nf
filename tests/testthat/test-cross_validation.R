@@ -225,6 +225,9 @@ test_that("EIGEN threshold from DB matches pipeline EIGEN value", {
     parsed <- parse_eigen_filename(eigen_file)
     if (is.null(parsed)) next
 
+    # Skip broken symlinks (e.g. after rsync from HPC without --copy-unsafe-links)
+    if (!file.exists(eigen_file)) next
+
     # Read pipeline EIGEN value
     pipeline_value <- read_eigen_file(eigen_file)
 
