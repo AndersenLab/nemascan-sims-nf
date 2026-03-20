@@ -37,7 +37,7 @@ Rscript tests/run_tests.R
 # With integration test data (after running collect_test_data.sh)
 TEST_DB_DIR=tests/integration_data/db \
 TEST_WORK_DIR=tests/.nf-work \
-TEST_EXISTING_ASSESSMENT=tests/integration_data/simulation_assessment_results.tsv \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/simulation_assessment_results.tsv \
 TEST_DB_ASSESSMENT=tests/integration_data/db_simulation_assessment_results.tsv \
 Rscript tests/run_tests.R
 
