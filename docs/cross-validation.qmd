@@ -51,7 +51,7 @@ significance threshold — three scores are computed on a 0-to-1 scale:
 ### 1. Run the pipeline with both paths
 
 ```bash
-NXF_VER=24.10.4 nextflow run main.nf -profile test,docker --legacy_assess
+nextflow run main.nf -profile test,docker --legacy_assess
 ```
 
 This produces two assessment TSVs in the output directory:
