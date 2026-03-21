@@ -575,7 +575,7 @@ workflow {
     // WRITE_GENOTYPE_MATRIX — join(by:[0,1]) is 1:1 per group
     ch_gm_inputs = BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix
         .join(ch_marker_set_params_for_gm, by: [0, 1])
-    // Result: tuple(group, maf, genotype_matrix, species, vcf_release_id, ms_ld)
+    // Result: tuple(group, maf, genotype_matrix, species, vcf_release_id, ms_ld, strains, strainfile)
 
     DB_MIGRATION_WRITE_GENOTYPE_MATRIX(ch_gm_inputs, db_output_dir)
     ch_versions = ch_versions.mix(DB_MIGRATION_WRITE_GENOTYPE_MATRIX.out.versions)
@@ -629,13 +629,18 @@ workflow {
     // Nextflow pairs it with ch_gwa_db_inputs by emission index (lock-step).
     // No barrier gating needed on gwa — the params gate is sufficient.
     //
-    // combine(by:[0,1]) is N:1 per (group, maf): N GWA results × 1 marker set params entry
-    // combine(by:0) adds cv_maf_eff keyed by group; cv_ld is a scalar folded in via map
+    // combine(by:[0,1]): ch_marker_set_params_for_gwa has 7 elements
+    //   [group, maf, species, vcf_release_id, ms_ld, strains, strainfile]
+    //   → intermediate: (group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+    //                    species, vcf_release_id, ms_ld, strains, strainfile)  14 elements
+    // combine(by:0) appends cv_maf_eff; cv_ld is a pipeline scalar folded in via map
+    //   → intermediate: (…, strains, strainfile, cv_maf_eff)  15 elements
+    // map: drop strains/strainfile (not needed by write_gwa_to_db)
     ch_gwa_db_inputs = ch_db_params
         .combine(ch_marker_set_params_for_gwa, by: [0, 1])
         .combine(ch_cv_maf_keyed_for_gwa_write, by: 0)
         .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
-               species, vcf_release_id, ms_ld, cv_maf_eff ->
+               species, vcf_release_id, ms_ld, _strains, _strainfile, cv_maf_eff ->
             tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type,
                   species, vcf_release_id, ms_ld, cv_maf_eff, cv_ld)
         }
