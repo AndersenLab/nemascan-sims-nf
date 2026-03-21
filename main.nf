@@ -218,16 +218,20 @@ workflow {
         }
         .set { ch_sf }
 
-    // G1: Fork cv_maf_vals for three consumers: PLINK_RECODE_CV_VCF, write_trait_data, and
-    // analysis params. A single multiMap sub-channel cannot be consumed by more than one
-    // operator; .tap{} creates a broadcast fork.
+    // G1: Fork cv_maf_vals for four consumers: PLINK_RECODE_CV_VCF, write_trait_data,
+    // analysis params, and write_gwa_to_db. A single multiMap sub-channel cannot be
+    // consumed by more than one operator; .tap{} creates a broadcast fork.
     ch_sf.cv_maf_vals
         .tap { ch_cv_maf_for_plink }        // → PLINK_RECODE_CV_VCF
         .tap { ch_cv_maf_for_trait }        // → combine in merge chain (G3)
+        .tap { ch_cv_maf_for_gwa_write }    // → extend ch_gwa_db_inputs (G5)
         .map { meta, cv_maf_eff -> tuple(meta.id, cv_maf_eff) }
         .set { ch_cv_maf_keyed_for_analysis }  // → extend analysis params (G4)
 
     ch_cv_maf_keyed_for_trait = ch_cv_maf_for_trait
+        .map { meta, cv_maf_eff -> tuple(meta.id, cv_maf_eff) }
+
+    ch_cv_maf_keyed_for_gwa_write = ch_cv_maf_for_gwa_write
         .map { meta, cv_maf_eff -> tuple(meta.id, cv_maf_eff) }
 
     // ch_sf.marker_set_params is a queue channel — fan out with .tap{} before
@@ -626,9 +630,16 @@ workflow {
     // No barrier gating needed on gwa — the params gate is sufficient.
     //
     // combine(by:[0,1]) is N:1 per (group, maf): N GWA results × 1 marker set params entry
+    // combine(by:0) adds cv_maf_eff keyed by group; cv_ld is a scalar folded in via map
     ch_gwa_db_inputs = ch_db_params
         .combine(ch_marker_set_params_for_gwa, by: [0, 1])
-    // Result: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, species, vcf_release_id, ms_ld)
+        .combine(ch_cv_maf_keyed_for_gwa_write, by: 0)
+        .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+               species, vcf_release_id, ms_ld, cv_maf_eff ->
+            tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+                  species, vcf_release_id, ms_ld, cv_maf_eff, cv_ld)
+        }
+    // Result: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, species, vcf_release_id, ms_ld, cv_maf_effective, cv_ld)
 
     DB_MIGRATION_WRITE_GWA_TO_DB(
         ch_gwa_db_inputs,
