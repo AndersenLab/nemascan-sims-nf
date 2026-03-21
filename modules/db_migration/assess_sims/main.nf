@@ -4,7 +4,7 @@ process DB_MIGRATION_ASSESS_SIMS {
     tag "${threshold} ${nqtl} ${rep} ${h2} ${effect} ${mode} ${type} ${group}_${maf}"
 
     input:
-    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix), val(type), val(threshold)
+    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix), val(type), val(threshold), val(cv_maf_effective), val(cv_ld)
     path qtl_regions
     tuple path(pheno_file), path(par_file)
     val base_dir
@@ -25,6 +25,7 @@ process DB_MIGRATION_ASSESS_SIMS {
         --rep ${rep} --h2 ${h2} --mode ${mode} --type ${type} \
         --threshold ${threshold} --par_file ${par_file} \
         --qtl_regions ${qtl_regions} \
+        --cv_maf_effective ${cv_maf_effective} --cv_ld ${cv_ld} \
         --base_dir ${base_dir} --ci_size ${ci_size} --snp_grouping ${snp_grouping} \
         --alpha ${alpha}
 
