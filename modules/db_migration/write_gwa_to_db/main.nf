@@ -6,7 +6,8 @@ process DB_MIGRATION_WRITE_GWA_TO_DB {
     input:
     tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2),
           val(mode), val(suffix), val(type),
-          val(species), val(vcf_release_id), val(ms_ld)
+          val(species), val(vcf_release_id), val(ms_ld),
+          val(cv_maf_effective), val(cv_ld)
     path gwa_file
     val base_dir
 
@@ -23,7 +24,9 @@ process DB_MIGRATION_WRITE_GWA_TO_DB {
         --gwa_file ${gwa_file} --base_dir ${base_dir} \
         --species ${species} \
         --vcf_release_id ${vcf_release_id} \
-        --ms_ld ${ms_ld}
+        --ms_ld ${ms_ld} \
+        --cv_maf_effective ${cv_maf_effective} \
+        --cv_ld ${cv_ld}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
@@ -33,7 +36,7 @@ process DB_MIGRATION_WRITE_GWA_TO_DB {
 
     stub:
     """
-    echo "STUB: write_gwa_to_db ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_${mode}_${type} species=${species} vcf_release_id=${vcf_release_id} ms_ld=${ms_ld}"
+    echo "STUB: write_gwa_to_db ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_${mode}_${type} species=${species} vcf_release_id=${vcf_release_id} ms_ld=${ms_ld} cv_maf=${cv_maf_effective} cv_ld=${cv_ld}"
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
