@@ -218,6 +218,18 @@ workflow {
         }
         .set { ch_sf }
 
+    // G1: Fork cv_maf_vals for three consumers: PLINK_RECODE_CV_VCF, write_trait_data, and
+    // analysis params. A single multiMap sub-channel cannot be consumed by more than one
+    // operator; .tap{} creates a broadcast fork.
+    ch_sf.cv_maf_vals
+        .tap { ch_cv_maf_for_plink }        // → PLINK_RECODE_CV_VCF
+        .tap { ch_cv_maf_for_trait }        // → combine in merge chain (G3)
+        .map { meta, cv_maf_eff -> tuple(meta.id, cv_maf_eff) }
+        .set { ch_cv_maf_keyed_for_analysis }  // → extend analysis params (G4)
+
+    ch_cv_maf_keyed_for_trait = ch_cv_maf_for_trait
+        .map { meta, cv_maf_eff -> tuple(meta.id, cv_maf_eff) }
+
     // ch_sf.marker_set_params is a queue channel — fan out with .tap{} before
     // 3 subscribers consume it (write_marker_set, write_genotype_matrix, write_gwa_to_db).
     // Without this, DSL2 distributes emissions round-robin among competing readers.
@@ -278,7 +290,7 @@ workflow {
     PLINK_RECODE_CV_VCF(
         ch_renamed_for_cv,
         ch_mito_num,
-        ch_sf.cv_maf_vals.map { meta, cv_maf_eff -> cv_maf_eff },
+        ch_cv_maf_for_plink.map { meta, cv_maf_eff -> cv_maf_eff },
         Channel.value(cv_ld)
         )
     ch_versions = ch_versions.mix(PLINK_RECODE_CV_VCF.out.versions)
@@ -366,6 +378,16 @@ workflow {
     ch_sim_cv_plink  = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.cv_plink
     // }
 
+    // G2: Fan causal_genotypes across h2 to match GCTA_SIMULATE_PHENOTYPES cardinality.
+    // causal_genotypes emits once per (group, maf, nqtl, effect, rep) — before h2 expansion.
+    // Each geno file must be paired with every h2 value so the merge chain join (G3) can
+    // align per (group, maf, nqtl, effect, rep, h2).
+    ch_causal_geno_fanned = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.causal_genotypes
+        .combine(Channel.fromPath(h2_file).splitCsv().map { it[0] })
+        .map { group, maf, nqtl, effect, rep, geno_file, h2 ->
+            tuple(group, maf, nqtl, effect, rep, h2, geno_file)
+        }
+
     // Simulate phenotypes using the CV binary (--bfile CV_TO_SIMS) so GCTA can locate
     // non-marker causal variant genotypes. The MS binary (ch_sim_plink) passes through
     // to downstream GWA mapping unchanged.
@@ -395,43 +417,59 @@ workflow {
     // GCTA_MAKE_GRM line 260). No mode deduplication needed -- each emission
     // is a unique trait.
     //
-    // Trait data (metadata, causal variants, phenotype) and genotype matrix are
+    // Trait data (metadata, causal variants, phenotype, and causal genotypes) are
     // stored in the DB for future analysis. These data are NOT consumed by
     // ASSESS_SIMS -- no barrier is needed.
+
+    // G3: Combine with cv_maf and join with causal genotypes before multiMap so that
+    // write_pheno/write_par stay emission-order-aligned with write_params.
+    //
+    // After .combine(ch_cv_maf_keyed_for_trait, by: 0): 20-element tuple (cv_maf_eff at [19])
+    // After .join(ch_causal_geno_fanned, by: [0..5]):   21-element tuple (geno_file at [20])
     //
     // WARNING: .merge() aligns channels by emission order, NOT by key matching.
-    // Do NOT insert .filter(), .branch(), .map(), or any reordering operator
+    // Do NOT insert .filter(), .map(), .branch(), or any reordering operator
     // between GCTA_SIMULATE_PHENOTYPES.out.* and this .merge() chain — doing
     // so will silently misalign phenotype/causal files with metadata.
     // Runtime validation in write_trait_data.R catches misalignment (see M4).
+    // .combine(by:0) and .join(by:[0..5]) are key-based (order-preserving) and
+    // therefore safe per the CLAUDE.md merge ordering constraint.
     //
-    // Merged tuple structure (19 elements):
-    //   [0-5]   params:  group, maf, nqtl, effect, rep, h2
-    //   [6-7]   pheno:   phen_path, par_path
-    //   [8-18]  plink:   group, maf, bed, bim, fam, map, nosex, ped, log, gm, n_indep_tests
+    // Merged tuple structure (21 elements):
+    //   [0-5]   params:   group, maf, nqtl, effect, rep, h2
+    //   [6-7]   pheno:    phen_path, par_path
+    //   [8-18]  plink:    group, maf, bed, bim, fam, map, nosex, ped, log, gm, n_indep_tests
+    //   [19]    cv_maf:   cv_maf_effective (from combine)
+    //   [20]    geno:     causal_genotypes TSV path (from join)
     //
     // IMPORTANT: If GCTA_SIMULATE_PHENOTYPES output channels change, update
     // these indices. See "Tuple index verification" in step7-plan.qmd.
-
     GCTA_SIMULATE_PHENOTYPES.out.params
         .merge(GCTA_SIMULATE_PHENOTYPES.out.pheno)
         .merge(GCTA_SIMULATE_PHENOTYPES.out.plink)
+        .combine(ch_cv_maf_keyed_for_trait, by: 0)
+        .join(ch_causal_geno_fanned, by: [0, 1, 2, 3, 4, 5])
         .multiMap { it ->
-            assert it.size() == 19 : "Expected 19-element tuple, got ${it.size()}. First elements: ${it.take(6)}. Check output channels in modules/gcta/simulate_phenotypes/main.nf"
+            assert it.size() == 21 : "Expected 21-element tuple, got ${it.size()}. First elements: ${it.take(6)}. Check output channels in modules/gcta/simulate_phenotypes/main.nf"
             // trait_id is computed in R by write_trait_data.R via generate_trait_id()
             // — no cross-language hash computation (addresses review B2)
             write_params:  tuple(it[0], it[1], it[2], it[3], it[4], it[5])
             write_pheno:   it[6]   // pre-upscaled .phen file
             write_par:     it[7]   // causal variant .par file
+            cv_maf:        it[19]  // cv_maf_effective (from combine with ch_cv_maf_keyed_for_trait)
+            causal_geno:   it[20]  // causal genotype TSV (from join with ch_causal_geno_fanned)
         }
         .set { ch_trait }
 
-    // Write trait metadata + causal variants + phenotype to DB
+    // Write trait metadata + causal variants + phenotype + causal genotypes to DB
     DB_MIGRATION_WRITE_TRAIT_DATA(
         ch_trait.write_params,
         ch_trait.write_pheno,
         ch_trait.write_par,
-        db_output_dir
+        db_output_dir,
+        ch_trait.causal_geno,
+        ch_trait.cv_maf,
+        Channel.value(cv_ld)
     )
     ch_versions = ch_versions.mix(DB_MIGRATION_WRITE_TRAIT_DATA.out.versions)
 
@@ -617,12 +655,18 @@ workflow {
     ch_db_analysis_barrier = DB_MIGRATION_AGGREGATE_METADATA.out.summary
 
     // Expand GCTA_PERFORM_GWA params by threshold (BF × EIGEN)
+    // G4: Also extend with cv_maf_effective and cv_ld so analyze_qtl.R and assess_sims.R
+    // can reconstruct the v=2 trait_id (which encodes cv pool params).
     ch_db_sthresh = Channel.of("BF", "EIGEN")
     ch_db_analysis_params = GCTA_PERFORM_GWA.out.params
         .combine(ch_db_sthresh)
         .combine(ch_db_analysis_barrier)
         .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold, _barrier ->
             tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold)
+        }
+        .combine(ch_cv_maf_keyed_for_analysis, by: 0)
+        .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold, cv_maf_eff ->
+            tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold, cv_maf_eff, cv_ld)
         }
 
     // Expand pheno (contains .par file) by threshold — same pattern
