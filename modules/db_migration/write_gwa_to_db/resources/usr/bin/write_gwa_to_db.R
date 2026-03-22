@@ -7,7 +7,8 @@
 # Usage: write_gwa_to_db.R --group <group> --maf <maf> --nqtl <nqtl>
 #            --effect <effect> --rep <rep> --h2 <h2> --mode <mode>
 #            --type <type> --species <species> --vcf_release_id <vcf_release_id>
-#            --ms_ld <ms_ld> --gwa_file <file> --base_dir <db_dir>
+#            --ms_ld <ms_ld> --cv_maf_effective <num> --cv_ld <num>
+#            --gwa_file <file> --base_dir <db_dir>
 
 library(optparse)
 
@@ -22,16 +23,19 @@ option_list <- list(
   make_option("--type",           type = "character", help = "PCA type (pca/nopca)"),
   make_option("--species",        type = "character", help = "Species identifier"),
   make_option("--vcf_release_id", type = "character", help = "VCF release date"),
-  make_option("--ms_ld",          type = "double",    help = "LD R² threshold for marker SNP selection"),
-  make_option("--gwa_file",       type = "character", help = "Path to GWA output file"),
-  make_option("--base_dir",       type = "character", help = "Database output directory")
+  make_option("--ms_ld",            type = "double",    help = "LD R² threshold for marker SNP selection"),
+  make_option("--cv_maf_effective", type = "double",    help = "Effective MAF threshold for the CV pool"),
+  make_option("--cv_ld",            type = "double",    help = "CV LD pruning threshold"),
+  make_option("--gwa_file",         type = "character", help = "Path to GWA output file"),
+  make_option("--base_dir",         type = "character", help = "Database output directory")
 )
 
 opt <- parse_args(OptionParser(option_list = option_list))
 
 # Validate required args
 required <- c("group", "maf", "nqtl", "effect", "rep", "h2", "mode", "type",
-              "species", "vcf_release_id", "ms_ld", "gwa_file", "base_dir")
+              "species", "vcf_release_id", "ms_ld", "cv_maf_effective", "cv_ld",
+              "gwa_file", "base_dir")
 missing <- required[!required %in% names(opt) | sapply(opt[required], is.null)]
 if (length(missing) > 0) {
   stop(paste("Missing required arguments:", paste(missing, collapse = ", ")))
@@ -83,7 +87,8 @@ params <- list(
 ms_id   <- generate_marker_set_id(
   params$population, params$maf, params$species, params$vcf_release_id, params$ms_ld
 )
-trait   <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
+trait   <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2,
+                             as.numeric(opt$cv_maf_effective), as.numeric(opt$cv_ld))
 mapping <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
 
 log_msg(paste("Marker set ID:", ms_id$hash))
