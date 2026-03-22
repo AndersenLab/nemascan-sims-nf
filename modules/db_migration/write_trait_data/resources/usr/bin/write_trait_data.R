@@ -63,15 +63,22 @@ if (is.null(ms_meta)) {
 if (is.na(as.numeric(ms_meta$ms_ld))) {
   stop("ms_ld field is NA in marker set metadata — DB may be corrupt")
 }
-ms_id <- generate_marker_set_id(
-  opt$group, as.numeric(opt$maf),
-  ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld)
+sim_params <- list(
+  population       = opt$group,
+  maf              = as.numeric(opt$maf),
+  species          = ms_meta$species,
+  vcf_release_id   = ms_meta$vcf_release_id,
+  ms_ld            = as.numeric(ms_meta$ms_ld),
+  nqtl             = opt$nqtl,
+  effect           = opt$effect,
+  rep              = opt$rep,
+  h2               = opt$h2,
+  cv_maf_effective = as.numeric(opt$cv_maf_effective),
+  cv_ld            = as.numeric(opt$cv_ld)
 )
-
-# Compute trait ID (child of marker set)
-trait    <- generate_trait_id(ms_id$hash, opt$nqtl, opt$effect, opt$rep, opt$h2,
-                               as.numeric(opt$cv_maf_effective),
-                               as.numeric(opt$cv_ld))
+ids      <- build_ids_from_params(sim_params)
+ms_id    <- ids$ms_id
+trait    <- ids$trait_id
 trait_id <- trait$hash
 
 message("Writing trait data: trait_id=", trait_id,

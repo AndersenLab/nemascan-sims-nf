@@ -235,12 +235,13 @@ workflow {
         .map { meta, cv_maf_eff -> tuple(meta.id, cv_maf_eff) }
 
     // ch_sf.marker_set_params is a queue channel — fan out with .tap{} before
-    // 3 subscribers consume it (write_marker_set, write_genotype_matrix, write_gwa_to_db).
+    // 2 subscribers consume it (write_marker_set, write_genotype_matrix).
     // Without this, DSL2 distributes emissions round-robin among competing readers.
+    // write_gwa_to_db no longer needs a fork here; it reads species/vcf_release_id/ms_ld
+    // from marker_set_metadata.parquet at runtime via read_marker_set_metadata().
     ch_sf.marker_set_params
         .tap { ch_marker_set_params_for_ms }
-        .tap { ch_marker_set_params_for_gm }
-        .set { ch_marker_set_params_for_gwa }
+        .set { ch_marker_set_params_for_gm }
 
     ch_vcf_per_group = ch_sf.vcf_per_group
         .map { meta, species, vcf, strains ->
@@ -629,22 +630,22 @@ workflow {
     // Nextflow pairs it with ch_gwa_db_inputs by emission index (lock-step).
     // No barrier gating needed on gwa — the params gate is sufficient.
     //
-    // combine(by:[0,1]): ch_marker_set_params_for_gwa has 7 elements
-    //   [group, maf, species, vcf_release_id, ms_ld, strains, strainfile]
-    //   → intermediate: (group, maf, nqtl, effect, rep, h2, mode, suffix, type,
-    //                    species, vcf_release_id, ms_ld, strains, strainfile)  14 elements
-    // combine(by:0) appends cv_maf_eff; cv_ld is a pipeline scalar folded in via map
-    //   → intermediate: (…, strains, strainfile, cv_maf_eff)  15 elements
-    // map: drop strains/strainfile (not needed by write_gwa_to_db)
+    // write_gwa_to_db.R reads species/vcf_release_id/ms_ld from marker_set_metadata.parquet
+    // at runtime (via read_marker_set_metadata()). The ch_marker_barrier gate on ch_db_params
+    // (above) guarantees DB_MIGRATION_WRITE_MARKER_SET has completed and
+    // marker_set_metadata.parquet exists before any WRITE_GWA_TO_DB task starts.
+    // If this barrier is ever weakened or removed, write_gwa_to_db.R will fail
+    // with "Marker set metadata not found" errors.
+    //
+    // ch_db_params: (group, maf, nqtl, effect, rep, h2, mode, suffix, type) — 9 elements
+    // After combine(by:0) with cv_maf_keyed: adds cv_maf_eff → 10 total.
+    // suffix is destructured explicitly (positional correctness) then discarded from output.
     ch_gwa_db_inputs = ch_db_params
-        .combine(ch_marker_set_params_for_gwa, by: [0, 1])
         .combine(ch_cv_maf_keyed_for_gwa_write, by: 0)
-        .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
-               species, vcf_release_id, ms_ld, _strains, _strainfile, cv_maf_eff ->
-            tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type,
-                  species, vcf_release_id, ms_ld, cv_maf_eff, cv_ld)
+        .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type, cv_maf_eff ->
+            tuple(group, maf, nqtl, effect, rep, h2, mode, type, cv_maf_eff, cv_ld)
         }
-    // Result: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, species, vcf_release_id, ms_ld, cv_maf_effective, cv_ld)
+    // Result: tuple(group, maf, nqtl, effect, rep, h2, mode, type, cv_maf_effective, cv_ld)
 
     DB_MIGRATION_WRITE_GWA_TO_DB(
         ch_gwa_db_inputs,

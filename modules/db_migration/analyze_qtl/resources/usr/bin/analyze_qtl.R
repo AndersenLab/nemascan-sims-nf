@@ -87,14 +87,21 @@ if (is.null(ms_meta)) {
 if (is.na(as.numeric(ms_meta$ms_ld))) {
   stop("ms_ld field is NA in marker set metadata — DB may be corrupt")
 }
-ms_id <- generate_marker_set_id(
-  params$population, as.numeric(params$maf),
-  ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld)
+sim_params <- list(
+  population       = params$population,
+  maf              = as.numeric(params$maf),
+  species          = ms_meta$species,
+  vcf_release_id   = ms_meta$vcf_release_id,
+  ms_ld            = as.numeric(ms_meta$ms_ld),
+  nqtl             = params$nqtl,
+  effect           = params$effect,
+  rep              = params$rep,
+  h2               = params$h2,
+  cv_maf_effective = as.numeric(opt$cv_maf_effective),
+  cv_ld            = as.numeric(opt$cv_ld)
 )
-trait      <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2,
-                                as.numeric(opt$cv_maf_effective), as.numeric(opt$cv_ld))
-mapping    <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
-mapping_id <- mapping$hash
+ids        <- build_ids_from_params(sim_params, mode = opt$mode, pca = opt$type == "pca")
+mapping_id <- ids$mapping_id$hash
 log_msg(paste("Analyzing mapping:", mapping_id, "with threshold:", opt$threshold))
 
 # Step 1: Query mapping data from database
