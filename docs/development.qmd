@@ -129,11 +129,12 @@ This is a manual step &mdash; the site is not automatically rebuilt on push.
 
 ### Test Tiers
 
-The test suite has three tiers with different requirements:
+The test suite has four tiers with different requirements:
 
 | Tier | Files | Requirements | Skips automatically when |
 |------|-------|-------------|--------------------------|
 | Unit | all `test-*.R` except integration/cross-val | Static fixtures only; no pipeline run needed | — |
+| Python unit | `tests/pytest/test_create_causal_vars.py` | `pytest`, `numpy`, `pandas` in Python env | `pytest` not installed or fixtures missing |
 | Integration | `test-db_structure.R`, `test-cross_validation.R` | Pipeline output (`TEST_DB_DIR`, `TEST_WORK_DIR`) | Env vars unset |
 | Cross-validation | `test-assessment_cross_validation.R` | Both DB and legacy output | `TEST_LEGACY_ASSESSMENT` unset |
 
@@ -158,11 +159,40 @@ organized by functional area in `tests/testthat/`:
 | `test-trait_storage.R` | `generate_trait_id()` determinism (same params → same ID), uniqueness (different params → different IDs), and golden-value hash; round-trips for `write_trait_metadata()`, `write_causal_variants()`, `write_phenotype_data()`; `overwrite = TRUE` retry behavior; `phenotype_exists()` existence check |
 | `test-significance.R` | BF and EIGEN significance thresholds; verifies significance calls are identical whether log10p is computed on-the-fly or stored |
 | `test-write_gwa_to_db.R` | GWA data writes to Parquet DB with correct schema and values; partition path correctness |
-| `test-hash_generation.R` | `generate_marker_set_id()`, `generate_trait_id()`, `generate_mapping_id()` golden-value hashes; SHA-256 stability across calls |
+| `test-hash_generation.R` | `generate_marker_set_id()`, `generate_trait_id()`, `generate_mapping_id()` golden-value hashes; SHA-256 stability across calls; CV pool: verifies `generate_marker_set_id()` rejects `cv_maf` argument; `generate_trait_id()` v=2 encodes `cv_maf_effective` and `cv_ld`; golden value for v=2 trait hash; sensitivity to each CV parameter |
 | `test-safe_log10p.R` | `safe_log10p()` clamping at `LOG10P_MAX`; vector handling; known ground-truth values |
 | `test-module_sourcing.R` | All `db_migration` module R scripts reference `R_SOURCE_DIR` and are readable |
 | `test-assessment.R` | `R/assessment.R` functions: `load_causal_variants()`, QTL detection, `designate_qtl()` categories |
-| `test-schema_changes.R` | `mappings_schema()` field count (8), required FK columns, exclusion of `N` and `log10p` |
+| `test-assessment_var_exp.R` | `compute_var_exp_anova()` ANOVA-based variance explained; golden values for balanced QTLs; guard cases (monomorphic, near-monomorphic, all-NA alleles, no position overlap); non-marker position var.exp using supplied genotype data; missing genotype for non-marker returns `NA` |
+| `test-schema_changes.R` | `mappings_schema()` field count, required FK columns, exclusion of `N` and `log10p`; `trait_metadata_schema()` includes `cv_maf_effective` and `cv_ld` as `float64`; `marker_set_metadata_schema()` excludes CV params; `causal_genotypes_schema()` (6 columns: `trait_id`, `QTL`, `CHROM`, `POS`, `strain`, `allele`); `init_database()` creates `traits/causal_genotypes/` directory; causal genotype round-trip write/read |
+
+#### Python Unit Tests
+
+`tests/pytest/` contains pytest tests for pipeline Python scripts. These tests invoke
+`bin/create_causal_vars.py` via `subprocess.run()` and verify observable behaviour without
+mocking internal functions.
+
+| File | What it tests |
+|------|--------------|
+| `test_create_causal_vars.py` | Pool guard: exits with code 1 when `nqtl` exceeds the filtered CV pool, reporting `--cv_maf`/`--cv_ld`/`nqtl` in the error; exits 0 at the boundary; RNG determinism (same `rep` → same `causal_vars.txt`); RNG advance (different `rep` values → different variant selections); output format (2 columns, no header, numeric effects); uniform effect range for `"low-high"` notation; `causal_genotypes.sim.{n}.{rep}.tsv` written with `QTL`/`strain`/`allele` columns |
+
+The `test_causal_genotypes_tsv_written` test requires `tests/fixtures/test.bed` and
+`test.fam` to be present and auto-skips when they are absent.
+
+Run all Python tests from the project root:
+
+```bash
+pytest tests/pytest/
+```
+
+`numpy` and `pandas` must be importable in the active Python environment. To run using
+the pipeline container instead:
+
+```bash
+docker run --rm -v "$PWD":/work -w /work andersenlab/numpy:20250506 \
+  pytest tests/pytest/
+```
+
 
 #### Test Fixtures
 
@@ -179,6 +209,9 @@ organized by functional area in `tests/testthat/`:
 | `test_loco_dedup.mlma` | Deduplicated LOCO `.mlma` for duplicate-marker handling tests |
 | `test_eigen.txt` | Eigenvalue count for significance threshold computation; used by `test-significance.R` |
 | `test_mapping.tsv` | Processed mapping with precomputed `log10p` column; used by `test-significance.R` and `test-safe_log10p.R` |
+| `test.bed` | PLINK binary genotype file for `bin/create_causal_vars.py` tests; same 5-marker × 3-strain dataset as `test_genotype_matrix.tsv`; required alongside `test.bim` and `test.fam` for pytest genotype extraction test |
+| `test.fam` | PLINK family file (3 strains) companion to `test.bed`; pytest `test_causal_genotypes_tsv_written` auto-skips when this file is absent |
+| `test_causal_genotypes.tsv` | Long-format causal genotype fixture; 2 QTL positions × 4 strains with `QTL`/`strain`/`allele` columns; used by `test-schema_changes.R` for `causal_genotypes` round-trip write/read |
 
 ### Integration Tests
 
@@ -305,7 +338,14 @@ nextflow run main.nf -profile test_three_species -stub-run
 
 # With legacy assessment path
 nextflow run main.nf -profile test --legacy_assess -stub-run
+
+# CV pool filter — exercises pipeline guard when cv_maf/cv_ld reduce the causal variant pool
+nextflow run main.nf -profile test_cv_pool -stub-run
 ```
+
+The `test_cv_pool` profile sets `cv_maf` and `cv_ld` to values that shrink the available
+causal variant pool relative to the full marker set. The stub run verifies Nextflow channel
+wiring for the filtered pool code path without executing GCTA.
 
 
 ## Thread-count determinism
