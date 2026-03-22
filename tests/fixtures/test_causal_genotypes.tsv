@@ -1,0 +1,9 @@
+QTL	strain	allele
+I:100	strain_A	-1
+I:100	strain_B	1
+I:100	strain_C	-1
+I:100	strain_D	1
+II:300	strain_A	-1
+II:300	strain_B	-1
+II:300	strain_C	1
+II:300	strain_D	1

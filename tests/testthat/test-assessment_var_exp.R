@@ -289,3 +289,53 @@ test_that("compile_full_assessment: Simulated.QTL.VarExp flows from causal_varia
   expect_equal(sim_rows$Simulated.QTL.VarExp[1], 0.962, tolerance = 1e-6,
     label = "Simulated.QTL.VarExp value preserved through compile_full_assessment()")
 })
+
+
+# ==============================================================================
+# T4 — Non-marker causal variant var.exp tests
+# ==============================================================================
+
+test_that("compute_var_exp_anova: non-marker position computes var.exp when genotype provided", {
+  pheno <- load_pheno_fixture()
+  # Synthetic genotype at non-marker position 9:999 — same allele pattern as 1:100
+  # (A=-1, B=1, C=-1, D=1) so it should yield the same golden var.exp as 1:100
+  geno_nonmarker <- data.frame(
+    CHROM  = "9",
+    POS    = 999L,
+    strain = c("strain_A", "strain_B", "strain_C", "strain_D"),
+    allele = c(-1, 1, -1, 1),
+    stringsAsFactors = FALSE
+  )
+  causal_9 <- data.frame(
+    QTL       = "9:999",
+    CHROM     = "9",
+    POS       = 999L,
+    RefAllele = "A",
+    Frequency = 0.5,
+    Effect    = 1.5,
+    stringsAsFactors = FALSE
+  )
+  result <- compute_var_exp_anova(geno_nonmarker, pheno, causal_9)
+  expect_equal(result$Simulated.QTL.VarExp, GOLDEN_1_100, tolerance = 1e-6,
+               label = "non-marker position with supplied genotype matches expected var.exp")
+})
+
+test_that("compute_var_exp_anova: non-marker without genotype still returns NA", {
+  # When only the marker genotype matrix is passed (no per-trait merge),
+  # a non-marker position is absent from the geno data → inner_join yields NA
+  result <- compute_var_exp_anova(
+    load_geno_fixture(),
+    load_pheno_fixture(),
+    data.frame(
+      QTL       = "9:999",
+      CHROM     = "9",
+      POS       = 999L,
+      RefAllele = "A",
+      Frequency = 0.5,
+      Effect    = 1.0,
+      stringsAsFactors = FALSE
+    )
+  )
+  expect_true(is.na(result$Simulated.QTL.VarExp),
+    label = "non-marker position absent from geno matrix returns NA")
+})
