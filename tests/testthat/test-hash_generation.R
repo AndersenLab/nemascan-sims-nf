@@ -333,3 +333,50 @@ test_that("init_database creates markers/marker_sets, markers/genotypes, traits/
   expect_true(dir.exists(file.path(db_dir, "traits", "phenotypes")))
   expect_true(dir.exists(file.path(db_dir, "mappings")))
 })
+
+# ==============================================================================
+# T2 — CV pool hash tests
+# ==============================================================================
+
+# CV exclusion from generate_marker_set_id()
+test_that("generate_marker_set_id rejects cv_maf argument", {
+  expect_error(
+    generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8, cv_maf = 0.01),
+    regexp = "unused argument"
+  )
+})
+
+# v=2 trait hash structure
+test_that("generate_trait_id v=2 hash_string starts with v=2| and encodes cv params", {
+  r <- generate_trait_id(ms_hash, 5, "gamma", 1, 0.8, 0.05, 0.8)
+  expect_true(startsWith(r$hash_string, "v=2|"))
+  expect_true(grepl("cv_maf_effective=0.0500000000", r$hash_string))
+  expect_true(grepl("cv_ld=0.8000000000", r$hash_string))
+})
+
+# v=2 sensitivity
+test_that("generate_trait_id v=2 is sensitive to cv_maf_effective", {
+  h1 <- generate_trait_id(ms_hash, 5, "gamma", 1, 0.8, 0.05, 0.8)$hash
+  h2 <- generate_trait_id(ms_hash, 5, "gamma", 1, 0.8, 0.01, 0.8)$hash
+  expect_false(h1 == h2)
+})
+
+test_that("generate_trait_id v=2 is sensitive to cv_ld", {
+  h1 <- generate_trait_id(ms_hash, 5, "gamma", 1, 0.8, 0.05, 0.8)$hash
+  h2 <- generate_trait_id(ms_hash, 5, "gamma", 1, 0.8, 0.05, 0.99)$hash
+  expect_false(h1 == h2)
+})
+
+test_that("generate_trait_id v=2 is deterministic", {
+  h1 <- generate_trait_id(ms_hash, 5, "gamma", 1, 0.8, 0.05, 0.8)$hash
+  h2 <- generate_trait_id(ms_hash, 5, "gamma", 1, 0.8, 0.05, 0.8)$hash
+  expect_equal(h1, h2)
+})
+
+# Golden value (uses trait_hash variable set at top of file)
+test_that("generate_trait_id v=2 golden value", {
+  expect_equal(
+    generate_trait_id(ms_hash, 5, "gamma", 1, 0.8, 0.05, 0.8)$hash,
+    trait_hash
+  )
+})
