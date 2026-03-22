@@ -151,3 +151,49 @@ test_that("trait_metadata_schema sim_seed is int32 type", {
   expect_equal(s$GetFieldByName("sim_seed")$type, arrow::int32())
 })
 
+# ==============================================================================
+# T3 — CV pool schema and round-trip tests
+# ==============================================================================
+
+test_that("marker_set_metadata_schema excludes cv_maf and cv_ld", {
+  cols <- names(marker_set_metadata_schema())
+  expect_false("cv_maf" %in% cols)
+  expect_false("cv_ld"  %in% cols)
+})
+
+test_that("trait_metadata_schema includes cv_maf_effective (float64) and cv_ld (float64)", {
+  s <- trait_metadata_schema()
+  expect_true("cv_maf_effective" %in% names(s))
+  expect_true("cv_ld"           %in% names(s))
+  expect_equal(s$GetFieldByName("cv_maf_effective")$type, arrow::float64())
+  expect_equal(s$GetFieldByName("cv_ld")$type,            arrow::float64())
+})
+
+test_that("causal_genotypes_schema has 6 correct columns", {
+  expect_equal(sort(names(causal_genotypes_schema())),
+               sort(c("trait_id", "QTL", "CHROM", "POS", "strain", "allele")))
+  expect_equal(causal_genotypes_schema()$GetFieldByName("allele")$type, arrow::float64())
+})
+
+test_that("init_database creates traits/causal_genotypes directory", {
+  db <- create_temp_db()
+  init_database(db)
+  expect_true(dir.exists(file.path(db, "traits", "causal_genotypes")))
+})
+
+test_that("write/read causal_genotypes round-trip preserves data", {
+  db    <- create_temp_db()
+  init_database(db)
+  ms_id <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)
+  trait <- generate_trait_id(ms_id$hash, 5, "gamma", 1, 0.8, 0.05, 0.8)
+  write_causal_genotypes(fixture_path("test_causal_genotypes.tsv"), trait$hash, db)
+  result <- read_causal_genotypes(trait$hash, db)
+  expect_equal(sort(names(result)),
+               sort(c("trait_id", "QTL", "CHROM", "POS", "strain", "allele")))
+  expect_equal(unique(result$trait_id), trait$hash)
+  expect_true(nrow(result) > 0)
+  expect_true("I:100"  %in% result$QTL)
+  expect_true("II:300" %in% result$QTL)
+  expect_true(all(result$allele[!is.na(result$allele)] %in% c(-1.0, 1.0)))
+})
+
