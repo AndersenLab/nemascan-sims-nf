@@ -537,6 +537,48 @@ generate_mapping_id <- function(trait_hash, algorithm, pca) {
 }
 
 
+#' Build all simulation IDs from a named parameter list
+#'
+#' Canonical entry point for ID computation in all four DB migration scripts.
+#' Adding a new simulation dimension requires updating only this function's
+#' generate_*() calls and the sim_params list construction at each call site.
+#'
+#' @param params Named list with fields: population, maf, species, vcf_release_id,
+#'   ms_ld, nqtl, effect, rep, h2, cv_maf_effective, cv_ld.
+#'   Use \code{population} (not \code{group}) — the CLI \code{--group} arg maps to
+#'   \code{params$population} at all four call sites to match the DB schema column name.
+#'   species/vcf_release_id/ms_ld come from \code{read_marker_set_metadata()} at runtime.
+#' @param mode GWA mode string ("inbred" or "loco"). If NULL, mapping_id is omitted.
+#' @param pca Logical scalar (TRUE/FALSE). Derived from \code{opt$type == "pca"}.
+#'   If NULL (or mode is NULL), mapping_id is omitted from the result.
+#' @return Named list with \code{ms_id}, \code{trait_id}, and (if both mode and pca
+#'   are non-NULL) \code{mapping_id}. Each element is the full ID object from the
+#'   corresponding \code{generate_*()} call (use \code{$hash} for the 20-char string).
+build_ids_from_params <- function(params, mode = NULL, pca = NULL) {
+  if (is.null(params$population) || is.na(params$population))   stop("params$population is NA/NULL")
+  if (is.null(params$maf)        || is.na(params$maf))          stop("params$maf is NA/NULL")
+  if (is.null(params$species)    || is.na(params$species))      stop("params$species is NA/NULL — check marker set metadata read")
+  if (is.null(params$vcf_release_id) || is.na(params$vcf_release_id)) stop("params$vcf_release_id is NA/NULL — check marker set metadata read")
+  if (is.null(params$ms_ld) || is.na(as.numeric(params$ms_ld))) stop("params$ms_ld is NA/NULL — check marker set metadata read")
+  if (is.null(params$nqtl)       || is.na(params$nqtl))         stop("params$nqtl is NA/NULL")
+  if (is.null(params$effect)     || is.na(params$effect))       stop("params$effect is NA/NULL")
+  if (is.null(params$rep)        || is.na(params$rep))          stop("params$rep is NA/NULL")
+  if (is.null(params$h2)         || is.na(params$h2))           stop("params$h2 is NA/NULL")
+  if (is.null(params$cv_maf_effective) || is.na(params$cv_maf_effective)) stop("params$cv_maf_effective is NA/NULL")
+  if (is.null(params$cv_ld)      || is.na(params$cv_ld))        stop("params$cv_ld is NA/NULL")
+
+  ms_id    <- generate_marker_set_id(params$population, params$maf, params$species,
+                                     params$vcf_release_id, params$ms_ld)
+  trait_id <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep,
+                                params$h2, params$cv_maf_effective, params$cv_ld)
+  result   <- list(ms_id = ms_id, trait_id = trait_id)
+  if (!is.null(mode) && !is.null(pca)) {
+    result$mapping_id <- generate_mapping_id(trait_id$hash, mode, pca)
+  }
+  result
+}
+
+
 # ==============================================================================
 # Marker Set Operations
 # ==============================================================================
@@ -1216,7 +1258,10 @@ read_marker_set_metadata <- function(population, maf, base_dir = "data/db") {
   }
 
   metadata <- as.data.frame(arrow::read_parquet(metadata_path))
-  record <- metadata[metadata$population == population & metadata$maf == maf, ]
+  record <- metadata[
+    metadata$population == population &
+    sprintf("%.10f", metadata$maf) == sprintf("%.10f", maf),
+  ]
 
   if (nrow(record) == 0) {
     return(NULL)

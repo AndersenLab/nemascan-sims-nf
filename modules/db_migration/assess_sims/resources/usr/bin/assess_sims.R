@@ -92,14 +92,22 @@ if (is.null(ms_meta)) {
 if (is.na(as.numeric(ms_meta$ms_ld))) {
   stop("ms_ld field is NA in marker set metadata — DB may be corrupt")
 }
-ms_id <- generate_marker_set_id(
-  params$population, as.numeric(params$maf),
-  ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld)
+sim_params <- list(
+  population       = params$population,
+  maf              = as.numeric(params$maf),
+  species          = ms_meta$species,
+  vcf_release_id   = ms_meta$vcf_release_id,
+  ms_ld            = as.numeric(ms_meta$ms_ld),
+  nqtl             = params$nqtl,
+  effect           = params$effect,
+  rep              = params$rep,
+  h2               = params$h2,
+  cv_maf_effective = as.numeric(opt$cv_maf_effective),
+  cv_ld            = as.numeric(opt$cv_ld)
 )
-trait      <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2,
-                                as.numeric(opt$cv_maf_effective), as.numeric(opt$cv_ld))
-mapping    <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
-mapping_id <- mapping$hash
+ids        <- build_ids_from_params(sim_params, mode = opt$mode, pca = opt$type == "pca")
+mapping_id <- ids$mapping_id$hash
+trait_hash <- ids$trait_id$hash
 log_msg(paste("Assessing mapping:", mapping_id))
 
 # Step 1: Read QTL regions from analyze_qtl.R output
@@ -125,17 +133,17 @@ genotype_matrix <- tryCatch(
     "', maf=", params$maf, ": ", conditionMessage(e)))
 )
 phenotype_data <- tryCatch(
-  read_phenotype_data(trait$hash, opt$base_dir),
+  read_phenotype_data(trait_hash, opt$base_dir),
   error = function(e) stop(paste0(
-    "Failed to read phenotype data for trait='", trait$hash, "': ",
+    "Failed to read phenotype data for trait='", trait_hash, "': ",
     conditionMessage(e)))
 )
 
 # Read per-trait causal genotypes (covers non-marker positions when cv_maf < ms_maf).
 causal_geno <- tryCatch(
-  read_causal_genotypes(trait$hash, opt$base_dir),
+  read_causal_genotypes(trait_hash, opt$base_dir),
   error = function(e) {
-    warning("Could not read causal genotypes for trait='", trait$hash,
+    warning("Could not read causal genotypes for trait='", trait_hash,
             "': ", conditionMessage(e))
     NULL
   }
