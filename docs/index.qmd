@@ -6,6 +6,49 @@ Pipeline documentation for `nemascan-sims-nf` — a Nextflow pipeline that
 simulates GWAS for *C. elegans* and related nematodes, evaluating the power
 and precision of different mapping algorithms.
 
+```{mermaid}
+%%{init: {'themeVariables': {'fontSize': '20px'}}}%%
+flowchart LR
+    classDef phase1 fill:#4e9af1,stroke:#2c6fad,color:#fff
+    classDef phase2 fill:#48b96e,stroke:#2d8150,color:#fff
+    classDef phase3 fill:#e07b3a,stroke:#a3572a,color:#fff
+    classDef phase4 fill:#9b59b6,stroke:#6c3483,color:#fff
+    classDef io fill:#f5f5f5,stroke:#999,color:#333
+
+    VCF(["Input VCF + strainfile"]):::io
+
+    subgraph P1["Phase 1: Marker Set Generation"]
+        A1["bcftools extract & rename"]:::phase1
+        A2["PLINK LD pruning (MS + CV)"]:::phase1
+        A3["Genotype matrix & eigenvalues"]:::phase1
+        A1 --> A2 --> A3
+    end
+
+    subgraph P2["Phase 2: Trait Simulation"]
+        B1["Select causal variants"]:::phase2
+        B2["GCTA simulate phenotypes"]:::phase2
+        B3["Variance check & upscaling"]:::phase2
+        B1 --> B2 --> B3
+    end
+
+    subgraph P3["Phase 3: GWAS Mapping"]
+        C1["Build GRM (inbred + loco)"]:::phase3
+        C2["Map 4 mode x type combos"]:::phase3
+        C1 --> C2
+    end
+
+    subgraph P4["Phase 4: QTL Detection & Assessment"]
+        D1["DB ingestion (Parquet)"]:::phase4
+        D2["QTL interval detection"]:::phase4
+        D3["Performance assessment"]:::phase4
+        D1 --> D2 --> D3
+    end
+
+    OUT(["db_simulation_assessment_results.tsv"]):::io
+
+    VCF --> P1 --> P2 --> P3 --> P4 --> OUT
+```
+
 ## Reports
 
 - [Marker Set Generation](marker-set-generation.qmd) — Phase 1 process
@@ -26,5 +69,10 @@ and precision of different mapping algorithms.
 - [Assessment Cross-Validation](cross-validation.qmd) — How to run and
   interpret the cross-validation analysis comparing DB-path and legacy-path
   assessment outputs.
-- [Development](development.qmd) — Contributing guide covering documentation
-  authoring, GitHub Pages publishing, testing, and project structure.
+- [Development Guide](development.qmd) — Contributing guide covering documentation
+  authoring, GitHub Pages publishing, and project structure. Includes links to the
+  setup page and four testing workflow pages (local end-to-end, integration, HPC,
+  and output validation).
+- [Setup](setup.qmd) — Local and HPC environment prerequisites: Nextflow version
+  pinning, Docker, R packages, Python, bcftools, and Rockfish conda/Singularity
+  configuration.
