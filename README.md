@@ -1,400 +1,303 @@
 ## Usage
 
-nextflow andersenlab/nemascan-sim-nf --strainfile /path/to/strainfile --vcf /path/to/vcf -output-dir my-results
+nextflow andersenlab/nemascan-sim-nf --strainfile /path/to/strainfile -output-dir my-results
 
 Mandatory argument (General):
 
-    --strainfile      File               A TSV file with two columns: the first is a name for the strain set and the second is a comma-separated strain list without spaces
-    --vcf             File               Generally a CaeNDR release date (i.e. 20231213). Can also provide a user-specified VCF with index in same folder
+    --strainfile      File               A 6-column tab-separated file (with required header row) specifying strain groups.
+                                         See Strainfile Format below.
 
 Optional arguments (General):
 
     --nqtl            File               A CSV file with the number of QTL to simulate per phenotype, one value per line (Default is located: data/simulate_nqtl.csv)
     --h2              File               A CSV file with phenotype heritability, one value per line (Default is located: data/simulate_h2.csv)
     --reps             Integer            The number of replicates to simulate per number of QTL and heritability (Default: 2)
-    --maf             File               A CSV file where each line is a minor allele frequency threshold to test for simulations (Default: data/simulate_maf.csv)
+    --cv_maf          Decimal            MAF threshold for causal variant pool (Default: same as each row's ms_maf)
+    --cv_ld           Decimal            LD R² pruning threshold for causal variant pool (Default: 0.8)
     --effect          File               A CSV file where each line is an effect size range (e.g. 0.2-0.3) to test for simulations (Default: data/simulate_effect_sizes.csv)
     --qtlloc          File               A BED file with three columns: chromosome name (numeric 1-6), start postion, end postion. The genomic range specified is where markers will be pulled from to simulate QTL (Default: null [which defaults to using the whole genome to randomly simulate a QTL])
     --sthresh         String             Significance threshold for QTL - Options: BF - for bonferroni correction, EIGEN - for SNV eigen value correction, or another number e.g. 4
+    --alpha           Decimal            Significance level for Bonferroni and EIGEN threshold calculation (Default: 0.05)
+    --legacy_assess   Boolean            Run legacy R-based QTL detection chain alongside the DB path for cross-validation (Default: false)
     --group_qtl       Integer            If two QTL are less than this distance from each other, combine the QTL into one, (DEFAULT = 1000)
     --ci_size         Integer            Number of SNVs to the left and right of the peak marker used to define the QTL confidence interval, (DEFAULT = 150)
     --sparse_cut      Decimal            Any off-diagonal value in the genetic relatedness matrix greater than this is set to 0 (Default: 0.05)
     --simulate_qtlloc Boolean            Whether to simulate QTLs in specific genomic regions (Default: false)
-    -output-dir       String             Name of folder that will contain the results (Default: Simulations_{date})
+    --output_dir      String             Output directory name (Default: Analysis_Results-{date}).
+                                         Also settable via Nextflow's native -output-dir flag.
+
+## Strainfile Format
+
+Tab-separated, with a required header row:
+
+| Column | Required | Description |
+|--------|----------|-------------|
+| `group` | yes | Unique strain set identifier |
+| `species` | yes | `c_elegans`, `c_briggsae`, or `c_tropicalis` |
+| `vcf` | yes | CaeNDR release date (e.g. `20220216`) or absolute VCF file path |
+| `ms_maf` | yes | MAF threshold for GWA marker SNP selection (e.g. `0.05`) |
+| `ms_ld` | yes | LD R² pruning threshold for marker SNP selection (e.g. `0.8`) |
+| `strains` | yes | Comma-separated strain list |
+
+Example:
+
+```
+group	species	vcf	ms_maf	ms_ld	strains
+ce.test.200strains	c_elegans	20220216	0.05	0.8	AB1,CB4852,...
+cb.test.50strains	c_briggsae	/path/to/cb.vcf.gz	0.05	0.8	CB1,CB2,...
+```
+
+**Line endings:** Strainfiles must use Unix line endings (LF, `\n`). Windows line endings (CRLF)
+will corrupt the last column header to `strains\r`, causing a silent parse failure where the
+`strains` column is not found. Convert with `dos2unix strainfile.txt` before use.
+
+## Marker Set ID
+
+Each pipeline run stores a 20-character SHA-256 `marker_set_id` in all simulation results DB
+records, computed from `(group, vcf_release_id, species, ms_maf, ms_ld)` via
+`generate_marker_set_id()` in `R/database.R`. This ID can be used to group or filter results
+by marker set configuration and enables safe merging of outputs across runs.
+
+> ⚠ **Note:** The marker set ID does **not** encode `cv_maf` or `cv_ld`. Do not merge results
+> from runs with different CV parameters into the same database table without adding
+> `cv_maf`/`cv_ld` columns to distinguish them — such records would appear identical by
+> `marker_set_id` but reflect different causal variant pool configurations.
 
 # Simulations
 
 ## Preparing marker sets
-### `PLINK_RECODE_VCF`
-The process `PLINK_RECODE_VCF` runs two plink commands.
 
-First, it takes the VCF file and performs LD pruning with the `--indep-pairwise 50 10 0.8` command. This outputs a set of plink files, of which is the `plink.prune.in` file used by the second plink command and used in the final step to create the `markers.txt` file used to generate the genotype matrix.
-
-Other filtering parameters specified in the first command:
-`--snps-only`:
-`--biallelic-only`
-`--maf`
-`--set-missing-var-ids`
-`--geno`
-`--not-chr`: SPECIFIC TO FIRST PLINK COMMAND
-
-All the files generated by the first plink command should be stored with the `plink.prune.in` prefix.
-- Per the [plink documentation](https://www.cog-genomics.org/plink/1.9/ld#indep) the `--indep-pairwise` command produces: "a pruned subset of of markers that are in appximate linkage equilibrium with each other, writing the IDs to `plink.prune.in` (and the IDs of all excluded variants to `plink.prune.out`). (Results may be slightly different from PLINK 1.07, due to a minor bugfix in the r2 computation when missing data is present, and more systematic handling of multicollinearity.) Output files are valid input for --extract/--exclude in a future PLINK run.
-
-Second, the process runs a plink command to generate a set of plink files for downstream processing with the `--recode` command
+The marker set generation phase transforms a multi-sample VCF into LD-pruned PLINK binary filesets and a numeric genotype matrix through five processes: `BCFTOOLS_EXTRACT_STRAINS`, `BCFTOOLS_RENAME_CHROMS`, `PLINK_RECODE_MS_VCF`, `PLINK_RECODE_CV_VCF`, and `BCFTOOLS_CREATE_GENOTYPE_MATRIX`. Two parallel PLINK runs produce the marker SNP set (`TO_SIMS.*`, used for GWA) and the causal variant pool (`CV_TO_SIMS.*`, used for causal variant selection). See the [Marker Set Generation](docs/marker-set-generation.qmd) documentation for detailed process descriptions, commands, and parameter references.
 
 ## Simulated traits
-Trait simulation involves the following sequential steps:
-1.  Select causal variants.
-2.  Simulate phenotypes based on these variants.
-3.  Update PLINK fileset with simulated phenotypes.
-### 1. Selecting Causal Variants
-Causal variants are chosen from the available marker set by the `PYTHON_SIMULATE_EFFECTS_GLOBAL` process, which executes the `bin/create_causal_vars.py` script.
 
-
-This script takes the following inputs:
-*   A `.bim` file (PLINK binary marker information).
-*   The desired number of causal variants (`nQTL`).
-*   The effect range, specified either as a numeric range (e.g., `0.4-0.9`) or as `gamma`.
-
-The selection process involves two main steps:
-1.  **Variant Selection**: The `select_variants()` function randomly chooses `nQTL` variants without replacement from the markers listed in the `.bim` file.
-2.  **Effect Size Assignment**:
-    *   If the effect range is `gamma`, the `simulate_effect_gamma()` function assigns effect sizes. These sizes are drawn from a gamma distribution (`gamma(effect_shape=0.4, effect_scale=1.66)`), and each variant is randomly assigned a direction (positive or negative effect, i.e., `1` or `-1`).
-    *   If a numeric range (e.g., `0.4-0.9`) is provided, the `simulate_effect_uniform()` function assigns effect sizes. These are drawn from a uniform distribution spanning the specified `low_end` to `high_end`, and a direction (`1` or `-1`) is also randomly assigned.
-
-The script outputs a file named `causal_variants.txt` in the designated output directory. This file lists the selected causal variant IDs and their assigned effect sizes.
-
-For our example replicate `5_1_gamma_ce.96.allout15_irrepressible.grosbeak_0.05` (assuming nQTL=5), the `causal_variants.txt` file is generated by the `PYTHON_SIMULATE_EFFECTS_GLOBAL` process. An example of this file, located at `data/test_data/5_1_gamma_ce.96.allout15_irrepressible.grosbeak_0.05/PYTHON_SIMULATE_EFFECTS_GLOBAL/causal_variants.txt`, would look like this:
-```
-// filepath: data/test_data/5_1_gamma_ce.96.allout15_irrepressible.grosbeak_0.05/PYTHON_SIMULATE_EFFECTS_GLOBAL/causal_variants.txt
-2:14378543 0.38901223435837223
-2:7459092 -4.532985639400811
-3:1537674 -0.0063686130105886415
-4:16212978 0.47805937866664927
-2:13733845 -0.03046281285149475
-```
-
-### 2. Simulating Phenotypes with `GCTA_SIMULATE_PHENOTYPES`
-The `causal_variants.txt` file (generated in the previous step) is used by the `GCTA_SIMULATE_PHENOTYPES` process. This process employs the `gcta64 --simu-qt` command to simulate quantitative traits based on the selected causal variants. (Refer to the [GCTA GWAS Simulation documentation](https://yanglab.westlake.edu.cn/software/gcta/#GWASSimulation) for more details).
-
-Key parameters for `gcta64 --simu-qt`:
-*   `--simu-causal-loci`: This parameter takes the `causal_variants.txt` file, which provides the SNP IDs and their effect sizes for the simulation.
-*   `--simu-hsq`: This specifies the target heritability (h²) of the trait. The value for this parameter is taken from the file provided to the `--h2` pipeline parameter.
-
-
-This process generates two primary output files:
-*   `{prefix}.par`: A par file with a header, detailing:
-    *   `QTL`: SNP ID of the causal variant.
-    *   `RefAllele`: Reference allele.
-    *   `Frequency`: Allele frequency.
-    *   `Effect size`: The effect size used in the simulation for that QTL.
-    *   For our example replicate `5_1_gamma_ce.96.allout15_irrepressible.grosbeak_0.05` (assuming nQTL=5, h2=0.2, MAF=0.05, effect=gamma, and strain set `ce.96.allout15_irrepressible.grosbeak`), the GCTA simulation step produces a `*.par` file. An example, named `5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.par` and located in `data/test_data/5_1_gamma_ce.96.allout15_irrepressible.grosbeak_0.05/GCTA_SIMULATE_PHENOTYPES/`, is shown below:
-        ```
-        // filepath: data/test_data/5_1_gamma_ce.96.allout15_irrepressible.grosbeak_0.05/GCTA_SIMULATE_PHENOTYPES/5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.par
-        QTL           RefAllele   Frequency    Effect
-        2:7459092     A           0.0520833    -4.53299
-        2:13733845    A           0.125        -0.0304628
-        2:14378543    A           0.104167     0.389012
-        3:1537674     G           0.125        -0.00636861
-        4:16212978    T           0.0625       0.478059
-        ```
-*   `{prefix}.phen`: A phenotype file without a header, containing:
-    *   Column 1: Family ID.
-    *   Column 2: Individual ID.
-    *   Column 3: Simulated phenotype value.
-    * Similarly, the `*.phen` file, named `5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.phen` and found in `data/test_data/5_1_gamma_ce.96.allout15_irrepressible.grosbeak_0.05/GCTA_SIMULATE_PHENOTYPES/`, contains the simulated phenotype values:
-    *   ```
-        // filepath: data/test_data/5_1_gamma_ce.96.allout15_irrepressible.grosbeak_0.05/GCTA_SIMULATE_PHENOTYPES/5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.phen
-        MY2713 MY2713 -6.04369 
-        JU323 JU323 11.1615 
-        XZ1734 XZ1734 4.15316 
-        QG4080 QG4080 9.589 
-        DL226 DL226 -4.79251 
-        ECA2533 ECA2533 8.34439 
-        XZ1672 XZ1672 5.00596 
-        ED3046 ED3046 -2.37417 
-        NIC1786 NIC1786 11.8277 
-        NIC274 NIC274 -22.5104 
-        ```
-
-### 3. Updating PLINK Fileset with Simulated Phenotypes (`PLINK_UPDATE_BY_H2`)
-This step, handled by the `PLINK_UPDATE_BY_H2` process, integrates the simulated phenotypes (from `{prefix}.phen`) into the primary PLINK fileset used for simulation (referred to as the "TO_SIMS" fileset). This associates the newly generated phenotype data with the existing genetic data for each individual, preparing it for downstream analyses such as association mapping.
-
-The filtering parameters that are applied should remain consistent across all plink commands
+The trait simulation phase selects causal variants, simulates quantitative phenotypes with GCTA, and prepares phenotype-annotated PLINK filesets through three processes: `PYTHON_SIMULATE_EFFECTS_GLOBAL`, `GCTA_SIMULATE_PHENOTYPES`, and `PLINK_UPDATE_BY_H2`. Causal variants are drawn from the CV pool (`PLINK_RECODE_CV_VCF` output, configurable via `--cv_maf` and `--cv_ld`), independently of the marker SNP set used for GWA mapping. See the [Trait Simulation](docs/trait-simulation.qmd) documentation for detailed process descriptions, commands, and parameter references.
 
 ## GWAS Mappings
 
-After trait simulation, the pipeline maps simulated phenotypes using GCTA to evaluate GWA power and precision. The mapping phase involves constructing a genetic relatedness matrix (GRM), verifying phenotypic variance, and performing association mapping. These processes are parameterized by two variables defined in `main.nf`:
+The GWAS mapping phase constructs genetic relatedness matrices, verifies phenotypic variance, and performs association mapping under four mode/type conditions (`inbred`/`loco` x `pca`/`nopca`) through three processes: `GCTA_MAKE_GRM`, `PYTHON_CHECK_VP`, and `GCTA_PERFORM_GWA`. See the [GWAS Mapping](docs/gwas-mapping.qmd) documentation for detailed process descriptions, commands, and parameter references.
 
-- **mode**: `"inbred"` or `"loco"` — determines the type of GRM and the GWA algorithm
-- **type**: `"pca"` or `"nopca"` — determines whether the first principal component eigenvector is included as a covariate
+### QTL Detection & Assessment
 
-Each simulation replicate is mapped under all four combinations (`inbred x pca`, `inbred x nopca`, `loco x pca`, `loco x nopca`), driven by Nextflow channel combinations:
+The final phase detects QTL intervals from GWA results and assesses detection
+performance against simulated truth. Two parallel paths produce equivalent
+output: the DB path (default) writes results to a Parquet database and queries
+via DuckDB, while the legacy path (opt-in via `--legacy_assess`) operates
+directly on intermediate files.
 
-```nextflow
-ch_mode = Channel.of(
-    ["inbred", "fastGWA"],
-    ["loco", "mlma"]
-)
+The DB path writes five data domains to `{output-dir}/db/`:
 
-ch_type = Channel.of(
-    "pca",
-    "nopca"
-)
-```
+| Directory | Content |
+|-----------|---------|
+| `marker_sets/` | LD-pruned marker data and long-format genotype matrices |
+| `mappings/` | Per-marker GWA statistics (Hive-partitioned) |
+| `traits/` | Per-trait metadata (parameters + deterministic trait ID) |
+| `causal_variants/` | Simulated causal variant positions and effects |
+| `phenotypes/` | Pre-upscaled phenotype values per strain |
 
-### Creating GRM and Estimating Phenotypic Variance (`GCTA_MAKE_GRM`)
+The `traits/`, `causal_variants/`, and `phenotypes/` directories store the raw
+inputs needed for offline variance-explained estimation without re-running the
+pipeline. See the [Database Structure](docs/database-structure.qmd) reference
+for full Parquet schemas and the [QTL Detection & Assessment](docs/qtl-detection-assessment.qmd)
+documentation for detailed process descriptions, commands, and output schema.
 
-**Source:** `modules/gcta/make_grm/main.nf`
+## Test Data
 
-The `GCTA_MAKE_GRM` process performs two sequential GCTA operations: building the GRM and estimating variance via REML.
+### Generating the Test VCF
 
-#### Step 1: Build the GRM
+The test VCF (`data/test/test.vcf.gz`) is not committed to the repository due to its size (~71 MB). The script `data/test/generate_test_vcf.sh` creates it by subsetting the full CaeNDR isotype reference VCF to the 13 strains in `data/test/test_strains.txt` across chromosomes I, II, and V.
 
-The GRM construction method depends on the `mode` parameter:
-
-```bash
-if [[ ${mode} == "inbred" ]]; then
-    GRM_OPTION="--make-grm-inbred"
-else
-    GRM_OPTION="--make-grm"
-fi
-
-gcta64 --bfile TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group} \
-        --autosome --maf ${maf} ${GRM_OPTION} \
-        --out TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \
-        --thread-num ${task.cpus}
-```
-
-- **`mode == "inbred"`**: Uses `--make-grm-inbred`, which constructs a kinship matrix tailored for populations of inbred organisms. The inbred GRM adjusts relatedness estimates to account for the reduced heterozygosity characteristic of inbred lines.
-- **`mode == "loco"`**: Uses `--make-grm`, which constructs a standard genome-wide relatedness matrix using all autosomal markers.
-
-Both modes filter to autosomal markers (`--autosome`) above the minor allele frequency threshold (`--maf`). Because `main.nf` defines `ch_mode` with both `["inbred", "fastGWA"]` and `["loco", "mlma"]`, each simulation replicate produces two GRMs — one inbred and one standard.
-
-#### Step 2: REML Variance Estimation
+**Requirements:** bcftools (>= 1.16), tabix, and the source VCF
 
 ```bash
-gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \
-        --pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen \
-        --reml --out check_vp \
-        --thread-num ${task.cpus}
+# Download the source VCF from CaeNDR (~7.8 GB)
+# https://elegansvariation.org/data/release/latest
+# File: WI.20220216.hard-filter.isotype.vcf.gz
+
+# Generate the test VCF (takes 5-10 minutes)
+./data/test/generate_test_vcf.sh /path/to/WI.20220216.hard-filter.isotype.vcf.gz
 ```
 
-This estimates the phenotypic variance (Vp) from the simulated phenotype data using restricted maximum likelihood (REML). (See [GCTA GREML analysis documentation](https://yanglab.westlake.edu.cn/software/gcta/#GREMLanalysis)).
+This produces:
+- `data/test/test.vcf.gz` — BGZF-compressed VCF (13 samples, chromosomes I/II/V, monomorphic sites removed)
+- `data/test/test.vcf.gz.tbi` — tabix index
 
-The output of the `gcta64 --reml` analysis is a plain text file with the `*.hsq` extension containing variance component estimates. For our example replicate `5_1_gamma_ce.96.allout15_irrepressible.grosbeak_0.05`, here's an example of its content:
+The script also strips `##contig` headers for absent chromosomes (III, IV, X). This is required because `LOCAL_GET_CONTIG_INFO` parses contig headers to build the chromosome mapping, and headers for chromosomes without data cause downstream failures in `R_FIND_GENOTYPE_MATRIX_EIGEN`.
 
-```
-// filepath: data/test_data/5_1_gamma_ce.96.allout15_irrepressible.grosbeak_0.05/GCTA_MAKE_GRM/check_vp.hsq
-Source	Variance	SE
-V(G)	46.564277	40.308593
-V(e)	158.873235	39.887704
-Vp	205.437512	30.661982
-V(G)/Vp	0.226659	0.185504
-logL	-301.643
-logL0	-302.603
-LRT	1.920
-df	1
-Pval	8.2935e-02
-n	96
-```
+### Generating Integration Test Data
 
-**Outputs:** GRM binary files (`.grm.bin`, `.grm.N.bin`, `.grm.id`), the REML estimates (`check_vp.hsq`), and all input PLINK/phenotype files passed through for downstream use.
+The script `tests/collect_test_data.sh` runs the pipeline with the `test` profile and collects outputs needed by integration tests. It runs the actual pipeline (not a separate reimplementation), so the test data is always consistent with the current code.
 
-### Verify and Adjust Phenotypic Variance (`PYTHON_CHECK_VP`)
-
-**Source:** `bin/check_vp.py`
-
-The `PYTHON_CHECK_VP` process inspects the estimated phenotypic variance (Vp) from the `*.hsq` file (produced by GCTA REML). This step ensures that the simulated phenotypes exhibit sufficient variance, preventing near-zero variance from causing numerical issues in the association mapping step.
-
-Inputs to `bin/check_vp.py`:
-*   The `*.hsq` file (containing Vp estimates).
-*   The current phenotype file (e.g., `{prefix}.phen` from the GCTA simulation step).
-
-Script Logic:
-1.  The script parses the `*.hsq` file to extract the `Vp` value.
-2.  It then checks the `Vp` against a threshold:
-    *   If `Vp` is less than `0.000001`: The script scales up the phenotype values for all individuals by multiplying them by `1000`. This adjustment aims to increase the phenotypic variance.
-    *   If `Vp` is greater than or equal to `0.000001`: The original phenotype values are retained without modification.
-3.  The script writes the (potentially modified) phenotype data to a temporary file named `new_phenos.temp`.
-4.  Finally, this `new_phenos.temp` file is renamed to reflect the specific simulation parameters, following a pattern like `${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno`. This becomes the final phenotype file for this simulation iteration.
-    ```
-    // filepath: data/test_data/5_1_gamma_ce.96.allout15_irrepressible.grosbeak_0.05/PYTHON_CHECK_VP/5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.pheno
-    MY2713 MY2713 -6.04369
-    JU323 JU323 11.1615
-    XZ1734 XZ1734 4.15316
-    QG4080 QG4080 9.589
-    ```
-
-### Mappings with `GCTA_PERFORM_GWA`
-
-**Source:** `modules/gcta/perform_gwa/main.nf`
-
-This process receives the GRM and variance-checked phenotype data, then performs three sub-steps controlled by the `mode` and `type` parameters.
-
-#### Step 1: Create Sparse GRM
-
-This step always runs regardless of mode or type:
+**Requirements:** Docker, Nextflow (NXF_VER=24.10.4 or any 24.10.x)
 
 ```bash
-gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \
-    --make-bK-sparse ${sparse_cut} \
-    --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \
-    --thread-num ${task.cpus}
+# Run pipeline and collect outputs (~20-45 min on first run)
+bash tests/collect_test_data.sh
+
+# Collect outputs from a previous pipeline run without rerunning
+bash tests/collect_test_data.sh --collect-only
+
+# Remove previous results before running
+bash tests/collect_test_data.sh --clean
 ```
 
-The `--make-bK-sparse` command sets all off-diagonal GRM values with absolute value less than or equal to `sparse_cut` (default: 0.05) to zero. This produces a sparse representation of the GRM.
+The script runs `nextflow run main.nf -profile test,docker --legacy_assess`, which produces both DB-path and legacy assessment outputs. It then copies the results into `tests/integration_data/`.
 
-#### Step 2: Conditional PCA
-
-The `type` parameter controls whether PCA eigenvectors are extracted as covariates:
+After collection, the script prints the exact command to run integration tests:
 
 ```bash
-if [[ ${type} == "pca" ]]; then
-    gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \
-        --pca 1 \
-        --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \
-        --thread-num ${task.cpus}
-
-    COVAR="--qcovar ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode}.eigenvec"
-else
-    COVAR=""
-fi
+TEST_DB_DIR=tests/integration_data/db \
+TEST_WORK_DIR=tests/.nf-work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
 ```
 
-- **`type == "pca"`**: Extracts the first principal component from the GRM (`--pca 1`), producing an `.eigenvec` file. This eigenvector is passed as a quantitative covariate (`--qcovar`) to the mapping command to control for population structure.
-- **`type == "nopca"`**: No PCA is performed. The `COVAR` variable is set to an empty string, so no covariate is included in the mapping command.
+Subsequent runs benefit from Nextflow's `-resume` behavior — only processes affected by code changes are rerun.
 
-#### Step 3: Association Mapping
+### Unit Tests
 
-The `mode` parameter determines both the GCTA mapping algorithm and the GRM input flag:
+Unit tests do not require pipeline output. They use static fixtures in `tests/fixtures/` and run with:
 
 ```bash
-if [[ ${mode} == "inbred" ]]; then
-    GRM_OPTION='--grm-sparse'
-    COMMAND='--fastGWA-mlm-exact'
-else
-    GRM_OPTION="--grm"
-    COMMAND="--mlma-loco"
-fi
-
-gcta64 ${COMMAND} \
-    --bfile TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group} \
-    ${GRM_OPTION} ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \
-    ${COVAR} \
-    --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_lmm-exact_${mode}_${type} \
-    --pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno \
-    --maf ${maf} \
-    --thread-num ${task.cpus}
+Rscript tests/run_tests.R
 ```
 
-**Inbred mode (`mode == "inbred"`):**
-- Uses `--fastGWA-mlm-exact` to perform an exact mixed linear model (MLM) association analysis
-- Uses `--grm-sparse` to input the sparse GRM created from the inbred relatedness matrix
-- Output format: `.fastGWA` (columns: CHR, SNP, POS, A1, A2, N, AF1, BETA, SE, P)
+Integration test files skip automatically when the required environment variables are not set.
 
-**LOCO mode (`mode == "loco"`):**
-- Uses `--mlma-loco` to perform MLM-based association using a leave-one-chromosome-out approach, where the GRM excludes the chromosome of the tested variant
-- Uses `--grm` to input the sparse GRM created from the standard relatedness matrix
-- Output format: `.loco.mlma` (columns: Chr, SNP, bp, A1, A2, Freq, b, se, p), renamed to `.mlma` after completion
+## Development Notes
+
+### Rendering Documentation
+
+The `docs/` directory contains a [Quarto](https://quarto.org/) website project with static documentation describing the cross-validation framework, concordance scores, and how to run the analysis. No pipeline output is required to render.
 
 ```bash
-if [[ ${mode} == "loco" ]]; then
-    mv "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_lmm-exact_${mode}_${type}.loco.mlma" \
-       "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_lmm-exact_${mode}_${type}.mlma"
-fi
+quarto render docs/
 ```
 
-#### Summary of the Four Mapping Conditions
+The rendered site is output to `docs/_site/`. To deploy as a GitHub Page, configure the repository to serve from that directory.
 
-| Mode | Type | GRM Construction | GWA Command | GRM Flag | Covariate | Output Format |
-|------|------|------------------|-------------|----------|-----------|---------------|
-| inbred | pca | `--make-grm-inbred` | `--fastGWA-mlm-exact` | `--grm-sparse` | `--qcovar .eigenvec` | `.fastGWA` |
-| inbred | nopca | `--make-grm-inbred` | `--fastGWA-mlm-exact` | `--grm-sparse` | none | `.fastGWA` |
-| loco | pca | `--make-grm` | `--mlma-loco` | `--grm` | `--qcovar .eigenvec` | `.mlma` |
-| loco | nopca | `--make-grm` | `--mlma-loco` | `--grm` | none | `.mlma` |
+## HPC Testing Guide (Rockfihs)
 
-### Define QTL Regions of Interest
-* QTL regions are defined with the NF process `R_GET_GCTA_INTERVALS`
-* This process runs an Rscript `bin/Get_GCTA_Intervals.R` which defines QTL intervals from the mapping outputs of `GCTA_PERFORM_GWA` and several pipeline parameters
-* Essentially the script takes the raw mapping results, applies significance criteria, groups significant markers into QTLs, defines confidence intervals for those QTL regions and estimates their effect size.
-* The script has several processing steps
-    1. Load the libraries and command line arguments given by the pipeline
-    2. Load the input data
-        * Phenotype Data
-        * GCTA Mapping Data
-        * Genotype matrix
-    3. Set the significance threshold
-        * The script accepts a commandline argument (argument #10) which specifies the significance threshold to be applied to markers.
-        * This argument can one of the following:
-            * `BF` - Bonferroni threshold
-            * `EIGEN` - Defined by the number of independent tests from Eigen decomposition of the genotype matrix
-            * A user defined numeric value that is used as the threshold.
-        * The `--sthresh` argument supplied to the pipeline sets the input for this argument to the process.
-            * The default setting for the pipeline `--sthresh` argument is the `BF` threshold in the `nextflow.config` file.
-    4. Process Mapping Data w/ `process_mapping_df()` function
-#### `process_mapping_df()`
-This is the core function of the script and performs many operations to define QTL intervals. The function returns the variable `Processed` which contains the original mapping data and these additional columns
-- `strain`
-- `value`
-- `allele`
-- `var.exp`
-- `startPOS`: the starting position of the QTL interval
-- `peakPOS`: The position of the peak marker of the QTL interval
-- `endPOS`: the end position of the QTL interval
-- `peak_id`: the id of the QTL interval. Is `1` if there is just one QTL identified for the trait or `2`..`Inf` if there are multiple QTL identified for the trait.
-- `interval_size`: The number of bases spanned by the QTL interval
-1. Threshold application
-    * Step calculates the significance threshold and identifies marker SNPs exceeding that threshold.
-        1. First the mapping df is grouped by trait (in the case that multiple mappings of different traits occurred)
-        2. Depending on the threshold set, SNPs are flagged as being above `1` or below `0` the significance threshold in a newly created column `aboveBF`
-    * Note: The function uses an externally defined variable `QTL_cutoff` which is not passed as an argument to the script.
-    * The column to denote if a SNP is above the significance threshold is named `aboveBF` regardless of the significance threshold that is applied. This is likely required so that the outputs have standard formatting for later processing steps.
-2. Filtering
-    * After applying the significance threshold to flag SNPs as either above (`1`) or below (`0`) the significance threshold in the column `aboveBF` there are three possible next steps
-    1. If more than 15% of the total SNPs are above the significance threshold all columns added by the mapping function `process_mapping_df()` are set to `NA`.
-    2. If there are no significant SNPs the columns added by the `process_mapping_df()` are also set to `NA`
-3. Variant effect calculation for significant SNPs
-    * This step adds the `var.exp` column to the processed mapping result by correlating phenotype values with genotype values at the significant SNPs.
-    * Uses pearsons correlation R2 between the phenotype values and allelic state (REF/ALT).
-4. QTL interval definition
-    * Identifies the most significant SNP in a QTL region of interest
-The output is a processed dataframe containing the original mapping data augmented with QTL interval information (start, peak, end positions, peak ID, interval size, and Variance explained)
+### 1. Environment Setup
 
-## Assessing Mapping Performance
-The process `R_ASSESS_SIMS` runs the Rscript `Assess_Sims.R` to evaluate the performance of GWAS simulations.
+```bash
+git clone https://github.com/AndersenLab/nemascan-sims-nf .
+cd nemascan-sims-nf
+```
 
-It loads the simulated trait outputs, mapping outputs, and a number of simulation pipeline parameters.
+### 2. Generate Test Data
 
-This final process outputs a `simulation_assessment_results.tsv` to the analysis directory. Each row represents a QTL simulated or Detected with the following columns:
+Request an interactive session on RF - equivlent to SRUN command on other SLURM managed HPCs
 
-- `QTL`: Peak marker ID for the QTL interval
-- `Simulated`: TRUE/FALSE if the QTL was simulated
-- `Detected`: TRUE/FALSE if the QTL was detected in mapping
-- `CHROM`: Chromosome of the QTL (numeric ID e.g., 1 = I, 2 = II, etc.)
-- `POS`: Position of the marker
-- `RefAllele`: Reference allele for the marker
-- `Frequency`: Allele frequency of the marker
-- `Effect`: Effect size of the marker
-- `Simulated.QTL.Var.Exp`: Variance explained by the simulated QTL
-- `log10p`: -log10(p-value) of the marker from mapping
-- `aboveBF`: TRUE/FALSE if the peak marker is above the significance threshold (see `algorithm_id` column)
-- `startPOS`: Start position of the QTL interval
-- `peakPOS`: Peak position of the QTL interval
-- `endPOS`: End position of the QTL interval
-- `detected.peak`: TRUE/FALSE if the marker is the detected peak in mapping
-- `interval.Frequency`: Allele frequency of the peak marker in the QTL interval
-- `BETA`: Effect size estimate from mapping for the peak marker
-- `interval.log10p`: -log10(p-value) of the peak marker in the QTL interval
-- `peak_id`: Numeric ID of the QTL interval (e.g 1, 2, ... n, where N is the total number of QTL detected)
-- `interval_size`: Size of the QTL interval in base pairs
-- `interval.var.exp`: Variance explained by the peak marker in the QTL interval
-- `top.hit`: TRUE/FALSE if the marker is the top hit in QTL interval
-- `nQTL`: Number of QTL simulated for the trait
-- `simREP`: Replicate number of the simulation
-- `h2`: Heritability of the simulated trait
-- `maf`: Minor allele frequency threshold used in simulation
-- `effect_distribution`: Effect size range used in simulation
-- `strain_set_id`: Name of the strain set used in simulation
-- `algorithm_id`: Mapping method (Inbred, Loco, Inbred + PCA, LOCO + PCA) and significance threshold (e.g. `inbred_pca_EIGEN`, or `inbred_pca_BF`)
+```bash
+interact -n 1 -c 1 -a eande106 -m 64G -p queue-name -t “30”
+```
+Load `bcftools` and `tabix` versions that are pre-installed for simple strain and marker filtering operations to get test data. The defaults on rockfish are listed in the sample command below
+
+```bash
+$ module load bcftools
+$ bcftools --version
+>bcftools 1.15.1
+>Using htslib 1.15.1-15-ge51f72f
+>Copyright (C) 2022 Genome Research Ltd.
+```
+
+```bash
+$ module load tabix
+$ tabix --version
+> tabix (htslib) 1.13+ds
+> Copyright (C) 2021 Genome Research Ltd.
+```
+
+Set the path to the source VCF. In this example we will point to the C. elegans WI-hard-filter.isotype.vcf from the 20220216 CaeNDR release.
+```bash
+SOURCE_VCF=/vast/eande106/data/c_elegans/WI/variation/20220216/vcf/WI.20220216.hard-filter.isotype.vcf.gz
+```
+
+Run the script to generate the test data from the source VCF
+
+[ ] - Currently an error when sourcing bcftools with `module load` command on RF
+
+```bash
+./data/test/generate_test_vcf.sh $SOURCE_VCF
+```
+
+Verify output:
+
+```bash
+ls -lh data/test/test.vcf.gz       # expect ~825MB
+ls -lh data/test/test.vcf.gz.tbi   # expect ~37KB
+```
+
+### 3. Stub-Run Validation (Quick Wiring Check)
+
+Stub-runs verify process wiring without executing real computations. These run in seconds on the login node.
+
+Prior to running any form of the pipeline prepare the env
+
+```bash
+# soruce NF settings from bash profile
+source ~/.bash_profile
+
+# load the nextflow conda 
+conda activate /data/eande106/software/conda_envs/nf24_env
+```
+
+#### 3.1 Fixed architecture (test profile)
+Simulations with one mapping panel and one trait architecture 
+
+```bash
+nextflow run main.nf -profile test -stub-run
+```
+
+#### 3.2 Variable architecture (test_variable profile)
+Simulations with one mapping panel and multipe trait architectures 
+
+```bash
+nextflow run main.nf -profile test_variable -stub-run
+```
+
+#### 3.3 With `--legacy_assess` flag 
+Test parallel analysis to enable legacy post-processing modules for comparisons
+
+```bash
+nextflow run main.nf -profile test --legacy_assess -stub-run
+```
+
+### 4. End-to-End Test Run
+
+Uses SLURM + Singularity on real test data.
+
+```bash
+nextflow run main.nf -profile test,rockfish
+```
+
+#### 4.1 End-to-End Test Run with `--legacy_assess` flag
+
+```bash
+nextflow run main.nf -profile test,rockfish --legacy_assess
+```
+
+### 5. Customizing Rockfish Paths
+
+`conf/rockfish.config` ships with defaults for the `eande106` account. Override these
+for your own account without editing the config file by passing parameters on the command line:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--slurm_account` | `eande106` | SLURM account name used in the `-A` cluster option |
+| `--scratch_dir` | `/scratch4/eande106` | Nextflow work directory on the scratch filesystem |
+| `--baseDir` | `/vast/eande106` | Base directory for data and Singularity cache |
+| `--dataDir` | `/vast/eande106/data` | Data directory |
+| `--softwareDir` | `/data/eande106/software` | Software directory |
+
+**Example** — run as a different account:
+
+```bash
+nextflow run main.nf \
+    -profile test,rockfish \
+    --slurm_account myaccount \
+    --scratch_dir /scratch4/myaccount \
+    --baseDir /vast/myaccount
+```

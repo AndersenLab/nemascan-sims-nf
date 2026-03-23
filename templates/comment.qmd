@@ -1,0 +1,156 @@
+---
+title: "Issue Update"
+date: today
+format:
+  gfm:
+    preview-mode: raw
+engine: knitr
+---
+
+<!-- 
+USAGE
+─────
+1. Copy this file to issues/[slug]/ — NEVER edit the template directly
+2. Rename: YYYY-MM-DD-[phase].qmd  (e.g. 2026-03-20-rca.qmd)
+3. Fill in only the sections relevant to today's update; delete or comment out the others
+4. Render:
+     quarto render issues/[slug]/YYYY-MM-DD-[phase].qmd --to gfm
+5. Submit:
+     gh issue comment [number] --body-file issues/[slug]/YYYY-MM-DD-[phase].md
+-->
+
+## Update — `YYYY-MM-DD`
+
+**Phase:** <!-- RCA | Fix | Validation | Mixed -->  
+**Status:** <!-- In Progress | Resolved | Needs Follow-up -->
+
+---
+
+## Root Cause Analysis
+
+<!-- Delete this section if not applicable to this update -->
+
+### Summary
+
+<!-- One or two sentences: what went wrong and why -->
+
+### Diagnostic Steps
+
+<!-- Ordered list of what you checked and how -->
+
+1. 
+2. 
+
+### Key Evidence
+
+<!-- Paste relevant log snippets, error output, or file paths as fenced blocks -->
+
+**`.nextflow.log` excerpt:**
+
+```
+# paste excerpt here
+```
+
+**`.command.err` (`work/xx/yyyyyy...`):**
+
+```
+# paste excerpt here
+```
+
+**`.command.log`:**
+
+```
+# paste excerpt here
+```
+
+### Confirmed Root Cause
+
+<!-- State the root cause explicitly and concisely -->
+
+---
+
+## Solution
+
+<!-- Delete this section if not applicable to this update -->
+
+### Approach
+
+<!-- Describe the fix strategy before showing code -->
+
+### Changes Made
+
+<!-- Use one fenced block per file or config change; label each with a comment or heading -->
+
+**`nextflow.config` — executor / resource change:**
+
+```groovy
+// before
+
+// after
+```
+
+**`modules/[process].nf` — process-level change:**
+
+```groovy
+// before
+
+// after
+```
+
+**Other files / commands:**
+
+```bash
+# e.g. parameter tweak, file moved, env corrected
+```
+
+### Rationale
+
+<!-- Why this fix addresses the root cause; any trade-offs -->
+
+---
+
+## Validation
+
+<!-- Delete this section if not applicable to this update -->
+
+### Test Run
+
+**Command:**
+
+```bash
+nextflow run main.nf \
+  -profile [profile] \
+  [params]
+```
+
+**Executor:** <!-- local | slurm | lsf | sge | aws | google -->  
+**Resume from cache:** <!-- yes (-resume) | no (clean run) -->
+
+### Results
+
+**Exit status:** <!-- 0 = success -->
+
+```
+# nextflow run summary / completion message
+```
+
+**Output verification:**
+
+```bash
+# ls / head / md5sum or other spot-checks
+```
+
+### Pass / Fail
+
+- [ ] Pipeline completed without error
+- [ ] Output files present and non-empty
+- [ ] Results consistent with expected behaviour
+- [ ] No regression in previously passing steps
+
+### Remaining Concerns
+
+<!-- Note any edge cases, follow-up issues, or open questions -->
+
+---
+
+*Comment generated from `comment.qmd` template · nemascan-sims-nf issue workflow*

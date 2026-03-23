@@ -1,0 +1,142 @@
+---
+title: "Assessment Cross-Validation"
+subtitle: "Comparing DB-path and legacy-path QTL assessment outputs"
+date: last-modified
+format:
+  html:
+    embed-resources: true
+execute:
+  eval: false
+---
+
+## Purpose
+
+The `nemascan-sims-nf` pipeline can produce QTL assessment results through two
+independent paths:
+
+- **DB-path** (default) — stores GWA results in a Parquet/DuckDB database and
+  performs QTL analysis by querying that database.
+- **Legacy path** (opt-in via `--legacy_assess`) — uses R scripts operating on
+  intermediate files produced during the pipeline run.
+
+Both paths analyze the same GWA output from `GCTA_PERFORM_GWA` and should
+produce identical QTL detection, interval boundaries, and significance
+classifications. The cross-validation analysis quantifies their agreement using
+three per-replicate concordance scores.
+
+## When to Use This
+
+Run the cross-validation when:
+
+- Validating changes to the DB-path analysis code against the legacy path as a
+  reference
+- Verifying that a new pipeline deployment produces consistent results
+- Comparing assessment outputs from different pipeline versions or
+  configurations
+
+## Concordance Scores
+
+For each **mapping entry** — a unique combination of simulation replicate
+(`nQTL`, `simREP`, `h2`, `maf`, `strain_set_id`), mapping method, and
+significance threshold — three scores are computed on a 0-to-1 scale:
+
+| Score | What it measures | 1 means | 0 means |
+|-------|------------------|---------|---------|
+| **Detection** | `Detected`/`Simulated` flag agreement per QTL row | All QTL rows agree | None agree |
+| **Designation** | `designate_qtl()` outcome category agreement | All designations match | None match |
+| **Interval Overlap** | Jaccard overlap of `[startPOS, endPOS]` intervals | Boundaries match perfectly | No overlap |
+
+## Running the Cross-Validation
+
+### 1. Run the pipeline with both paths
+
+```bash
+nextflow run main.nf -profile test,docker --legacy_assess
+```
+
+This produces two assessment TSVs in the output directory:
+
+- `simulation_assessment_results.tsv` (legacy path)
+- `db_simulation_assessment_results.tsv` (DB path)
+
+### 2. Run the automated test suite
+
+The test file `tests/testthat/test-assessment_cross_validation.R` asserts that
+all three concordance scores are 1.0 for every mapping entry. It also verifies
+that `generate_mapping_id()` is deterministic: the same simulation parameters
+always produce the same 20-character hex `mapping_id` across repeated
+invocations. It runs as part of the standard test suite:
+
+```bash
+TEST_LEGACY_ASSESSMENT=/path/to/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=/path/to/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+If using the `tests/collect_test_data.sh` helper:
+
+```bash
+bash tests/collect_test_data.sh
+TEST_LEGACY_ASSESSMENT=tests/integration_data/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+The tests skip automatically when the environment variables are not set, so
+unit-only runs are unaffected.
+
+### 3. Render the interactive notebook
+
+The notebook at `tests/notebooks/assessment_cross_validation.qmd` produces an
+HTML report with concordance tables, score distribution histograms, heatmaps,
+and per-QTL interval detail. To render it after a pipeline run:
+
+```bash
+quarto render tests/notebooks/assessment_cross_validation.qmd \
+  -P legacy_assessment:/path/to/simulation_assessment_results.tsv \
+  -P db_assessment:/path/to/db_simulation_assessment_results.tsv \
+  -P db_dir:/path/to/db
+```
+
+Or set environment variables and render without `-P` flags:
+
+```bash
+export TEST_LEGACY_ASSESSMENT=/path/to/simulation_assessment_results.tsv
+export TEST_DB_ASSESSMENT=/path/to/db_simulation_assessment_results.tsv
+export TEST_DB_DIR=/path/to/db
+quarto render tests/notebooks/assessment_cross_validation.qmd
+```
+
+The rendered HTML is written to `tests/notebooks/assessment_cross_validation.html`.
+
+## Notebook Contents
+
+The notebook `tests/notebooks/assessment_cross_validation.qmd` contains:
+
+1. **Data Loading & Overview** — reads both assessment TSVs, applies
+   `designate_qtl()` to classify outcomes, and shows dimension/designation
+   count comparison tables.
+
+2. **Per-Replicate Concordance** — computes the three concordance scores for
+   every mapping entry, then presents:
+   - Per-mapping concordance score table
+   - Score distribution histograms
+   - Mean concordance by method and threshold (table + heatmap)
+   - Per-QTL interval Jaccard detail with pass/fail summary
+
+## Adapting for Other Comparisons
+
+The notebook can be adapted to compare any two assessment TSVs that share the
+35-column schema. To compare outputs from different pipeline versions or
+parameter configurations:
+
+1. Copy the notebook to a working directory.
+2. Set `legacy_assessment_path` and `db_assessment_path` to point to the two
+   TSVs being compared (the variable names reflect the original DB-vs-legacy
+   use case but accept any conforming TSV).
+3. Render with Quarto as described above.
+
+The `normalize_algorithm_id()` helper handles the `algorithm_id` format
+difference between DB-path (`LMM-EXACT-INBRED_noPCA_EIGEN`) and legacy-path
+(`inbred_nopca_EIGEN`) by uppercasing and stripping the `LMM-EXACT-` prefix.
+If both TSVs use the same format, this normalization is a no-op.

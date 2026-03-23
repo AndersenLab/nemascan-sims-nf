@@ -12,6 +12,7 @@ process R_GET_GCTA_INTERVALS {
     path find_gcta_intervals
     val qtl_group_size
     val qtl_ci_size
+    val alpha
 
     output:
     tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix), val(type), val(threshold), emit: params
@@ -28,7 +29,7 @@ process R_GET_GCTA_INTERVALS {
     def args = task.ext.args ?: ''
     """
     Rscript --vanilla ${find_gcta_intervals} ${gm} ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_lmm-exact_${mode}_${type}.${suffix} \\
-        ${n_indep_tests} ${nqtl} ${rep} ${qtl_group_size} ${qtl_ci_size} ${h2} ${threshold} ${group} ${maf} ${effect} ${mode}_${type}
+        ${n_indep_tests} ${nqtl} ${rep} ${qtl_group_size} ${qtl_ci_size} ${h2} ${threshold} ${group} ${maf} ${effect} ${mode}_${type} ${alpha}
     
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

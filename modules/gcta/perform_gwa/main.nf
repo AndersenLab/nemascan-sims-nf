@@ -27,27 +27,31 @@ process GCTA_PERFORM_GWA {
     if [[ ${mode} == "inbred" ]]; then
         GRM_OPTION='--grm-sparse'
         COMMAND='--fastGWA-mlm-exact'
+        GWA_THREADS=1  # pinned: BLAS reduction order must be deterministic
     else
         GRM_OPTION="--grm"
         COMMAND="--mlma-loco"
+        GWA_THREADS=${task.cpus}  # mlma-loco: per-chromosome refits are independent; thread-count is configurable (see rockfish.config)
     fi
 
     gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \\
         --make-bK-sparse ${sparse_cut} \\
         --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \\
-        --thread-num ${task.cpus}
+        --thread-num 1  # pinned: BLAS reduction order must be deterministic
 
     if [[ ${type} == "pca" ]]; then
 
         gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \\
             --pca 1 \\
             --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \\
-            --thread-num ${task.cpus}
+            --thread-num 1  # pinned: BLAS reduction order must be deterministic
 
         COVAR="--qcovar ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode}.eigenvec"
     else
         COVAR=""
     fi
+
+    awk '{print \$2}' TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bim > plink_snplist.txt
 
     gcta64 \${COMMAND} \\
         --bfile TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group} \\
@@ -55,8 +59,8 @@ process GCTA_PERFORM_GWA {
         \${COVAR} \\
         --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_lmm-exact_${mode}_${type} \\
         --pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno \\
-        --maf ${maf} \\
-        --thread-num ${task.cpus}
+        --extract plink_snplist.txt \\
+        --thread-num \${GWA_THREADS}
 
     if [[ ${mode} == "loco" ]]; then
         mv "${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_lmm-exact_${mode}_${type}.loco.mlma" \\
@@ -75,7 +79,7 @@ process GCTA_PERFORM_GWA {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        GCTA: \$( gcta64 --version |& grep version |& cut -f 3 )
+        GCTA: stub
     END_VERSIONS
     """
 }

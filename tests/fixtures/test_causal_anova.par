@@ -1,0 +1,4 @@
+QTL	RefAllele	Frequency	Effect
+1:100	A	0.5	1.5
+2:300	G	0.5	-0.8
+3:500	A	0.25	0.6

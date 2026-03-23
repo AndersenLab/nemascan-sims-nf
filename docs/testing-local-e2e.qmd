@@ -1,0 +1,174 @@
+---
+title: "Local End-to-End Testing"
+subtitle: "Stub runs, test data generation, and container updates"
+date: last-modified
+format:
+  html:
+    embed-resources: true
+---
+
+Verify pipeline wiring and prepare test inputs before running integration tests.
+Stub runs check channel topology without executing GCTA or bcftools. Test VCF
+generation is a one-time setup step required for any non-stub local run.
+
+```{mermaid}
+%%{init: {'themeVariables': {'fontSize': '16px'}}}%%
+flowchart LR
+    classDef step fill:#4e9af1,stroke:#2c6fad,color:#fff
+    classDef check fill:#48b96e,stroke:#2d8150,color:#fff
+    classDef data fill:#f5f5f5,stroke:#999,color:#333
+
+    A([Clone repo]):::data
+    B[Generate test VCF]:::step
+    C[Stub run: -profile test -stub-run]:::step
+    D{All processes reached?}:::check
+    E[Update container tags]:::step
+    F[Stub run again]:::step
+    G([Ready for integration testing]):::data
+
+    A --> B --> C --> D
+    D -- Yes --> G
+    D -- No: wiring issue --> C
+    D -- Container update needed --> E --> F --> G
+```
+
+
+## Pipeline Stub Runs
+
+Stub runs verify process wiring without executing real computations:
+
+```bash
+# Fixed architecture
+nextflow run main.nf -profile test -stub-run
+
+# Variable architecture
+nextflow run main.nf -profile test_variable -stub-run
+
+# Three-species (c_elegans + c_briggsae + c_tropicalis)
+nextflow run main.nf -profile test_three_species -stub-run
+
+# With legacy assessment path
+nextflow run main.nf -profile test --legacy_assess -stub-run
+
+# CV pool filter — exercises pipeline guard when cv_maf/cv_ld reduce the causal variant pool
+nextflow run main.nf -profile test_cv_pool -stub-run
+```
+
+The `test_cv_pool` profile sets `cv_maf` and `cv_ld` to values that shrink the available
+causal variant pool relative to the full marker set. The stub run verifies Nextflow channel
+wiring for the filtered pool code path without executing GCTA.
+
+
+## Generating Test Data
+
+Test VCF files are not committed to the repository due to their size. Four generate
+scripts produce subsetted VCFs from the corresponding CaeNDR isotype release. All scripts
+accept either a local file path or a direct HTTPS URL from the CaeNDR S3 bucket —
+using a URL is recommended because bcftools fetches only chromosomes I, II, V via tabix
+random access, avoiding a multi-GB download.
+
+**Prerequisites:** `bcftools >= 1.16`, `tabix` (htslib).
+
+### C. elegans test VCF (`test` / `test_variable` profiles)
+
+```bash
+bash data/test/generate_test_vcf.sh /path/to/WI.20220216.hard-filter.isotype.vcf.gz
+```
+
+Produces `data/test/test.vcf.gz` (chromosomes I/II/V) and its tabix index.
+The script reads the strains column from the 6-column `test_strains.txt` strainfile.
+This VCF is used by the `test` and `test_variable` Nextflow profiles.
+
+> **Note (awk fix):** This script was updated alongside the S03 strainfile format
+> change — the strains column is now extracted with `awk -F'\t' 'NR>1 {print $6}'`
+> (column 6, tab-delimited) instead of the old `awk '{print $2}'`.
+
+> **On Rockfish:** See [Generating the Test VCF on Rockfish](testing-hpc.qmd#generating-the-test-vcf-on-rockfish)
+> in the HPC End-to-End Testing page. The key requirement is running `export PATH` after
+> `module load bcftools` so that the bash subprocess spawned by the script inherits
+> the updated PATH.
+
+### Multi-species test VCFs (`test_three_species` profile)
+
+The `test_three_species` profile exercises the full mixed-species code path. It requires
+VCF files for all three supported species (C. elegans, C. briggsae, C. tropicalis).
+
+#### Strainfile structure
+
+`data/test/test_strains_three_species.txt` has six groups — two per species — covering both
+a small-strain and a large-strain population for each:
+
+| Group | Species | Strains | Type |
+|-------|---------|---------|------|
+| `ce.test` | *C. elegans* | 200 | single population |
+| `ce.test.popA` | *C. elegans* | 100 | multi-population A |
+| `ce.test.popB` | *C. elegans* | 100 | multi-population B |
+| `cb.test` | *C. briggsae* | 200 | single population |
+| `cb.test.popA` | *C. briggsae* | 100 | multi-population A |
+| `cb.test.popB` | *C. briggsae* | 100 | multi-population B |
+| `ct.test` | *C. tropicalis* | 200 | single population |
+| `ct.test.popA` | *C. tropicalis* | 100 | multi-population A |
+| `ct.test.popB` | *C. tropicalis* | 100 | multi-population B |
+
+The single-population groups (`{sp}.test`) use all 200 strains. The multi-population groups
+split those 200 strains evenly into popA (first 100) and popB (last 100). All groups for a
+species share the same VCF, so only one VCF per species is needed.
+
+#### Generating the CE, CB, and CT test VCFs
+
+CaeNDR release pages for finding the latest HTTPS URLs:
+
+- **C. elegans:** <https://caendr.org/data/data-release/c-elegans/latest>
+- **C. briggsae:** <https://caendr.org/data/data-release/c-briggsae/latest>
+- **C. tropicalis:** <https://caendr.org/data/data-release/c-tropicalis/latest>
+
+Run the generate scripts from the project root, passing the S3 URL from each release page:
+
+```bash
+bash data/test/generate_test_ce_vcf.sh \
+  "https://caendr-open-access-data-bucket.s3.us-east-2.amazonaws.com/dataset_release/c_elegans/YYYYMMDD/variation/WI.YYYYMMDD.hard-filter.isotype.vcf.gz"
+
+bash data/test/generate_test_cb_vcf.sh \
+  "https://caendr-open-access-data-bucket.s3.us-east-2.amazonaws.com/dataset_release/c_briggsae/YYYYMMDD/variation/WI.YYYYMMDD.hard-filter.isotype.vcf.gz"
+
+bash data/test/generate_test_ct_vcf.sh \
+  "https://caendr-open-access-data-bucket.s3.us-east-2.amazonaws.com/dataset_release/c_tropicalis/YYYYMMDD/variation/WI.YYYYMMDD.hard-filter.isotype.vcf.gz"
+```
+
+Each script:
+
+1. Extracts the 8-digit release date from the source VCF filename
+2. Subsets to chromosomes I, II, V and the first 200 strains by default (pass a custom
+   strain-list file as a second argument to change the selection)
+3. Creates dated symlinks: `test_ce.YYYYMMDD.vcf.gz → test_ce.vcf.gz` (and `.tbi`)
+4. Prints the assembled small (100-strain) and large (200-strain) strainfile rows
+
+After running all three scripts, commit the six dated symlinks and the strainfile:
+
+```bash
+git add data/test/test_ce.YYYYMMDD.vcf.gz data/test/test_ce.YYYYMMDD.vcf.gz.tbi
+git add data/test/test_cb.YYYYMMDD.vcf.gz data/test/test_cb.YYYYMMDD.vcf.gz.tbi
+git add data/test/test_ct.YYYYMMDD.vcf.gz data/test/test_ct.YYYYMMDD.vcf.gz.tbi
+git add data/test/test_strains_three_species.txt
+```
+
+### Running the three-species test
+
+Once VCF files are generated and the strainfile is populated:
+
+```bash
+nextflow run . -profile test_three_species,docker
+```
+
+A stub run (no VCF files required) verifies channel wiring and strainfile parsing for all
+six groups:
+
+```bash
+nextflow run . -profile test_three_species -stub-run
+```
+
+::: {.callout-tip}
+## Next steps
+After confirming stub runs pass and test data is in place, proceed to:
+[Local Integration Testing](testing-integration.qmd)
+:::

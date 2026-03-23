@@ -16,4 +16,9 @@ process LOCAL_COMPILE_EIGENS {
         awk '{s+=\$1}END{print s}' > ${group}_${maf}_total_independent_tests.txt
     """
 
+    stub:
+    """
+    echo "100" > ${group}_${maf}_total_independent_tests.txt
+    """
+
 }
