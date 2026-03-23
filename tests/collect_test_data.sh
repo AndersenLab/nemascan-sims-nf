@@ -69,8 +69,38 @@ if [[ "$DO_CLEAN" == "true" ]]; then
   rm -rf "$PROJECT_DIR"/Analysis_Results-*
 fi
 
+# --- Pre-flight: verify VCF symlink targets exist ---
+check_vcfs() {
+  local missing=false
+  if [[ "$PROFILE" == "test_three_species" ]]; then
+    for spec in ce cb ct; do
+      local vcf="$PROJECT_DIR/data/test/test_${spec}.vcf.gz"
+      if [[ ! -f "$vcf" ]]; then
+        echo "ERROR: Missing VCF target: data/test/test_${spec}.vcf.gz" >&2
+        echo "       Generate it with:" >&2
+        echo "         bash data/test/generate_test_${spec}_vcf.sh /path/to/source.vcf.gz" >&2
+        missing=true
+      fi
+    done
+  else
+    local vcf="$PROJECT_DIR/data/test/test.vcf.gz"
+    if [[ ! -f "$vcf" ]]; then
+      echo "ERROR: Missing VCF target: data/test/test.vcf.gz" >&2
+      echo "       Generate it with:" >&2
+      echo "         bash data/test/generate_test_vcf.sh /path/to/WI.20220216.hard-filter.isotype.vcf.gz" >&2
+      missing=true
+    fi
+  fi
+  if [[ "$missing" == "true" ]]; then
+    echo "" >&2
+    echo "VCF files are gitignored and must be generated locally before running collect_test_data.sh." >&2
+    exit 1
+  fi
+}
+
 # --- Run pipeline (unless --collect-only) ---
 if [[ "$MODE" != "collect" ]]; then
+  check_vcfs
   LEGACY_FLAG=""
   if [[ "$NO_LEGACY" == "false" ]]; then
     LEGACY_FLAG="--legacy_assess"
