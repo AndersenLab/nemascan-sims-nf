@@ -399,6 +399,12 @@ test_that("per-mapping interval Jaccard concordance is 1.0 for all mappings", {
 #   DB path: NA_real_ by design — raw per-marker GWA r² was not stored in Phase 5. Even if
 #   attempted via ANOVA, peak GWAS markers are rarely the causal variant, so the join would
 #   produce NA anyway. This is a permanent design difference, not a missing feature.
+#
+# Non-marker causal variants (DB path only, when cv_maf < ms_maf):
+#   DB path: appear as Simulated=TRUE, Detected=FALSE FN rows with non-NA Simulated.QTL.VarExp.
+#   Legacy path: entirely absent (bin/Assess_Sims.R applies the same !is.na(log10p) filter
+#   and has no cv_maf < ms_maf support). The inner_join on QTL used for concordance comparison
+#   naturally excludes these DB-only rows — this is intentional, not an oversight.
 
 test_that("Simulated.QTL.VarExp is populated in DB assessment output", {
   skip_if_no_assessment_cross_validation()

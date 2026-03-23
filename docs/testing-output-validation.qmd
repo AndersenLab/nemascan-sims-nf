@@ -1,0 +1,185 @@
+---
+title: "Output Validation"
+subtitle: "Cross-validation tests, R package lockfile, and thread-count determinism"
+date: last-modified
+format:
+  html:
+    embed-resources: true
+---
+
+These tools validate that pipeline output is correct, reproducible, and
+concordant between the DB path and legacy path. Cross-validation tests compare
+the two assessment paths. The R package lockfile and GCTA thread-pinning
+strategy ensure reproducibility across runs and environments.
+
+```{mermaid}
+%%{init: {'themeVariables': {'fontSize': '16px'}}}%%
+flowchart LR
+    classDef val fill:#e07b3a,stroke:#a3572a,color:#fff
+    classDef data fill:#f5f5f5,stroke:#999,color:#333
+    classDef ok fill:#48b96e,stroke:#2d8150,color:#fff
+
+    DB(["db_simulation_assessment_results.tsv"]):::data
+    LEG(["simulation_assessment_results.tsv"]):::data
+    LOCK(["renv.lock"]):::data
+
+    CV1["test-assessment_cross_validation.R"]:::val
+    CV2["test-cross_validation.R"]:::val
+    THR["Thread-count determinism"]:::val
+    LCK["renv::restore lockfile verification"]:::val
+
+    PASS(["Validated output"]):::ok
+
+    DB & LEG --> CV1 --> PASS
+    DB --> CV2 --> PASS
+    THR --> PASS
+    LOCK --> LCK --> PASS
+```
+
+
+## Cross-Validation Tests
+
+Two test files compare the DB assessment path against the legacy R path:
+
+- **`test-assessment_cross_validation.R`** — compares
+  `db_simulation_assessment_results.tsv` (DB path) against
+  `simulation_assessment_results.tsv` (legacy path). Computes three
+  concordance scores per replicate: detection concordance, designation
+  concordance, and interval overlap (Jaccard). Requires both
+  `TEST_LEGACY_ASSESSMENT` and `TEST_DB_ASSESSMENT`.
+
+- **`test-cross_validation.R`** — compares DB Parquet contents against raw GWA
+  files in the Nextflow work directory to verify round-trip accuracy. Requires
+  `TEST_DB_DIR` and `TEST_WORK_DIR`.
+
+Both tests skip automatically unless all required env vars are set. Both
+require `--legacy_assess` to have been passed when collecting test data (so
+that the legacy output files exist alongside the DB output).
+
+
+## R Package Lockfile
+
+`renv.lock` at the project root records the exact versions of all R packages
+installed in the `andersenlab/r_packages:20250519` container. This file is a
+reproducibility audit artifact — it lets you verify which package versions
+produced a given set of simulation results and reproduce the environment
+locally if needed.
+
+### What is covered
+
+The lockfile covers packages used by `R_.*` Nextflow processes (`bin/` scripts):
+
+| Script | Key packages |
+|--------|-------------|
+| `bin/Get_GenoMatrix_Eigen.R` | Rcpp, dplyr, tidyr, ggplot2, stringr, readr, glue, purrr, coop |
+| `bin/Create_Causal_QTLs.R` | dplyr, tidyr, ggplot2, stringr, readr, IRanges, fuzzyjoin, glue, purrr |
+| `bin/Get_GCTA_Intervals.R` | dplyr, tidyr, ggplot2, stringr, readr, glue, purrr, ggbeeswarm |
+| `bin/Assess_Sims.R` | dplyr, tidyr, data.table, GenomicRanges, purrr, glue |
+
+`DB_MIGRATION_.*` processes run in a separate container
+(`andersenlab/migrate-sims:20260202`) and are not covered by this lockfile.
+
+### Reproducing the environment locally
+
+```r
+# Install renv if not present
+install.packages("renv")
+
+# Restore the exact package versions recorded in renv.lock
+renv::restore(lockfile = "renv.lock")
+```
+
+### Regenerating the lockfile
+
+Regenerate `renv.lock` whenever the `r_packages` container is rebuilt:
+
+```bash
+# Local (Docker)
+bash scripts/generate_renv_lock.sh docker
+
+# HPC / Rockfish (Singularity)
+bash scripts/generate_renv_lock.sh singularity
+```
+
+The script requires an explicit runtime argument (`docker` or `singularity`).
+It pulls `andersenlab/r_packages:20250519`, runs `renv::snapshot(type = "all")`
+inside the container via a bind-mounted project root, and writes `renv.lock`.
+Commit the updated file.
+
+
+## Thread-Count Determinism
+
+All GCTA steps except `--mlma-loco` are pinned to `--thread-num 1` to ensure
+reproducible floating-point results across local and HPC runs. Multi-threaded BLAS
+uses non-deterministic partial-sum reduction order — differences propagate from GRM
+construction through REML, PCA, and the LMM solve into BETA, SE, and P-values.
+
+| GCTA step | `--thread-num` | Rationale |
+|-----------|---------------|-----------|
+| `--make-grm-inbred` / `--make-grm` | **1** | Errors here propagate to all downstream steps |
+| `--reml` | **1** | Governs Vp upscaling decision; must be consistent at borderline values |
+| `--simu-qt` | **1** | Ensures phenotype simulation is deterministic for a given random seed |
+| `--make-bK-sparse` | **1** | Eliminates residual non-determinism in sparse encoding |
+| `--pca 1` | **1** | Eigenvector iteration sensitive to BLAS reduction order |
+| `--fastGWA-mlm-exact` | **1** | LMM solve; diverges between local and HPC without pinning |
+| `--mlma-loco` | **configurable (`task.cpus`)** | Per-chromosome refits are independent; highest compute cost; least numerically sensitive step |
+
+The `gcta_make_grm` and `gcta_simulate_phenotypes` Rockfish labels are configured
+with `cpus = 1` since all their GCTA operations are single-threaded. The
+`gcta_perform_gwa` label retains `cpus = 4` to provide CPU headroom for
+`--mlma-loco` on larger datasets.
+
+### BLAS implementation in the production container
+
+`gcta64` is a **static executable** — `ldd` returns "not a dynamic executable".
+Inspect the binary with `strings` to identify the embedded BLAS:
+
+```bash
+docker run --rm --platform linux/amd64 \
+  quay.io/biocontainers/gcta:1.94.1--h9ee0642_0 \
+  sh -c 'strings $(which gcta64) | grep -i -E "mkl|openblas|goto|omp_set_num_threads"'
+```
+
+Result: **Intel oneMKL**, statically linked, with **GNU OpenMP** as the thread
+runtime (`gomp_ialias_omp_set_num_threads`).
+
+#### How MKL + OpenMP cause non-determinism in GCTA
+
+Intel MKL parallelises dense linear algebra by splitting work across OpenMP
+threads and reducing partial results at the end. Floating-point addition is not
+associative — `(a + b) + c ≠ a + (b + c)` in IEEE 754 — so the order in which
+thread-local partial sums are accumulated determines the final value. OpenMP does
+not guarantee a fixed reduction order, and MKL actively varies its internal
+tiling and accumulation strategy based on the thread count and the SIMD
+instruction set available at runtime. The consequences for each GCTA operation
+are:
+
+| Operation | How threading introduces non-determinism |
+|-----------|------------------------------------------|
+| `--make-grm[-inbred]` | Each GRM entry is a sum of allele products over all markers. MKL threads split the marker axis; partial sums are reduced in thread-completion order, which varies run to run. |
+| `--reml` | REML is an iterative EM algorithm driven by matrix-vector products on the GRM. Non-deterministic accumulation in each MV product shifts the convergence path, producing different Vp estimates and affecting the `check_vp.py` upscaling decision at borderline values. |
+| `--pca 1` | Power-iteration eigenvector computation applies repeated MV products. Accumulated rounding differences rotate the eigenvector slightly each run, changing the PC1 covariate value passed to the LMM. |
+| `--fastGWA-mlm-exact` | The exact LMM solve applies a sparse Cholesky factorization. Thread-parallel factorization produces different fill-in and accumulated roundoff, shifting BETA, SE, and P-values for markers near the significance boundary. |
+| `--mlma-loco` | Same Cholesky-based LMM, applied once per chromosome. Individual chromosome solves are independent, so parallelism across chromosomes is safe — only within-solve threading (controlled by `--thread-num`) introduces non-determinism. |
+
+MKL also exposes `MKL_DYNAMIC`, which allows MKL to adjust its own thread count
+at runtime independent of the application. With `MKL_DYNAMIC=TRUE` (the MKL
+default), MKL may use fewer threads than requested if it judges the workload too
+small — meaning thread count, and therefore reduction order, can differ between
+runs on the same machine. Pinning `--thread-num 1` disables intra-operation
+parallelism entirely, making reduction order deterministic regardless of
+`MKL_DYNAMIC`.
+
+#### Thread control hierarchy
+
+`--thread-num 1` is the primary control and is sufficient for determinism.
+`OMP_NUM_THREADS=1` and `MKL_NUM_THREADS=1` are independent env-var overrides
+that remain effective if any code path bypasses the GCTA flag (e.g., a direct MKL
+call from a dependency). These are noted as a future belt-and-suspenders hardening
+option.
+
+::: {.callout-tip}
+## See also
+For the concordance methodology and score interpretation, see
+[Assessment Cross-Validation](cross-validation.qmd).
+:::

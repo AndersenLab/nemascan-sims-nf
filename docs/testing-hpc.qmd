@@ -1,0 +1,182 @@
+---
+title: "HPC End-to-End Testing"
+subtitle: "Running the pipeline on Rockfish (SLURM/Singularity)"
+date: last-modified
+format:
+  html:
+    embed-resources: true
+---
+
+The `rockfish` profile targets the Johns Hopkins Rockfish cluster. These steps
+cover environment setup, running the pipeline end-to-end, collecting integration
+test data, and syncing results back to your local machine for test execution.
+
+```{mermaid}
+%%{init: {'themeVariables': {'fontSize': '16px'}}}%%
+flowchart TD
+    classDef step fill:#9b59b6,stroke:#6c3483,color:#fff
+    classDef data fill:#f5f5f5,stroke:#999,color:#333
+
+    ENV["Activate nf24_env conda env"]:::step
+    VCF["Generate test VCF (module load bcftools)"]:::step
+    RUN["nextflow run -profile test,rockfish --legacy_assess"]:::step
+    WAIT(["SLURM jobs complete"]):::data
+    COLLECT["collect_test_data.sh --collect-only"]:::step
+    RSYNC["rsync integration_data/ to local Mac"]:::step
+    TEST["Rscript tests/run_tests.R with TEST_DB_DIR set"]:::step
+    DONE(["All tests pass"]):::data
+
+    ENV --> VCF --> RUN --> WAIT --> COLLECT --> RSYNC --> TEST --> DONE
+```
+
+
+## Environment Setup
+
+```bash
+conda activate /data/eande106/software/conda_envs/nf24_env
+export NXF_SINGULARITY_CACHEDIR=/vast/eande106/singularity
+```
+
+
+## Prerequisites
+
+- Nextflow `>=24.10.0,<25.0.0` (provided by the `nf24_env` conda environment)
+- SLURM account `eande106`; partition `parallel` (default) and `bigmem` (legacy
+  QTL detection only)
+- Singularity images cached at `/vast/eande106/singularity` (configured via
+  `singularity.cacheDir` in `conf/rockfish.config`)
+
+
+## Running the Pipeline on Rockfish
+
+```bash
+nextflow run main.nf \
+  -profile rockfish \
+  --strainfile strains.tsv
+  # vcf is specified per-group in the strainfile (see README: Strainfile Format)
+```
+
+The `rockfish` profile sets `executor = 'slurm'`, enables Singularity with
+`autoMounts = true`, and applies per-process CPU/RAM/time/retry settings. Key
+process resources from `conf/rockfish.config`:
+
+| Process group | CPUs | Memory | Time | Max retries |
+|--------------|------|--------|------|-------------|
+| bcftools/plink extraction | 4 | 40 GB | 1 h | 3 |
+| Eigen computation (`r_find_genotype_matrix_eigen`) | 2 | 60 GB | 30 min | 3 |
+| GWA (simulate, GRM, map) | 4 | 20 GB | 10 min | 3 |
+| DB migration (write marker set) | 2 | 8 GB | 30 min | 3 |
+| DB migration (other) | 1 | 2–8 GB | 5–20 min | 2–3 |
+| `r_get_gcta_intervals` (bigmem) | 1 | — | 4 h × attempt | 5 |
+
+
+## Generating the Test VCF on Rockfish
+
+Before collecting integration test data you need a local copy of the test VCF.
+The generation script calls `bcftools` directly, so the tool must be on the PATH
+of the subprocess — not just the interactive shell.
+
+```bash
+# 1. Check available bcftools versions and load one >= 1.16
+module spider bcftools
+module load bcftools/1.17   # adjust version as needed
+
+# 2. Export PATH so the bash subprocess inherits it
+#    (module load modifies the current shell's PATH but does not export it
+#     automatically; without this the script exits with "bcftools not found")
+export PATH
+
+# 3. Set the full path to the WI.20210901 VCF on Rockfish
+FULL_VCF=/vast/eande106/data/c_elegans/WI/variation/20210901/vcf/WI.20210901.hard-filter.isotype.vcf.gz
+
+# 4. Generate the test VCF (chromosomes I, II, V; 13 strains)
+bash data/test/generate_test_vcf.sh "$FULL_VCF"
+```
+
+`data/test/test.20210901.vcf.gz` is a committed symlink that points to
+`data/test/test.vcf.gz`. The script creates `test.vcf.gz` (the symlink target),
+making the symlink valid for the first time on a fresh clone.
+
+
+## Collecting Integration Test Data on Rockfish
+
+Run the pipeline on the cluster, then use `--collect-only` on the login node
+to gather outputs without re-running:
+
+```bash
+# 1. Run the integration test pipeline (replace <yourname> with your Rockfish username)
+nextflow run main.nf \
+  -profile test,rockfish \
+  --legacy_assess \
+  -work-dir /scratch4/eande106/<yourname>/nf-work-test
+
+# 2. After all SLURM jobs complete, collect outputs:
+bash tests/collect_test_data.sh --collect-only
+```
+
+- `-work-dir` redirects intermediate files to `/scratch4/` (high-capacity scratch); without
+  it Nextflow defaults to `./work/` on the login node's local disk, which is too small for
+  a full pipeline run.
+- Replace `<yourname>` with your Rockfish username (e.g. `ryanmckeown`).
+- `--legacy_assess` is required to generate the legacy assessment file used by the
+  cross-validation tests.
+
+**Sync data to your local Mac** using `rsync` from your local terminal (not
+from Rockfish). `<rockfish-host>` is whatever SSH alias or hostname you use
+to connect — check `~/.ssh/config` for a `Host` entry. If you have an alias
+like `Host rockfish`, use `rockfish`; otherwise use the full form
+`<yourname>@login.rockfish.jhu.edu`.
+
+```bash
+# Run from your local Mac — replace <rockfish-host> and <yourname>
+
+# Required: integration test outputs (db/, TSV assessments)
+rsync -av --delete \
+  <rockfish-host>:/vast/eande106/<yourname>/nemascan-sims-nf/tests/integration_data/ \
+  tests/integration_data/
+
+# Optional but needed for test-cross_validation.R (raw GWA files)
+rsync -av --delete \
+  <rockfish-host>:/scratch4/eande106/<yourname>/nf-work-test/ \
+  tests/.nf-work/
+```
+
+The `--delete` flag keeps the local directory in exact sync with Rockfish
+(removes any local files that no longer exist on the cluster). The trailing
+`/` on both paths syncs the *contents* of the directory rather than the
+directory itself.
+
+Then run the integration tests locally:
+
+```bash
+TEST_DB_DIR=tests/integration_data/db \
+TEST_WORK_DIR=tests/.nf-work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+Note: `TEST_WORK_DIR` points to the Nextflow work directory. If you skip the
+optional work-dir sync, `test-cross_validation.R` (which reads raw GWA files
+from the work directory) will skip automatically — all other integration and
+cross-validation tests can still run.
+
+
+## Stub Runs on Rockfish
+
+Stub runs bypass SLURM submission and verify process wiring without executing
+real computations:
+
+```bash
+nextflow run main.nf \
+  -profile rockfish \
+  --strainfile strains.tsv \
+  -stub-run
+  # vcf is specified per-group in the strainfile (see README: Strainfile Format)
+```
+
+::: {.callout-tip}
+## After collecting HPC data
+Run the full integration test suite locally:
+[Local Integration Testing](testing-integration.qmd)
+:::
