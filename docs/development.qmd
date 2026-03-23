@@ -1,0 +1,195 @@
+---
+title: "Development"
+subtitle: "Contributing to the pipeline and documentation"
+date: last-modified
+format:
+  html:
+    embed-resources: true
+---
+
+## Documentation Site
+
+The `docs/` directory is a [Quarto](https://quarto.org/) website project. Pages
+are authored as `.qmd` files and rendered to static HTML in `docs/_site/`.
+
+
+### Rendering Locally
+
+```bash
+quarto render docs/
+```
+
+The output is written to `docs/_site/`. Open `docs/_site/index.html` in a
+browser to preview. No pipeline output or R packages are required to render.
+
+### Adding a New Page
+
+1. Create a `.qmd` file in `docs/` with YAML front matter matching the existing
+   pattern:
+
+    ```yaml
+    ---
+    title: "Page Title"
+    subtitle: "Short description"
+    date: last-modified
+    format:
+      html:
+        embed-resources: true
+    ---
+    ```
+
+2. Add a navbar entry in `docs/_quarto.yml`:
+
+    ```yaml
+    - text: "Page Title"
+      href: page-title.qmd
+    ```
+
+3. Add a bullet to the Reports list in `docs/index.qmd`.
+
+4. Render and verify:
+
+    ```bash
+    quarto render docs/
+    ```
+
+
+### Site Configuration
+
+Configuration lives in `docs/_quarto.yml`:
+
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| `project.type` | `website` | Multi-page site with shared navbar |
+| `project.output-dir` | `_site` | Render target (git-ignored) |
+| `website.title` | `nemascan-sims-nf` | Navbar brand text |
+| `format.html.theme` | `cosmo` | Bootstrap theme |
+| `format.html.toc` | `true` | Per-page table of contents |
+| `format.html.toc-depth` | `3` | TOC heading depth |
+
+Pages that set `embed-resources: true` produce self-contained HTML files with
+all CSS/JS inlined, which is useful for sharing individual pages outside the
+site context.
+
+
+### Git-Ignored Paths
+
+The rendered site and Quarto working files are git-ignored:
+
+- `docs/_site/` &mdash; rendered HTML output (in `.gitignore`)
+- `docs/.quarto/` &mdash; Quarto project cache (in `docs/.gitignore`)
+
+
+## Publishing to GitHub Pages
+
+The documentation site can be published as a GitHub Pages site for the
+repository. There are two approaches depending on whether you want to commit the
+rendered HTML or build it in CI.
+
+
+### Publish from a Branch (No CI Required)
+
+This approach uses the `quarto publish` command to push rendered HTML to a
+dedicated `gh-pages` branch. No CI configuration is needed.
+
+**One-time setup:**
+
+1. Run `quarto publish` from the project root, targeting GitHub Pages:
+
+    ```bash
+    quarto publish gh-pages docs/
+    ```
+
+    This renders the site, creates or updates a `gh-pages` branch containing
+    only the rendered output, and pushes it to the remote.
+
+2. In the GitHub repository settings, go to **Settings > Pages** and configure:
+    - **Source:** Deploy from a branch
+    - **Branch:** `gh-pages`, folder `/ (root)`
+
+The site will be available at
+`https://andersenlab.github.io/nemascan-sims-nf/`.
+
+**Branch note:** `quarto publish gh-pages` works from any branch. It renders
+the `.qmd` files in your current working tree and pushes the output to the
+`gh-pages` branch, regardless of which branch you are on. This means you can
+preview-publish docs from a feature branch (e.g. `doc-updates`) before merging
+to `main`.
+
+**To update the published site** after changing `.qmd` files:
+
+```bash
+quarto publish gh-pages docs/
+```
+
+This is a manual step &mdash; the site is not automatically rebuilt on push.
+
+
+## Setup
+
+Local and HPC environment prerequisites are documented on the dedicated setup page:
+[Setup](setup.qmd) — Nextflow version pinning, Docker, R packages, Python, bcftools,
+Quarto, one-time test VCF generation, and Rockfish conda/Singularity configuration.
+
+
+## Testing
+
+The test and validation workflow is documented across four dedicated pages:
+
+| Page | Contents |
+|------|---------|
+| [Local End-to-End Testing](testing-local-e2e.qmd) | Stub runs, test VCF generation, container updates |
+| [Local Integration Testing](testing-integration.qmd) | Unit tests (R + pytest), test fixtures, integration test collection |
+| [HPC End-to-End Testing](testing-hpc.qmd) | Rockfish environment, running the pipeline, collecting integration data |
+| [Output Validation](testing-output-validation.qmd) | Cross-validation tests, R package lockfile, thread-count determinism |
+
+Run all test tiers with:
+
+```bash
+Rscript tests/run_tests.R
+```
+
+Integration and cross-validation tests skip automatically when their required
+environment variables are not set. See [Local Integration Testing](testing-integration.qmd)
+for the full environment variable reference.
+
+
+## Project Structure
+
+```
+nemascan-sims-nf/
+ ├── main.nf                     Pipeline entrypoint
+ ├── nextflow.config             Parameters and profiles
+ ├── conf/                       Execution profiles (rockfish, docker)
+ ├── modules/                    Nextflow process definitions
+ │   ├── bcftools/               VCF manipulation processes
+ │   ├── plink/                  LD pruning, binary fileset creation
+ │   ├── gcta/                   GRM construction, GWAS mapping, simulation
+ │   ├── python/                 Causal variant selection, variance check
+ │   ├── r/                      Legacy QTL detection and assessment
+ │   ├── db_migration/           DB-path ingestion, analysis, assessment
+ │   │   ├── write_marker_set/
+ │   │   ├── write_genotype_matrix/   ◄── Phase 5: long-format genotype storage
+ │   │   ├── write_gwa_to_db/
+ │   │   ├── write_trait_data/        ◄── Phase 5: trait metadata/causal/phenotype
+ │   │   ├── aggregate_metadata/
+ │   │   ├── analyze_qtl/
+ │   │   └── assess_sims/
+ │   └── local/                  Helper processes (contig info, eigens)
+ ├── bin/                        Pipeline scripts (available to all processes)
+ ├── R/                          Shared R library (sourced by db_migration + tests)
+ ├── data/test/                  Test VCF, parameter files, strain lists
+ ├── tests/
+ │   ├── testthat/               R/testthat unit test files
+ │   │   ├── test-genotype_storage.R  ◄── Phase 5: genotype matrix round-trip
+ │   │   └── test-trait_storage.R     ◄── Phase 5: trait ID, metadata, causal, phenotype
+ │   ├── fixtures/               Static inputs for unit tests
+ │   │   ├── test_genotype_matrix.tsv ◄── Phase 5: 5 markers × 3 strains
+ │   │   └── test_sims.phen           ◄── Phase 5: 3-strain phenotype fixture
+ │   └── notebooks/              Cross-validation analysis notebooks
+ └── docs/                       Quarto documentation site
+```
+
+Each module directory contains a `main.nf` with the process definition and
+optionally a `resources/` directory with scripts added to `$PATH` via
+`nextflow.enable.moduleBinaries = true`.

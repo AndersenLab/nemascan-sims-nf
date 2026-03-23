@@ -6,7 +6,8 @@ process PLINK_RECODE_VCF {
     input:
     tuple val(meta), path(vcf), path(vcf_index)
     val mito_name
-    each maf
+    val maf          // was: each maf — val runs once per upstream item (no Cartesian product)
+    val ld           // LD R² threshold for --indep-pairwise; was hardcoded 0.8
 
     output:
     tuple val(meta.id), val(maf), path("TO_SIMS.bed"), path("TO_SIMS.bim"), path("TO_SIMS.fam"), path("TO_SIMS.map"), path("TO_SIMS.nosex"), path("TO_SIMS.ped"), path("TO_SIMS.log"), emit: plink
@@ -28,7 +29,7 @@ process PLINK_RECODE_VCF {
         --biallelic-only \\
         --maf ${maf} \\
         --set-missing-var-ids @:# \\
-        --indep-pairwise 50 10 0.8 \\
+        --indep-pairwise 50 10 ${ld} \\
         --geno \\
         --not-chr ${mito_name} \\
         --allow-extra-chr
@@ -69,7 +70,7 @@ process PLINK_RECODE_VCF {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        plink: \$( plink --version |& head -n 1 | cut -f 2 )
+        plink: stub
     END_VERSIONS
     """
 }
