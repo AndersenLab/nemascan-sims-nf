@@ -69,6 +69,23 @@ random access, avoiding a multi-GB download.
 
 **Prerequisites:** `bcftools >= 1.16`, `tabix` (htslib).
 
+### Symlink reference
+
+Each generate script writes a generic `test*.vcf.gz` target and a dated symlink. The
+strainfiles reference the dated names. The table below shows what each profile expects:
+
+| Profile(s) | Dated symlink | Target | Generate script |
+|------------|--------------|--------|-----------------|
+| `test`, `test_variable`, `test_cv_pool` | `test.20210901.vcf.gz` | `test.vcf.gz` | `generate_test_vcf.sh` |
+| `test_three_species` | `test_ce.20250625.vcf.gz` | `test_ce.vcf.gz` | `generate_test_ce_vcf.sh` |
+| `test_three_species` | `test_cb.20250626.vcf.gz` | `test_cb.vcf.gz` | `generate_test_cb_vcf.sh` |
+| `test_three_species` | `test_ct.20250627.vcf.gz` | `test_ct.vcf.gz` | `generate_test_ct_vcf.sh` |
+
+The dated symlinks are tracked in git; the target files are gitignored. Running a generate
+script populates the target. `tests/collect_test_data.sh` performs a pre-flight check
+before the pipeline starts and exits immediately with an actionable error if any required
+target is missing.
+
 ### C. elegans test VCF (`test` / `test_variable` profiles)
 
 ```bash
@@ -166,6 +183,32 @@ six groups:
 ```bash
 nextflow run . -profile test_three_species -stub-run
 ```
+
+### Working in a git worktree
+
+When developing in a git worktree the VCF targets are absent (gitignored, not copied from
+the main checkout). If the main repository already has the generated VCFs you can create
+absolute-path symlinks rather than re-running the generate scripts:
+
+```bash
+MAIN="/path/to/nemascan-sims-nf/data/test"   # main repo with real VCF files
+WT="/path/to/your-worktree/data/test"         # this worktree
+
+# Single-species profiles (test, test_variable, test_cv_pool)
+ln -s "$MAIN/test.vcf.gz"     "$WT/test.vcf.gz"
+ln -s "$MAIN/test.vcf.gz.tbi" "$WT/test.vcf.gz.tbi"
+
+# Three-species profile (test_three_species) — run for each species needed
+for spec in ce cb ct; do
+  ln -s "$MAIN/test_${spec}.vcf.gz"     "$WT/test_${spec}.vcf.gz"
+  ln -s "$MAIN/test_${spec}.vcf.gz.tbi" "$WT/test_${spec}.vcf.gz.tbi"
+done
+```
+
+Because the targets are gitignored, these symlinks will not appear in `git status` and
+cannot be accidentally committed. The existing dated symlinks (e.g.
+`test.20210901.vcf.gz → test.vcf.gz`) already tracked in git then resolve through the
+new absolute-path link to the real file.
 
 ::: {.callout-tip}
 ## Next steps
