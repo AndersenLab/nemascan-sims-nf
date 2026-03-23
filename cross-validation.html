@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-03-05">
+<meta name="dcterms.date" content="2026-03-23">
 
 <title>Assessment Cross-Validation – nemascan-sims-nf</title>
 <style>
@@ -3864,6 +3864,23 @@ vertical-align: -.125em;
 }</script>
 
 
+<style type="text/css">
+body {
+font-size: 1.1rem;
+}
+
+.mermaid svg {
+max-width: 100%;
+width: 100%;
+height: auto;
+display: block;
+margin: 0 auto;
+}
+
+.cell-output-display {
+margin: 2rem 0;
+}
+</style>
 </head>
 
 <body class="nav-fixed quarto-light">
@@ -3916,8 +3933,30 @@ vertical-align: -.125em;
     <ul class="dropdown-menu" aria-labelledby="nav-menu-development">    
         <li>
     <a class="dropdown-item" href="./development.html">
- <span class="dropdown-text">Development</span></a>
+ <span class="dropdown-text">Development Guide</span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="./setup.html">
+ <span class="dropdown-text">Setup</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="./testing-local-e2e.html">
+ <span class="dropdown-text">Local End-to-End Testing</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./testing-integration.html">
+ <span class="dropdown-text">Local Integration Testing</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./testing-hpc.html">
+ <span class="dropdown-text">HPC End-to-End Testing</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./testing-output-validation.html">
+ <span class="dropdown-text">Output Validation</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
         <li>
     <a class="dropdown-item" href="./changelog.html">
  <span class="dropdown-text">Changelog</span></a>
@@ -3971,7 +4010,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">March 5, 2026</p>
+      <p class="date">March 23, 2026</p>
     </div>
   </div>
   
@@ -4045,7 +4084,7 @@ vertical-align: -.125em;
 <h2 class="anchored" data-anchor-id="running-the-cross-validation">Running the Cross-Validation</h2>
 <section id="run-the-pipeline-with-both-paths" class="level3">
 <h3 class="anchored" data-anchor-id="run-the-pipeline-with-both-paths">1. Run the pipeline with both paths</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="va">NXF_VER</span><span class="op">=</span>24.10.4 <span class="ex">nextflow</span> run main.nf <span class="at">-profile</span> test,docker <span class="at">--legacy_assess</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> run main.nf <span class="at">-profile</span> test,docker <span class="at">--legacy_assess</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>This produces two assessment TSVs in the output directory:</p>
 <ul>
 <li><code>simulation_assessment_results.tsv</code> (legacy path)</li>

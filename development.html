@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-03-06">
+<meta name="dcterms.date" content="2026-03-23">
 
 <title>Development – nemascan-sims-nf</title>
 <style>
@@ -3864,6 +3864,23 @@ vertical-align: -.125em;
 }</script>
 
 
+<style type="text/css">
+body {
+font-size: 1.1rem;
+}
+
+.mermaid svg {
+max-width: 100%;
+width: 100%;
+height: auto;
+display: block;
+margin: 0 auto;
+}
+
+.cell-output-display {
+margin: 2rem 0;
+}
+</style>
 </head>
 
 <body class="nav-fixed quarto-light">
@@ -3916,8 +3933,30 @@ vertical-align: -.125em;
     <ul class="dropdown-menu" aria-labelledby="nav-menu-development">    
         <li>
     <a class="dropdown-item" href="./development.html">
- <span class="dropdown-text">Development</span></a>
+ <span class="dropdown-text">Development Guide</span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="./setup.html">
+ <span class="dropdown-text">Setup</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="./testing-local-e2e.html">
+ <span class="dropdown-text">Local End-to-End Testing</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./testing-integration.html">
+ <span class="dropdown-text">Local Integration Testing</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./testing-hpc.html">
+ <span class="dropdown-text">HPC End-to-End Testing</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./testing-output-validation.html">
+ <span class="dropdown-text">Output Validation</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
         <li>
     <a class="dropdown-item" href="./changelog.html">
  <span class="dropdown-text">Changelog</span></a>
@@ -3951,43 +3990,8 @@ vertical-align: -.125em;
   <ul class="collapse">
   <li><a href="#publish-from-a-branch-no-ci-required" id="toc-publish-from-a-branch-no-ci-required" class="nav-link" data-scroll-target="#publish-from-a-branch-no-ci-required">Publish from a Branch (No CI Required)</a></li>
   </ul></li>
-  <li><a href="#running-tests" id="toc-running-tests" class="nav-link" data-scroll-target="#running-tests">Running Tests</a>
-  <ul class="collapse">
-  <li><a href="#test-tiers" id="toc-test-tiers" class="nav-link" data-scroll-target="#test-tiers">Test Tiers</a></li>
-  <li><a href="#unit-tests" id="toc-unit-tests" class="nav-link" data-scroll-target="#unit-tests">Unit Tests</a></li>
-  <li><a href="#integration-tests" id="toc-integration-tests" class="nav-link" data-scroll-target="#integration-tests">Integration Tests</a></li>
-  <li><a href="#cross-validation-tests" id="toc-cross-validation-tests" class="nav-link" data-scroll-target="#cross-validation-tests">Cross-Validation Tests</a></li>
-  </ul></li>
-  <li><a href="#r-package-lockfile" id="toc-r-package-lockfile" class="nav-link" data-scroll-target="#r-package-lockfile">R Package Lockfile</a>
-  <ul class="collapse">
-  <li><a href="#what-is-covered" id="toc-what-is-covered" class="nav-link" data-scroll-target="#what-is-covered">What is covered</a></li>
-  <li><a href="#reproducing-the-environment-locally" id="toc-reproducing-the-environment-locally" class="nav-link" data-scroll-target="#reproducing-the-environment-locally">Reproducing the environment locally</a></li>
-  <li><a href="#regenerating-the-lockfile" id="toc-regenerating-the-lockfile" class="nav-link" data-scroll-target="#regenerating-the-lockfile">Regenerating the lockfile</a></li>
-  </ul></li>
-  <li><a href="#pipeline-stub-runs" id="toc-pipeline-stub-runs" class="nav-link" data-scroll-target="#pipeline-stub-runs">Pipeline Stub Runs</a></li>
-  <li><a href="#thread-count-determinism" id="toc-thread-count-determinism" class="nav-link" data-scroll-target="#thread-count-determinism">Thread-count determinism</a>
-  <ul class="collapse">
-  <li><a href="#blas-implementation-in-the-production-container" id="toc-blas-implementation-in-the-production-container" class="nav-link" data-scroll-target="#blas-implementation-in-the-production-container">BLAS implementation in the production container</a></li>
-  </ul></li>
-  <li><a href="#hpc-execution-rockfish" id="toc-hpc-execution-rockfish" class="nav-link" data-scroll-target="#hpc-execution-rockfish">HPC Execution (Rockfish)</a>
-  <ul class="collapse">
-  <li><a href="#environment-setup" id="toc-environment-setup" class="nav-link" data-scroll-target="#environment-setup">Environment Setup</a></li>
-  <li><a href="#prerequisites" id="toc-prerequisites" class="nav-link" data-scroll-target="#prerequisites">Prerequisites</a></li>
-  <li><a href="#running-the-pipeline-on-rockfish" id="toc-running-the-pipeline-on-rockfish" class="nav-link" data-scroll-target="#running-the-pipeline-on-rockfish">Running the Pipeline on Rockfish</a></li>
-  <li><a href="#collecting-integration-test-data-on-rockfish" id="toc-collecting-integration-test-data-on-rockfish" class="nav-link" data-scroll-target="#collecting-integration-test-data-on-rockfish">Collecting Integration Test Data on Rockfish</a></li>
-  <li><a href="#stub-runs-on-rockfish" id="toc-stub-runs-on-rockfish" class="nav-link" data-scroll-target="#stub-runs-on-rockfish">Stub Runs on Rockfish</a></li>
-  </ul></li>
-  <li><a href="#container-updates" id="toc-container-updates" class="nav-link" data-scroll-target="#container-updates">Container Updates</a>
-  <ul class="collapse">
-  <li><a href="#updating-the-python-container-andersenlabnumpy" id="toc-updating-the-python-container-andersenlabnumpy" class="nav-link" data-scroll-target="#updating-the-python-container-andersenlabnumpy">Updating the Python container (<code>andersenlab/numpy</code>)</a></li>
-  <li><a href="#updating-other-containers" id="toc-updating-other-containers" class="nav-link" data-scroll-target="#updating-other-containers">Updating other containers</a></li>
-  </ul></li>
-  <li><a href="#generating-test-data" id="toc-generating-test-data" class="nav-link" data-scroll-target="#generating-test-data">Generating Test Data</a>
-  <ul class="collapse">
-  <li><a href="#c.-elegans-test-vcf-test-test_variable-profiles" id="toc-c.-elegans-test-vcf-test-test_variable-profiles" class="nav-link" data-scroll-target="#c.-elegans-test-vcf-test-test_variable-profiles">C. elegans test VCF (<code>test</code> / <code>test_variable</code> profiles)</a></li>
-  <li><a href="#multi-species-test-vcfs-test_three_species-profile" id="toc-multi-species-test-vcfs-test_three_species-profile" class="nav-link" data-scroll-target="#multi-species-test-vcfs-test_three_species-profile">Multi-species test VCFs (<code>test_three_species</code> profile)</a></li>
-  <li><a href="#running-the-three-species-test" id="toc-running-the-three-species-test" class="nav-link" data-scroll-target="#running-the-three-species-test">Running the three-species test</a></li>
-  </ul></li>
+  <li><a href="#setup" id="toc-setup" class="nav-link" data-scroll-target="#setup">Setup</a></li>
+  <li><a href="#testing" id="toc-testing" class="nav-link" data-scroll-target="#testing">Testing</a></li>
   <li><a href="#project-structure" id="toc-project-structure" class="nav-link" data-scroll-target="#project-structure">Project Structure</a></li>
   </ul>
 </nav>
@@ -4009,7 +4013,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">March 6, 2026</p>
+      <p class="date">March 23, 2026</p>
     </div>
   </div>
   
@@ -4128,667 +4132,42 @@ vertical-align: -.125em;
 <p>This is a manual step — the site is not automatically rebuilt on push.</p>
 </section>
 </section>
-<section id="running-tests" class="level2">
-<h2 class="anchored" data-anchor-id="running-tests">Running Tests</h2>
-<section id="test-tiers" class="level3">
-<h3 class="anchored" data-anchor-id="test-tiers">Test Tiers</h3>
-<p>The test suite has three tiers with different requirements:</p>
+<section id="setup" class="level2">
+<h2 class="anchored" data-anchor-id="setup">Setup</h2>
+<p>Local and HPC environment prerequisites are documented on the dedicated setup page: <a href="./setup.html">Setup</a> — Nextflow version pinning, Docker, R packages, Python, bcftools, Quarto, one-time test VCF generation, and Rockfish conda/Singularity configuration.</p>
+</section>
+<section id="testing" class="level2">
+<h2 class="anchored" data-anchor-id="testing">Testing</h2>
+<p>The test and validation workflow is documented across four dedicated pages:</p>
 <table class="caption-top table">
-<colgroup>
-<col style="width: 11%">
-<col style="width: 13%">
-<col style="width: 25%">
-<col style="width: 50%">
-</colgroup>
 <thead>
 <tr class="header">
-<th>Tier</th>
-<th>Files</th>
-<th>Requirements</th>
-<th>Skips automatically when</th>
+<th>Page</th>
+<th>Contents</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Unit</td>
-<td>all <code>test-*.R</code> except integration/cross-val</td>
-<td>Static fixtures only; no pipeline run needed</td>
-<td>—</td>
+<td><a href="./testing-local-e2e.html">Local End-to-End Testing</a></td>
+<td>Stub runs, test VCF generation, container updates</td>
 </tr>
 <tr class="even">
-<td>Integration</td>
-<td><code>test-db_structure.R</code>, <code>test-cross_validation.R</code></td>
-<td>Pipeline output (<code>TEST_DB_DIR</code>, <code>TEST_WORK_DIR</code>)</td>
-<td>Env vars unset</td>
+<td><a href="./testing-integration.html">Local Integration Testing</a></td>
+<td>Unit tests (R + pytest), test fixtures, integration test collection</td>
 </tr>
 <tr class="odd">
-<td>Cross-validation</td>
-<td><code>test-assessment_cross_validation.R</code></td>
-<td>Both DB and legacy output</td>
-<td><code>TEST_LEGACY_ASSESSMENT</code> unset</td>
+<td><a href="./testing-hpc.html">HPC End-to-End Testing</a></td>
+<td>Rockfish environment, running the pipeline, collecting integration data</td>
+</tr>
+<tr class="even">
+<td><a href="./testing-output-validation.html">Output Validation</a></td>
+<td>Cross-validation tests, R package lockfile, thread-count determinism</td>
 </tr>
 </tbody>
 </table>
-<p>Run all tiers with a single command; integration and cross-validation tests skip automatically when their environment variables are absent:</p>
+<p>Run all test tiers with:</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-<section id="unit-tests" class="level3">
-<h3 class="anchored" data-anchor-id="unit-tests">Unit Tests</h3>
-<p>Unit tests use static fixtures and do not require pipeline output. Tests are organized by functional area in <code>tests/testthat/</code>:</p>
-<table class="caption-top table">
-<colgroup>
-<col style="width: 30%">
-<col style="width: 70%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>File</th>
-<th>What it tests</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>test-library_check.R</code></td>
-<td>R library file existence and function availability after sourcing <code>setup.R</code></td>
-</tr>
-<tr class="even">
-<td><code>test-read_raw_gwa.R</code></td>
-<td><code>read_raw_gwa_file()</code> for <code>.fastGWA</code> and <code>.mlma</code> formats; column normalization; LOCO deduplication</td>
-</tr>
-<tr class="odd">
-<td><code>test-read_bim.R</code></td>
-<td><code>read_bim_file()</code> parses <code>.bim</code> format; column names; <code>CHROM:POS</code> marker construction</td>
-</tr>
-<tr class="even">
-<td><code>test-genotype_storage.R</code></td>
-<td>Round-trip <code>write_genotype_matrix()</code> / <code>read_genotype_matrix()</code>; schema validation (CHROM, POS, strain, allele); existence checks; verifies genotype files are excluded from the <code>markers</code> DuckDB view</td>
-</tr>
-<tr class="odd">
-<td><code>test-trait_storage.R</code></td>
-<td><code>generate_trait_id()</code> determinism (same params → same ID), uniqueness (different params → different IDs), and golden-value hash; round-trips for <code>write_trait_metadata()</code>, <code>write_causal_variants()</code>, <code>write_phenotype_data()</code>; <code>overwrite = TRUE</code> retry behavior; <code>phenotype_exists()</code> existence check</td>
-</tr>
-<tr class="even">
-<td><code>test-significance.R</code></td>
-<td>BF and EIGEN significance thresholds; verifies significance calls are identical whether log10p is computed on-the-fly or stored</td>
-</tr>
-<tr class="odd">
-<td><code>test-write_gwa_to_db.R</code></td>
-<td>GWA data writes to Parquet DB with correct schema and values; partition path correctness</td>
-</tr>
-<tr class="even">
-<td><code>test-hash_generation.R</code></td>
-<td><code>generate_marker_set_id()</code>, <code>generate_trait_id()</code>, <code>generate_mapping_id()</code> golden-value hashes; SHA-256 stability across calls</td>
-</tr>
-<tr class="odd">
-<td><code>test-safe_log10p.R</code></td>
-<td><code>safe_log10p()</code> clamping at <code>LOG10P_MAX</code>; vector handling; known ground-truth values</td>
-</tr>
-<tr class="even">
-<td><code>test-module_sourcing.R</code></td>
-<td>All <code>db_migration</code> module R scripts reference <code>R_SOURCE_DIR</code> and are readable</td>
-</tr>
-<tr class="odd">
-<td><code>test-assessment.R</code></td>
-<td><code>R/assessment.R</code> functions: <code>load_causal_variants()</code>, QTL detection, <code>designate_qtl()</code> categories</td>
-</tr>
-<tr class="even">
-<td><code>test-schema_changes.R</code></td>
-<td><code>mappings_schema()</code> field count (8), required FK columns, exclusion of <code>N</code> and <code>log10p</code></td>
-</tr>
-</tbody>
-</table>
-<section id="test-fixtures" class="level4">
-<h4 class="anchored" data-anchor-id="test-fixtures">Test Fixtures</h4>
-<p><code>tests/fixtures/</code> contains static synthetic inputs for unit tests:</p>
-<table class="caption-top table">
-<colgroup>
-<col style="width: 31%">
-<col style="width: 68%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>File</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>test_genotype_matrix.tsv</code></td>
-<td>5 markers × 3 strains, wide-format TSV with <code>-1</code>/<code>1</code>/<code>NA</code> encoding — includes a heterozygous (NA) case to verify encoding is preserved</td>
-</tr>
-<tr class="even">
-<td><code>test_sims.phen</code></td>
-<td>3-strain phenotype file in GCTA <code>.phen</code> format (FID IID value, space-delimited, no header)</td>
-</tr>
-<tr class="odd">
-<td><code>test_sims.par</code></td>
-<td>GCTA causal variant parameter file (<code>.par</code> format) with 4 causal variants; used by <code>test-assessment.R</code></td>
-</tr>
-<tr class="even">
-<td><code>test.bim</code></td>
-<td>PLINK <code>.bim</code> marker file with 50 markers; used by <code>test-read_bim.R</code></td>
-</tr>
-<tr class="odd">
-<td><code>test.mlma</code></td>
-<td>Raw GCTA <code>.mlma</code> output (LOCO mode); used by <code>test-read_raw_gwa.R</code></td>
-</tr>
-<tr class="even">
-<td><code>test.fastGWA</code></td>
-<td>Raw GCTA <code>.fastGWA</code> output (inbred mode); used by <code>test-read_raw_gwa.R</code> and <code>test-write_gwa_to_db.R</code></td>
-</tr>
-<tr class="odd">
-<td><code>test_loco_dedup.mlma</code></td>
-<td>Deduplicated LOCO <code>.mlma</code> for duplicate-marker handling tests</td>
-</tr>
-<tr class="even">
-<td><code>test_eigen.txt</code></td>
-<td>Eigenvalue count for significance threshold computation; used by <code>test-significance.R</code></td>
-</tr>
-<tr class="odd">
-<td><code>test_mapping.tsv</code></td>
-<td>Processed mapping with precomputed <code>log10p</code> column; used by <code>test-significance.R</code> and <code>test-safe_log10p.R</code></td>
-</tr>
-</tbody>
-</table>
-</section>
-</section>
-<section id="integration-tests" class="level3">
-<h3 class="anchored" data-anchor-id="integration-tests">Integration Tests</h3>
-<p>Integration tests validate that the full pipeline produces correct output end-to-end. Unit tests check individual R functions with synthetic fixtures; integration tests use actual pipeline output to catch bugs that only appear with real GCTA output — edge cases in file format parsing, Hive partition path construction, DuckDB view registration, and Nextflow channel wiring.</p>
-<ul>
-<li><strong><code>test-db_structure.R</code></strong> — verifies the Parquet database written by the <code>DB_MIGRATION_*</code> modules has the expected directory structure, metadata files, and schema-conformant data queryable via DuckDB.</li>
-<li><strong><code>test-cross_validation.R</code></strong> — compares what was written to the Parquet DB against the raw <code>.fastGWA</code>/<code>.mlma</code> files in the Nextflow work directory to verify round-trip fidelity (no dropped rows, truncated values, or mangled column types).</li>
-</ul>
-<p>Integration tests require pipeline output collected by <code>tests/collect_test_data.sh</code>:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Run pipeline (requires Docker) and collect outputs</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> tests/collect_test_data.sh</span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Collect from a previous run (no pipeline re-run)</span></span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> tests/collect_test_data.sh <span class="at">--collect-only</span></span>
-<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Remove previous results before running</span></span>
-<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> tests/collect_test_data.sh <span class="at">--clean</span></span>
-<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Run integration tests with collected data</span></span>
-<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_DB_DIR</span><span class="op">=</span>tests/integration_data/db <span class="dt">\</span></span>
-<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_WORK_DIR</span><span class="op">=</span>tests/.nf-work <span class="dt">\</span></span>
-<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_LEGACY_ASSESSMENT</span><span class="op">=</span>tests/integration_data/simulation_assessment_results.tsv <span class="dt">\</span></span>
-<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_DB_ASSESSMENT</span><span class="op">=</span>tests/integration_data/db_simulation_assessment_results.tsv <span class="dt">\</span></span>
-<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>The default pipeline run inside <code>collect_test_data.sh</code> uses <code>-profile test,docker</code>, so Docker must be available for a local integration test collection run. Integration test files skip automatically when the required environment variables are not set.</p>
-</section>
-<section id="cross-validation-tests" class="level3">
-<h3 class="anchored" data-anchor-id="cross-validation-tests">Cross-Validation Tests</h3>
-<p>Two test files compare the DB assessment path against the legacy R path:</p>
-<ul>
-<li><p><strong><code>test-assessment_cross_validation.R</code></strong> — compares <code>db_simulation_assessment_results.tsv</code> (DB path) against <code>simulation_assessment_results.tsv</code> (legacy path). Computes three concordance scores per replicate: detection concordance, designation concordance, and interval overlap (Jaccard). Requires both <code>TEST_LEGACY_ASSESSMENT</code> and <code>TEST_DB_ASSESSMENT</code>.</p></li>
-<li><p><strong><code>test-cross_validation.R</code></strong> — compares DB Parquet contents against raw GWA files in the Nextflow work directory to verify round-trip accuracy. Requires <code>TEST_DB_DIR</code> and <code>TEST_WORK_DIR</code>.</p></li>
-</ul>
-<p>Both tests skip automatically unless all required env vars are set. Both require <code>--legacy_assess</code> to have been passed when collecting test data (so that the legacy output files exist alongside the DB output).</p>
-</section>
-</section>
-<section id="r-package-lockfile" class="level2">
-<h2 class="anchored" data-anchor-id="r-package-lockfile">R Package Lockfile</h2>
-<p><code>renv.lock</code> at the project root records the exact versions of all R packages installed in the <code>andersenlab/r_packages:20250519</code> container. This file is a reproducibility audit artifact — it lets you verify which package versions produced a given set of simulation results and reproduce the environment locally if needed.</p>
-<section id="what-is-covered" class="level3">
-<h3 class="anchored" data-anchor-id="what-is-covered">What is covered</h3>
-<p>The lockfile covers packages used by <code>R_.*</code> Nextflow processes (<code>bin/</code> scripts):</p>
-<table class="caption-top table">
-<colgroup>
-<col style="width: 38%">
-<col style="width: 61%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Script</th>
-<th>Key packages</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>bin/Get_GenoMatrix_Eigen.R</code></td>
-<td>Rcpp, dplyr, tidyr, ggplot2, stringr, readr, glue, purrr, coop, RSpectra</td>
-</tr>
-<tr class="even">
-<td><code>bin/Create_Causal_QTLs.R</code></td>
-<td>dplyr, tidyr, ggplot2, stringr, readr, IRanges, fuzzyjoin, glue, purrr</td>
-</tr>
-<tr class="odd">
-<td><code>bin/Get_GCTA_Intervals.R</code></td>
-<td>dplyr, tidyr, ggplot2, stringr, readr, glue, purrr, ggbeeswarm</td>
-</tr>
-<tr class="even">
-<td><code>bin/Assess_Sims.R</code></td>
-<td>dplyr, tidyr, data.table, GenomicRanges, purrr, glue</td>
-</tr>
-</tbody>
-</table>
-<p><code>DB_MIGRATION_.*</code> processes run in a separate container (<code>andersenlab/migrate-sims:20260202</code>) and are not covered by this lockfile.</p>
-</section>
-<section id="reproducing-the-environment-locally" class="level3">
-<h3 class="anchored" data-anchor-id="reproducing-the-environment-locally">Reproducing the environment locally</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Install renv if not present</span></span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="fu">install.packages</span>(<span class="st">&quot;renv&quot;</span>)</span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Restore the exact package versions recorded in renv.lock</span></span>
-<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>renv<span class="sc">::</span><span class="fu">restore</span>(<span class="at">lockfile =</span> <span class="st">&quot;renv.lock&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-<section id="regenerating-the-lockfile" class="level3">
-<h3 class="anchored" data-anchor-id="regenerating-the-lockfile">Regenerating the lockfile</h3>
-<p>Regenerate <code>renv.lock</code> whenever the <code>r_packages</code> container is rebuilt:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Local (Docker)</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> scripts/generate_renv_lock.sh docker</span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="co"># HPC / Rockfish (Singularity)</span></span>
-<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> scripts/generate_renv_lock.sh singularity</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>The script requires an explicit runtime argument (<code>docker</code> or <code>singularity</code>). It pulls <code>andersenlab/r_packages:20250519</code>, runs <code>renv::snapshot(type = &quot;all&quot;)</code> inside the container via a bind-mounted project root, and writes <code>renv.lock</code>. Commit the updated file.</p>
-</section>
-</section>
-<section id="pipeline-stub-runs" class="level2">
-<h2 class="anchored" data-anchor-id="pipeline-stub-runs">Pipeline Stub Runs</h2>
-<p>Stub runs verify process wiring without executing real computations:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Fixed architecture</span></span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> run main.nf <span class="at">-profile</span> test <span class="at">-stub-run</span></span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Variable architecture</span></span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> run main.nf <span class="at">-profile</span> test_variable <span class="at">-stub-run</span></span>
-<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Three-species (c_elegans + c_briggsae + c_tropicalis)</span></span>
-<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> run main.nf <span class="at">-profile</span> test_three_species <span class="at">-stub-run</span></span>
-<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a><span class="co"># With legacy assessment path</span></span>
-<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> run main.nf <span class="at">-profile</span> test <span class="at">--legacy_assess</span> <span class="at">-stub-run</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-<section id="thread-count-determinism" class="level2">
-<h2 class="anchored" data-anchor-id="thread-count-determinism">Thread-count determinism</h2>
-<p>All GCTA steps except <code>--mlma-loco</code> are pinned to <code>--thread-num 1</code> to ensure reproducible floating-point results across local and HPC runs. Multi-threaded BLAS uses non-deterministic partial-sum reduction order — differences propagate from GRM construction through REML, PCA, and the LMM solve into BETA, SE, and P-values.</p>
-<table class="caption-top table">
-<colgroup>
-<col style="width: 29%">
-<col style="width: 40%">
-<col style="width: 29%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>GCTA step</th>
-<th><code>--thread-num</code></th>
-<th>Rationale</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>--make-grm-inbred</code> / <code>--make-grm</code></td>
-<td><strong>1</strong></td>
-<td>Errors here propagate to all downstream steps</td>
-</tr>
-<tr class="even">
-<td><code>--reml</code></td>
-<td><strong>1</strong></td>
-<td>Governs Vp upscaling decision; must be consistent at borderline values</td>
-</tr>
-<tr class="odd">
-<td><code>--simu-qt</code></td>
-<td><strong>1</strong></td>
-<td>Ensures phenotype simulation is deterministic for a given random seed</td>
-</tr>
-<tr class="even">
-<td><code>--make-bK-sparse</code></td>
-<td><strong>1</strong></td>
-<td>Eliminates residual non-determinism in sparse encoding</td>
-</tr>
-<tr class="odd">
-<td><code>--pca 1</code></td>
-<td><strong>1</strong></td>
-<td>Eigenvector iteration sensitive to BLAS reduction order</td>
-</tr>
-<tr class="even">
-<td><code>--fastGWA-mlm-exact</code></td>
-<td><strong>1</strong></td>
-<td>LMM solve; diverges between local and HPC without pinning</td>
-</tr>
-<tr class="odd">
-<td><code>--mlma-loco</code></td>
-<td><strong>configurable (<code>task.cpus</code>)</strong></td>
-<td>Per-chromosome refits are independent; highest compute cost; least numerically sensitive step</td>
-</tr>
-</tbody>
-</table>
-<p>The <code>gcta_make_grm</code> and <code>gcta_simulate_phenotypes</code> Rockfish labels are configured with <code>cpus = 1</code> since all their GCTA operations are single-threaded. The <code>gcta_perform_gwa</code> label retains <code>cpus = 4</code> to provide CPU headroom for <code>--mlma-loco</code> on larger datasets.</p>
-<section id="blas-implementation-in-the-production-container" class="level3">
-<h3 class="anchored" data-anchor-id="blas-implementation-in-the-production-container">BLAS implementation in the production container</h3>
-<p><code>gcta64</code> is a <strong>static executable</strong> — <code>ldd</code> returns “not a dynamic executable”. Inspect the binary with <code>strings</code> to identify the embedded BLAS:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> run <span class="at">--rm</span> <span class="at">--platform</span> linux/amd64 <span class="dt">\</span></span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>  quay.io/biocontainers/gcta:1.94.1--h9ee0642_0 <span class="dt">\</span></span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>  sh <span class="at">-c</span> <span class="st">&#39;strings $(which gcta64) | grep -i -E &quot;mkl|openblas|goto|omp_set_num_threads&quot;&#39;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Result: <strong>Intel oneMKL</strong>, statically linked, with <strong>GNU OpenMP</strong> as the thread runtime (<code>gomp_ialias_omp_set_num_threads</code>).</p>
-<section id="how-mkl-openmp-cause-non-determinism-in-gcta" class="level4">
-<h4 class="anchored" data-anchor-id="how-mkl-openmp-cause-non-determinism-in-gcta">How MKL + OpenMP cause non-determinism in GCTA</h4>
-<p>Intel MKL parallelises dense linear algebra by splitting work across OpenMP threads and reducing partial results at the end. Floating-point addition is not associative — <code>(a + b) + c ≠ a + (b + c)</code> in IEEE 754 — so the order in which thread-local partial sums are accumulated determines the final value. OpenMP does not guarantee a fixed reduction order, and MKL actively varies its internal tiling and accumulation strategy based on the thread count and the SIMD instruction set available at runtime. The consequences for each GCTA operation are:</p>
-<table class="caption-top table">
-<colgroup>
-<col style="width: 20%">
-<col style="width: 79%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Operation</th>
-<th>How threading introduces non-determinism</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>--make-grm[-inbred]</code></td>
-<td>Each GRM entry is a sum of allele products over all markers. MKL threads split the marker axis; partial sums are reduced in thread-completion order, which varies run to run.</td>
-</tr>
-<tr class="even">
-<td><code>--reml</code></td>
-<td>REML is an iterative EM algorithm driven by matrix-vector products on the GRM. Non-deterministic accumulation in each MV product shifts the convergence path, producing different Vp estimates and affecting the <code>check_vp.py</code> upscaling decision at borderline values.</td>
-</tr>
-<tr class="odd">
-<td><code>--pca 1</code></td>
-<td>Power-iteration eigenvector computation applies repeated MV products. Accumulated rounding differences rotate the eigenvector slightly each run, changing the PC1 covariate value passed to the LMM.</td>
-</tr>
-<tr class="even">
-<td><code>--fastGWA-mlm-exact</code></td>
-<td>The exact LMM solve applies a sparse Cholesky factorization. Thread-parallel factorization produces different fill-in and accumulated roundoff, shifting BETA, SE, and P-values for markers near the significance boundary.</td>
-</tr>
-<tr class="odd">
-<td><code>--mlma-loco</code></td>
-<td>Same Cholesky-based LMM, applied once per chromosome. Individual chromosome solves are independent, so parallelism across chromosomes is safe — only within-solve threading (controlled by <code>--thread-num</code>) introduces non-determinism.</td>
-</tr>
-</tbody>
-</table>
-<p>MKL also exposes <code>MKL_DYNAMIC</code>, which allows MKL to adjust its own thread count at runtime independent of the application. With <code>MKL_DYNAMIC=TRUE</code> (the MKL default), MKL may use fewer threads than requested if it judges the workload too small — meaning thread count, and therefore reduction order, can differ between runs on the same machine. Pinning <code>--thread-num 1</code> disables intra-operation parallelism entirely, making reduction order deterministic regardless of <code>MKL_DYNAMIC</code>.</p>
-</section>
-<section id="thread-control-hierarchy" class="level4">
-<h4 class="anchored" data-anchor-id="thread-control-hierarchy">Thread control hierarchy</h4>
-<p><code>--thread-num 1</code> is the primary control and is sufficient for determinism. <code>OMP_NUM_THREADS=1</code> and <code>MKL_NUM_THREADS=1</code> are independent env-var overrides that remain effective if any code path bypasses the GCTA flag (e.g., a direct MKL call from a dependency). These are noted as a future belt-and-suspenders hardening option.</p>
-</section>
-</section>
-</section>
-<section id="hpc-execution-rockfish" class="level2">
-<h2 class="anchored" data-anchor-id="hpc-execution-rockfish">HPC Execution (Rockfish)</h2>
-<p>The <code>rockfish</code> profile targets the Rockfish cluster at Johns Hopkins, using SLURM for job scheduling and Singularity for containers.</p>
-<section id="environment-setup" class="level3">
-<h3 class="anchored" data-anchor-id="environment-setup">Environment Setup</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">NXF_VER</span><span class="op">=</span>24.10.4</span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">NXF_SINGULARITY_CACHEDIR</span><span class="op">=</span>/vast/eande106/singularity</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-<section id="prerequisites" class="level3">
-<h3 class="anchored" data-anchor-id="prerequisites">Prerequisites</h3>
-<ul>
-<li>Nextflow <code>&gt;=24.10.0,&lt;25.0.0</code> (pinned via <code>NXF_VER</code>)</li>
-<li>SLURM account <code>eande106</code>; partition <code>parallel</code> (default) and <code>bigmem</code> (legacy QTL detection only)</li>
-<li>Singularity images cached at <code>/vast/eande106/singularity</code> (configured via <code>singularity.cacheDir</code> in <code>conf/rockfish.config</code>)</li>
-</ul>
-</section>
-<section id="running-the-pipeline-on-rockfish" class="level3">
-<h3 class="anchored" data-anchor-id="running-the-pipeline-on-rockfish">Running the Pipeline on Rockfish</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="va">NXF_VER</span><span class="op">=</span>24.10.4 <span class="ex">nextflow</span> run main.nf <span class="dt">\</span></span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">-profile</span> rockfish <span class="dt">\</span></span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--strainfile</span> strains.tsv</span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>  <span class="co"># vcf is specified per-group in the strainfile (see README: Strainfile Format)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>The <code>rockfish</code> profile sets <code>executor = &#39;slurm&#39;</code>, enables Singularity with <code>autoMounts = true</code>, and applies per-process CPU/RAM/time/retry settings. Key process resources from <code>conf/rockfish.config</code>:</p>
-<table class="caption-top table">
-<colgroup>
-<col style="width: 29%">
-<col style="width: 12%">
-<col style="width: 17%">
-<col style="width: 12%">
-<col style="width: 27%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Process group</th>
-<th>CPUs</th>
-<th>Memory</th>
-<th>Time</th>
-<th>Max retries</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>bcftools/plink extraction</td>
-<td>4</td>
-<td>40 GB</td>
-<td>1 h</td>
-<td>3</td>
-</tr>
-<tr class="even">
-<td>Eigen computation (<code>r_find_genotype_matrix_eigen</code>)</td>
-<td>2</td>
-<td>60 GB</td>
-<td>30 min</td>
-<td>3</td>
-</tr>
-<tr class="odd">
-<td>GWA (simulate, GRM, map)</td>
-<td>4</td>
-<td>20 GB</td>
-<td>10 min</td>
-<td>3</td>
-</tr>
-<tr class="even">
-<td>DB migration (write marker set)</td>
-<td>2</td>
-<td>8 GB</td>
-<td>30 min</td>
-<td>3</td>
-</tr>
-<tr class="odd">
-<td>DB migration (other)</td>
-<td>1</td>
-<td>2–8 GB</td>
-<td>5–20 min</td>
-<td>2–3</td>
-</tr>
-<tr class="even">
-<td><code>r_get_gcta_intervals</code> (bigmem)</td>
-<td>1</td>
-<td>—</td>
-<td>4 h × attempt</td>
-<td>5</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="collecting-integration-test-data-on-rockfish" class="level3">
-<h3 class="anchored" data-anchor-id="collecting-integration-test-data-on-rockfish">Collecting Integration Test Data on Rockfish</h3>
-<p>Run the pipeline on the cluster, then use <code>--collect-only</code> on the login node to gather outputs without re-running:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co"># After the pipeline completes on SLURM:</span></span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> tests/collect_test_data.sh <span class="at">--collect-only</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Copy <code>tests/integration_data/</code> to your local machine, then run the integration tests locally:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_DB_DIR</span><span class="op">=</span>tests/integration_data/db <span class="dt">\</span></span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_WORK_DIR</span><span class="op">=</span>tests/.nf-work <span class="dt">\</span></span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_LEGACY_ASSESSMENT</span><span class="op">=</span>tests/integration_data/simulation_assessment_results.tsv <span class="dt">\</span></span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_DB_ASSESSMENT</span><span class="op">=</span>tests/integration_data/db_simulation_assessment_results.tsv <span class="dt">\</span></span>
-<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Note: <code>TEST_WORK_DIR</code> points to the Nextflow work directory. If collecting from a remote cluster, <code>test-cross_validation.R</code> (which reads raw GWA files from the work directory) must be run on the cluster or the work directory must also be copied locally.</p>
-</section>
-<section id="stub-runs-on-rockfish" class="level3">
-<h3 class="anchored" data-anchor-id="stub-runs-on-rockfish">Stub Runs on Rockfish</h3>
-<p>Stub runs bypass SLURM submission and verify process wiring without executing real computations:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="va">NXF_VER</span><span class="op">=</span>24.10.4 <span class="ex">nextflow</span> run main.nf <span class="dt">\</span></span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">-profile</span> rockfish <span class="dt">\</span></span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--strainfile</span> strains.tsv <span class="dt">\</span></span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">-stub-run</span></span>
-<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>  <span class="co"># vcf is specified per-group in the strainfile (see README: Strainfile Format)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-</section>
-<section id="container-updates" class="level2">
-<h2 class="anchored" data-anchor-id="container-updates">Container Updates</h2>
-<p>All pipeline processes run inside versioned, date-tagged Docker/Singularity images. Container references live in two files:</p>
-<table class="caption-top table">
-<thead>
-<tr class="header">
-<th>File</th>
-<th>Used by</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>conf/docker.config</code></td>
-<td>Local runs (<code>-profile docker</code>)</td>
-</tr>
-<tr class="even">
-<td><code>conf/rockfish.config</code></td>
-<td>HPC runs (<code>-profile rockfish</code>)</td>
-</tr>
-</tbody>
-</table>
-<p>When a container image is updated, both config files must be changed in the same PR. The <code>PYTHON_.*</code> container also has a companion <code>requirements.txt</code> that must be kept in sync.</p>
-<section id="updating-the-python-container-andersenlabnumpy" class="level3">
-<h3 class="anchored" data-anchor-id="updating-the-python-container-andersenlabnumpy">Updating the Python container (<code>andersenlab/numpy</code>)</h3>
-<p><code>bin/create_causal_vars.py</code> is the only pipeline script with third-party Python dependencies (<code>numpy</code>, <code>pandas</code>). These are pinned in <code>requirements.txt</code> at the repository root. When the <code>andersenlab/numpy</code> image is updated:</p>
-<ol type="1">
-<li><p>Update the container tag in <code>conf/docker.config</code> and <code>conf/rockfish.config</code>:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode groovy code-with-copy"><code class="sourceCode groovy"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>withName<span class="op">:</span> <span class="st">&#39;PYTHON_.*&#39;</span> <span class="op">{</span></span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    container <span class="op">=</span> <span class="st">&quot;andersenlab/numpy:YYYYMMDD&quot;</span></span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
-<li><p>Extract the exact library versions from the new image:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb19"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> run <span class="at">--rm</span> andersenlab/numpy:YYYYMMDD <span class="dt">\</span></span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>  python <span class="at">-c</span> <span class="st">&quot;import numpy, pandas; print(&#39;numpy:&#39;, numpy.__version__); print(&#39;pandas:&#39;, pandas.__version__)&quot;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
-<li><p>Update <code>requirements.txt</code> with the extracted versions:</p>
-<pre><code># Python dependencies for bin/create_causal_vars.py
-# Pinned to versions present in andersenlab/numpy:YYYYMMDD
-numpy==X.Y.Z
-pandas==X.Y.Z</code></pre></li>
-<li><p>Verify the pinned versions match the container:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb21"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="fu">grep</span> <span class="at">-E</span> <span class="st">&#39;^(numpy|pandas)==[0-9]+\.[0-9]+\.[0-9]+$&#39;</span> requirements.txt <span class="kw">|</span> <span class="fu">wc</span> <span class="at">-l</span></span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="co"># must print: 2</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
-</ol>
-<p>The <code>requirements.txt</code> is a documentation/local-dev reference — no <code>pip install</code> step is embedded in the Nextflow scripts. The container is the sealed execution environment; <code>requirements.txt</code> records what it contains.</p>
-</section>
-<section id="updating-other-containers" class="level3">
-<h3 class="anchored" data-anchor-id="updating-other-containers">Updating other containers</h3>
-<p>For all other containers (bcftools, plink, GCTA, R, DB migration), update the tag in <code>conf/docker.config</code> and <code>conf/rockfish.config</code> and verify with a stub run:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb22"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> run main.nf <span class="at">-profile</span> test,docker <span class="at">-stub-run</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-</section>
-<section id="generating-test-data" class="level2">
-<h2 class="anchored" data-anchor-id="generating-test-data">Generating Test Data</h2>
-<p>Test VCF files are not committed to the repository due to their size. Four generate scripts produce subsetted VCFs from the corresponding CaeNDR isotype release. All scripts accept either a local file path or a direct HTTPS URL from the CaeNDR S3 bucket — using a URL is recommended because bcftools fetches only chromosomes I, II, V via tabix random access, avoiding a multi-GB download.</p>
-<p><strong>Prerequisites:</strong> <code>bcftools &gt;= 1.16</code>, <code>tabix</code> (htslib).</p>
-<section id="c.-elegans-test-vcf-test-test_variable-profiles" class="level3">
-<h3 class="anchored" data-anchor-id="c.-elegans-test-vcf-test-test_variable-profiles">C. elegans test VCF (<code>test</code> / <code>test_variable</code> profiles)</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb23"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> data/test/generate_test_vcf.sh /path/to/WI.20220216.hard-filter.isotype.vcf.gz</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Produces <code>data/test/test.vcf.gz</code> (chromosomes I/II/V) and its tabix index. The script reads the strains column from the 6-column <code>test_strains.txt</code> strainfile. This VCF is used by the <code>test</code> and <code>test_variable</code> Nextflow profiles.</p>
-<blockquote class="blockquote">
-<p><strong>Note (awk fix):</strong> This script was updated alongside the S03 strainfile format change — the strains column is now extracted with <code>awk -F&#39;\t&#39; &#39;NR&gt;1 {print $6}&#39;</code> (column 6, tab-delimited) instead of the old <code>awk &#39;{print $2}&#39;</code>.</p>
-</blockquote>
-</section>
-<section id="multi-species-test-vcfs-test_three_species-profile" class="level3">
-<h3 class="anchored" data-anchor-id="multi-species-test-vcfs-test_three_species-profile">Multi-species test VCFs (<code>test_three_species</code> profile)</h3>
-<p>The <code>test_three_species</code> profile exercises the full mixed-species code path. It requires VCF files for all three supported species (C. elegans, C. briggsae, C. tropicalis).</p>
-<section id="strainfile-structure" class="level4">
-<h4 class="anchored" data-anchor-id="strainfile-structure">Strainfile structure</h4>
-<p><code>data/test/test_strains_three_species.txt</code> has six groups — two per species — covering both a small-strain and a large-strain population for each:</p>
-<table class="caption-top table">
-<thead>
-<tr class="header">
-<th>Group</th>
-<th>Species</th>
-<th>Strains</th>
-<th>Type</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>ce.test</code></td>
-<td><em>C. elegans</em></td>
-<td>200</td>
-<td>single population</td>
-</tr>
-<tr class="even">
-<td><code>ce.test.popA</code></td>
-<td><em>C. elegans</em></td>
-<td>100</td>
-<td>multi-population A</td>
-</tr>
-<tr class="odd">
-<td><code>ce.test.popB</code></td>
-<td><em>C. elegans</em></td>
-<td>100</td>
-<td>multi-population B</td>
-</tr>
-<tr class="even">
-<td><code>cb.test</code></td>
-<td><em>C. briggsae</em></td>
-<td>200</td>
-<td>single population</td>
-</tr>
-<tr class="odd">
-<td><code>cb.test.popA</code></td>
-<td><em>C. briggsae</em></td>
-<td>100</td>
-<td>multi-population A</td>
-</tr>
-<tr class="even">
-<td><code>cb.test.popB</code></td>
-<td><em>C. briggsae</em></td>
-<td>100</td>
-<td>multi-population B</td>
-</tr>
-<tr class="odd">
-<td><code>ct.test</code></td>
-<td><em>C. tropicalis</em></td>
-<td>200</td>
-<td>single population</td>
-</tr>
-<tr class="even">
-<td><code>ct.test.popA</code></td>
-<td><em>C. tropicalis</em></td>
-<td>100</td>
-<td>multi-population A</td>
-</tr>
-<tr class="odd">
-<td><code>ct.test.popB</code></td>
-<td><em>C. tropicalis</em></td>
-<td>100</td>
-<td>multi-population B</td>
-</tr>
-</tbody>
-</table>
-<p>The single-population groups (<code>{sp}.test</code>) use all 200 strains. The multi-population groups split those 200 strains evenly into popA (first 100) and popB (last 100). All groups for a species share the same VCF, so only one VCF per species is needed.</p>
-</section>
-<section id="generating-the-ce-cb-and-ct-test-vcfs" class="level4">
-<h4 class="anchored" data-anchor-id="generating-the-ce-cb-and-ct-test-vcfs">Generating the CE, CB, and CT test VCFs</h4>
-<p>CaeNDR release pages for finding the latest HTTPS URLs:</p>
-<ul>
-<li><strong>C. elegans:</strong> <a href="https://caendr.org/data/data-release/c-elegans/latest" class="uri">https://caendr.org/data/data-release/c-elegans/latest</a></li>
-<li><strong>C. briggsae:</strong> <a href="https://caendr.org/data/data-release/c-briggsae/latest" class="uri">https://caendr.org/data/data-release/c-briggsae/latest</a></li>
-<li><strong>C. tropicalis:</strong> <a href="https://caendr.org/data/data-release/c-tropicalis/latest" class="uri">https://caendr.org/data/data-release/c-tropicalis/latest</a></li>
-</ul>
-<p>Run the generate scripts from the project root, passing the S3 URL from each release page:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb24"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> data/test/generate_test_ce_vcf.sh <span class="dt">\</span></span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;https://caendr-open-access-data-bucket.s3.us-east-2.amazonaws.com/dataset_release/c_elegans/YYYYMMDD/variation/WI.YYYYMMDD.hard-filter.isotype.vcf.gz&quot;</span></span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> data/test/generate_test_cb_vcf.sh <span class="dt">\</span></span>
-<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;https://caendr-open-access-data-bucket.s3.us-east-2.amazonaws.com/dataset_release/c_briggsae/YYYYMMDD/variation/WI.YYYYMMDD.hard-filter.isotype.vcf.gz&quot;</span></span>
-<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> data/test/generate_test_ct_vcf.sh <span class="dt">\</span></span>
-<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;https://caendr-open-access-data-bucket.s3.us-east-2.amazonaws.com/dataset_release/c_tropicalis/YYYYMMDD/variation/WI.YYYYMMDD.hard-filter.isotype.vcf.gz&quot;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Each script:</p>
-<ol type="1">
-<li>Extracts the 8-digit release date from the source VCF filename</li>
-<li>Subsets to chromosomes I, II, V and the first 200 strains by default (pass a custom strain-list file as a second argument to change the selection)</li>
-<li>Creates dated symlinks: <code>test_ce.YYYYMMDD.vcf.gz → test_ce.vcf.gz</code> (and <code>.tbi</code>)</li>
-<li>Prints the assembled small (100-strain) and large (200-strain) strainfile rows</li>
-</ol>
-<p>After running all three scripts, commit the six dated symlinks and the strainfile:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb25"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> add data/test/test_ce.YYYYMMDD.vcf.gz data/test/test_ce.YYYYMMDD.vcf.gz.tbi</span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> add data/test/test_cb.YYYYMMDD.vcf.gz data/test/test_cb.YYYYMMDD.vcf.gz.tbi</span>
-<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> add data/test/test_ct.YYYYMMDD.vcf.gz data/test/test_ct.YYYYMMDD.vcf.gz.tbi</span>
-<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> add data/test/test_strains_three_species.txt</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-</section>
-<section id="running-the-three-species-test" class="level3">
-<h3 class="anchored" data-anchor-id="running-the-three-species-test">Running the three-species test</h3>
-<p>Once VCF files are generated and the strainfile is populated:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb26"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> run . <span class="at">-profile</span> test_three_species,docker</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>A stub run (no VCF files required) verifies channel wiring and strainfile parsing for all six groups:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb27"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> run . <span class="at">-profile</span> test_three_species <span class="at">-stub-run</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
+<p>Integration and cross-validation tests skip automatically when their required environment variables are not set. See <a href="./testing-integration.html">Local Integration Testing</a> for the full environment variable reference.</p>
 </section>
 <section id="project-structure" class="level2">
 <h2 class="anchored" data-anchor-id="project-structure">Project Structure</h2>

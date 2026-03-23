@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-03-10">
+<meta name="dcterms.date" content="2026-03-23">
 
 <title>Changelog – nemascan-sims-nf</title>
 <style>
@@ -3829,6 +3829,23 @@ vertical-align: -.125em;
 }</script>
 
 
+<style type="text/css">
+body {
+font-size: 1.1rem;
+}
+
+.mermaid svg {
+max-width: 100%;
+width: 100%;
+height: auto;
+display: block;
+margin: 0 auto;
+}
+
+.cell-output-display {
+margin: 2rem 0;
+}
+</style>
 </head>
 
 <body class="nav-fixed quarto-light">
@@ -3881,8 +3898,30 @@ vertical-align: -.125em;
     <ul class="dropdown-menu" aria-labelledby="nav-menu-development">    
         <li>
     <a class="dropdown-item" href="./development.html">
- <span class="dropdown-text">Development</span></a>
+ <span class="dropdown-text">Development Guide</span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="./setup.html">
+ <span class="dropdown-text">Setup</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="./testing-local-e2e.html">
+ <span class="dropdown-text">Local End-to-End Testing</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./testing-integration.html">
+ <span class="dropdown-text">Local Integration Testing</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./testing-hpc.html">
+ <span class="dropdown-text">HPC End-to-End Testing</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./testing-output-validation.html">
+ <span class="dropdown-text">Output Validation</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
         <li>
     <a class="dropdown-item" href="./changelog.html">
  <span class="dropdown-text">Changelog</span></a>
@@ -3965,7 +4004,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">March 10, 2026</p>
+      <p class="date">March 23, 2026</p>
     </div>
   </div>
   
@@ -3983,12 +4022,17 @@ vertical-align: -.125em;
 <section id="fixed" class="level3">
 <h3 class="anchored" data-anchor-id="fixed">Fixed</h3>
 <ul>
-<li><strong>Missing <code>versions.yml</code> in DB migration modules</strong> (<code>fix/versions_yml_db_migration</code>, 2026-03-05): Added <code>versions.yml</code> output to all 7 <code>modules/db_migration/*/main.nf</code> processes (<code>write_marker_set</code>, <code>write_genotype_matrix</code>, <code>write_gwa_to_db</code>, <code>write_trait_data</code>, <code>aggregate_metadata</code>, <code>analyze_qtl</code>, <code>assess_sims</code>). The pattern was established across all other module families (bcftools, GCTA, PLINK, R, Python) but had not been carried forward when the DB migration layer was added. All 7 processes now capture the R version and wire their <code>versions</code> output channel into <code>ch_versions</code> in <code>main.nf</code>.</li>
+<li><strong>Eigen calculation uses full decomposition (Li &amp; Ji 2005)</strong> (<code>fix-eigen-calculation</code>, 2026-03-20): Replaced the <code>RSpectra::eigs_sym()</code> partial-decomposition while-loop in <code>bin/Get_GenoMatrix_Eigen.R</code> with a full <code>eigen()</code> decomposition implementing the Li &amp; Ji
+<ol start="2005" type="1">
+<li>method. The old code clipped eigenvalues &gt;1 to exactly 1 and stopped accumulating when the incremental sum stopped growing — missing the fractional contributions of small eigenvalues and causing <code>n_independent_tests</code> to be ~2 orders of magnitude too low. The corrected formula sums 1 for each λ &gt; 1 and the fractional part of each λ ≤ 1, producing a stricter EIGEN significance threshold. The <code>RSpectra</code> package dependency is removed. Integration test data regenerated to reflect the corrected threshold.</li>
+</ol></li>
 </ul>
 </section>
 <section id="fixed-1" class="level3">
 <h3 class="anchored" data-anchor-id="fixed-1">Fixed</h3>
-<p>&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD - <strong>Pipeline configuration gaps</strong> (<code>fix/pipeline_configuration_gaps</code>, 2026-03-05): - Added <code>--output_dir</code> parameter for stable, deterministic output directory naming. The date-based default (<code>Analysis_Results-{date}</code>) is preserved when <code>--output_dir</code> is not specified. - Added <code>nextflow_schema.json</code> — machine-readable parameter schema covering all pipeline parameters, compatible with nf-core tooling and IDE parameter validation. - Documented previously undocumented parameters <code>--alpha</code> and <code>--legacy_assess</code> in the README parameters table and <code>--help</code> output. - Parameterized hardcoded Rockfish cluster paths in <code>conf/rockfish.config</code>: <code>--slurm_account</code> (replaces hardcoded <code>eande106</code> in <code>clusterOptions</code>) and <code>--scratch_dir</code> (replaces hardcoded <code>/scratch4/eande106</code> in <code>workflow.workDir</code>). All Rockfish infrastructure params are now overridable without editing the config file. ======= - <strong>Stochastic script reproducibility</strong> (<code>fix/rand-seed-stochastic-scripts</code>, 2026-03-05): causal variant selection and effect size simulation are now fully reproducible across pipeline runs: - <code>bin/create_causal_vars.py</code> seeds <code>np.random.default_rng(rep)</code> at startup; all stochastic calls (<code>rng.choice</code>, <code>rng.gamma</code>, <code>rng.uniform</code>) use the seeded Generator. Previously, <code>np.random.default_rng()</code> was called without a seed, making results non-deterministic. - <code>bin/Create_Causal_QTLs.R</code> calls <code>set.seed(as.integer(rep))</code> before any stochastic draws (<code>rgamma</code>, <code>sample</code>, <code>runif</code>). - Both Nextflow modules (<code>PYTHON_SIMULATE_EFFECTS_GLOBAL</code>, <code>R_SIMULATE_EFFECTS_GLOBAL</code>, <code>R_SIMULATE_EFFECTS_LOCAL</code>) now pass <code>${rep}</code> as the seed argument to the scripts. - <code>trait_metadata_schema()</code> gains a new <code>sim_seed</code> (int32) field; <code>write_trait_metadata()</code> stores the seed used for each simulated trait, enabling exact post-hoc reproduction without the Nextflow cache. &gt;&gt;&gt;&gt;&gt;&gt;&gt; origin/reproducibility-updates</p>
+<ul>
+<li><strong>Missing <code>versions.yml</code> in DB migration modules</strong> (<code>fix/versions_yml_db_migration</code>, 2026-03-05): Added <code>versions.yml</code> output to all 7 <code>modules/db_migration/*/main.nf</code> processes (<code>write_marker_set</code>, <code>write_genotype_matrix</code>, <code>write_gwa_to_db</code>, <code>write_trait_data</code>, <code>aggregate_metadata</code>, <code>analyze_qtl</code>, <code>assess_sims</code>). The pattern was established across all other module families (bcftools, GCTA, PLINK, R, Python) but had not been carried forward when the DB migration layer was added. All 7 processes now capture the R version and wire their <code>versions</code> output channel into <code>ch_versions</code> in <code>main.nf</code>.</li>
+</ul>
 </section>
 <section id="fixed-2" class="level3">
 <h3 class="anchored" data-anchor-id="fixed-2">Fixed</h3>

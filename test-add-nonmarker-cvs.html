@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-03-05">
+<meta name="dcterms.date" content="2026-03-23">
 
 <title>Functional Validation: Non-Marker Causal Variants – nemascan-sims-nf</title>
 <style>
@@ -3864,6 +3864,23 @@ vertical-align: -.125em;
 }</script>
 
 
+<style type="text/css">
+body {
+font-size: 1.1rem;
+}
+
+.mermaid svg {
+max-width: 100%;
+width: 100%;
+height: auto;
+display: block;
+margin: 0 auto;
+}
+
+.cell-output-display {
+margin: 2rem 0;
+}
+</style>
 </head>
 
 <body class="nav-fixed quarto-light">
@@ -3916,8 +3933,30 @@ vertical-align: -.125em;
     <ul class="dropdown-menu" aria-labelledby="nav-menu-development">    
         <li>
     <a class="dropdown-item" href="./development.html">
- <span class="dropdown-text">Development</span></a>
+ <span class="dropdown-text">Development Guide</span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="./setup.html">
+ <span class="dropdown-text">Setup</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="./testing-local-e2e.html">
+ <span class="dropdown-text">Local End-to-End Testing</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./testing-integration.html">
+ <span class="dropdown-text">Local Integration Testing</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./testing-hpc.html">
+ <span class="dropdown-text">HPC End-to-End Testing</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./testing-output-validation.html">
+ <span class="dropdown-text">Output Validation</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
         <li>
     <a class="dropdown-item" href="./changelog.html">
  <span class="dropdown-text">Changelog</span></a>
@@ -3987,7 +4026,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">March 5, 2026</p>
+      <p class="date">March 23, 2026</p>
     </div>
   </div>
   
@@ -4096,98 +4135,33 @@ ct.test.popB    c_tropicalis    data/test/test_ct.20250627.vcf.gz   0.05    0.8 
 <p>The marker set ID hash was upgraded from v=1 (2 parameters: <code>population</code>, <code>maf</code>) to v=2 (5 parameters: <code>population</code>, <code>maf</code>, <code>species</code>, <code>vcf_release_id</code>, <code>ms_ld</code>). The version prefix is encoded in the hash input string, making v=1 and v=2 hashes structurally incompatible — any existing DB built with v=1 hashes must be regenerated.</p>
 <div class="cell">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">Sys.setenv</span>(<span class="at">NEMASCAN_R_LIB =</span> <span class="fu">normalizePath</span>(<span class="st">&quot;../R&quot;</span>))</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="fu">source</span>(<span class="st">&quot;../R/setup.R&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stderr">
-<pre><code>Some features are not enabled in this build of Arrow. Run `arrow_info()` for more information.</code></pre>
-</div>
-<div class="cell-output cell-output-stderr">
-<pre><code>The repository you retrieved Arrow from did not include all of Arrow&#39;s features.
-You can install a fully-featured version by running:
-`install.packages(&#39;arrow&#39;, repos = &#39;https://apache.r-universe.dev&#39;)`.</code></pre>
-</div>
-<div class="cell-output cell-output-stderr">
-<pre><code>
-Attaching package: &#39;arrow&#39;</code></pre>
-</div>
-<div class="cell-output cell-output-stderr">
-<pre><code>The following object is masked from &#39;package:utils&#39;:
-
-    timestamp</code></pre>
-</div>
-<div class="cell-output cell-output-stderr">
-<pre><code>Loading required package: DBI</code></pre>
-</div>
-<div class="cell-output cell-output-stderr">
-<pre><code>
-Attaching package: &#39;dplyr&#39;</code></pre>
-</div>
-<div class="cell-output cell-output-stderr">
-<pre><code>The following objects are masked from &#39;package:data.table&#39;:
-
-    between, first, last</code></pre>
-</div>
-<div class="cell-output cell-output-stderr">
-<pre><code>The following objects are masked from &#39;package:stats&#39;:
-
-    filter, lag</code></pre>
-</div>
-<div class="cell-output cell-output-stderr">
-<pre><code>The following objects are masked from &#39;package:base&#39;:
-
-    intersect, setdiff, setequal, union</code></pre>
-</div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># v=2: now includes species, vcf_release_id, ms_ld</span></span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>ms <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(<span class="st">&quot;ce.test&quot;</span>, <span class="fl">0.05</span>, <span class="st">&quot;c_elegans&quot;</span>, <span class="st">&quot;20220216&quot;</span>, <span class="fl">0.8</span>)</span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>ms<span class="sc">$</span>hash         <span class="co"># → &quot;db39e634ef0bfa76e1bd&quot;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>[1] &quot;db39e634ef0bfa76e1bd&quot;</code></pre>
-</div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>ms<span class="sc">$</span>hash_string  <span class="co"># → &quot;v=2|population=ce.test|maf=0.0500000000|...&quot;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>[1] &quot;v=2|population=ce.test|maf=0.0500000000|species=c_elegans|vcf_release_id=20220216|ms_ld=0.8000000000&quot;</code></pre>
-</div>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="fu">source</span>(<span class="st">&quot;../R/setup.R&quot;</span>)</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="co"># v=2: now includes species, vcf_release_id, ms_ld</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>ms <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(<span class="st">&quot;ce.test&quot;</span>, <span class="fl">0.05</span>, <span class="st">&quot;c_elegans&quot;</span>, <span class="st">&quot;20220216&quot;</span>, <span class="fl">0.8</span>)</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>ms<span class="sc">$</span>hash         <span class="co"># → &quot;db39e634ef0bfa76e1bd&quot;</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>ms<span class="sc">$</span>hash_string  <span class="co"># → &quot;v=2|population=ce.test|maf=0.0500000000|...&quot;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Show trait and mapping ID chain</span></span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>tr  <span class="ot">&lt;-</span> <span class="fu">generate_trait_id</span>(ms<span class="sc">$</span>hash, <span class="dv">5</span>, <span class="st">&quot;gamma&quot;</span>, <span class="dv">1</span>, <span class="fl">0.8</span>)</span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>map <span class="ot">&lt;-</span> <span class="fu">generate_mapping_id</span>(tr<span class="sc">$</span>hash, <span class="st">&quot;inbred&quot;</span>, <span class="cn">TRUE</span>)</span>
-<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;marker_set_id :&quot;</span>, ms<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>marker_set_id : db39e634ef0bfa76e1bd </code></pre>
-</div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;trait_id      :&quot;</span>, tr<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>trait_id      : aadfdfe371a917896ad6 </code></pre>
-</div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;mapping_id    :&quot;</span>, map<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>mapping_id    : c7e06e757cd1102e6092 </code></pre>
-</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Show trait and mapping ID chain</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>tr  <span class="ot">&lt;-</span> <span class="fu">generate_trait_id</span>(ms<span class="sc">$</span>hash, <span class="dv">5</span>, <span class="st">&quot;gamma&quot;</span>, <span class="dv">1</span>, <span class="fl">0.8</span>)</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>map <span class="ot">&lt;-</span> <span class="fu">generate_mapping_id</span>(tr<span class="sc">$</span>hash, <span class="st">&quot;inbred&quot;</span>, <span class="cn">TRUE</span>)</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;marker_set_id :&quot;</span>, ms<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;trait_id      :&quot;</span>, tr<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;mapping_id    :&quot;</span>, map<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Sensitivity: changing species changes the marker set hash</span></span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>ms_cb <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(<span class="st">&quot;ce.test&quot;</span>, <span class="fl">0.05</span>, <span class="st">&quot;c_briggsae&quot;</span>, <span class="st">&quot;20220216&quot;</span>, <span class="fl">0.8</span>)</span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;c_elegans hash :&quot;</span>, ms<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>c_elegans hash : db39e634ef0bfa76e1bd </code></pre>
-</div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;c_briggsae hash:&quot;</span>, ms_cb<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>c_briggsae hash: 9c823083ae97aa17bc39 </code></pre>
-</div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;hashes equal?  :&quot;</span>, ms<span class="sc">$</span>hash <span class="sc">==</span> ms_cb<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)  <span class="co"># → FALSE</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>hashes equal?  : FALSE </code></pre>
-</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Sensitivity: changing species changes the marker set hash</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>ms_cb <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(<span class="st">&quot;ce.test&quot;</span>, <span class="fl">0.05</span>, <span class="st">&quot;c_briggsae&quot;</span>, <span class="st">&quot;20220216&quot;</span>, <span class="fl">0.8</span>)</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;c_elegans hash :&quot;</span>, ms<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;c_briggsae hash:&quot;</span>, ms_cb<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;hashes equal?  :&quot;</span>, ms<span class="sc">$</span>hash <span class="sc">==</span> ms_cb<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)  <span class="co"># → FALSE</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="co"># CV parameters are NOT in the hash — runs differing only in cv_maf/cv_ld reuse the same marker set record</span></span>
-<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>ms2 <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(<span class="st">&quot;ce.test&quot;</span>, <span class="fl">0.05</span>, <span class="st">&quot;c_elegans&quot;</span>, <span class="st">&quot;20220216&quot;</span>, <span class="fl">0.8</span>)</span>
-<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;same hash on rerun?:&quot;</span>, ms<span class="sc">$</span>hash <span class="sc">==</span> ms2<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)  <span class="co"># → TRUE</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>same hash on rerun?: TRUE </code></pre>
-</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># CV parameters are NOT in the hash — runs differing only in cv_maf/cv_ld reuse the same marker set record</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>ms2 <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(<span class="st">&quot;ce.test&quot;</span>, <span class="fl">0.05</span>, <span class="st">&quot;c_elegans&quot;</span>, <span class="st">&quot;20220216&quot;</span>, <span class="fl">0.8</span>)</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;same hash on rerun?:&quot;</span>, ms<span class="sc">$</span>hash <span class="sc">==</span> ms2<span class="sc">$</span>hash, <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)  <span class="co"># → TRUE</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <div class="callout callout-style-default callout-important callout-titled">
 <div class="callout-header d-flex align-content-center">
@@ -4209,41 +4183,41 @@ Important
 <section id="aliased-module-imports" class="level3">
 <h3 class="anchored" data-anchor-id="aliased-module-imports">Aliased module imports</h3>
 <p><code>main.nf</code> imports <code>PLINK_RECODE_VCF</code> twice under different aliases:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb32"><pre class="sourceCode groovy code-with-copy"><code class="sourceCode groovy"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>include <span class="op">{</span> PLINK_RECODE_VCF <span class="kw">as</span> PLINK_RECODE_MS_VCF <span class="op">}</span> from <span class="st">&#39;./modules/plink/recode_vcf/main&#39;</span></span>
-<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>include <span class="op">{</span> PLINK_RECODE_VCF <span class="kw">as</span> PLINK_RECODE_CV_VCF <span class="op">}</span> from <span class="st">&#39;./modules/plink/recode_vcf/main&#39;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode groovy code-with-copy"><code class="sourceCode groovy"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>include <span class="op">{</span> PLINK_RECODE_VCF <span class="kw">as</span> PLINK_RECODE_MS_VCF <span class="op">}</span> from <span class="st">&#39;./modules/plink/recode_vcf/main&#39;</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>include <span class="op">{</span> PLINK_RECODE_VCF <span class="kw">as</span> PLINK_RECODE_CV_VCF <span class="op">}</span> from <span class="st">&#39;./modules/plink/recode_vcf/main&#39;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="channel-fan-out" class="level3">
 <h3 class="anchored" data-anchor-id="channel-fan-out">Channel fan-out</h3>
 <p>After VCF renaming, the renamed VCF is forked with <code>.tap{}</code> before the two parallel PLINK calls to avoid queue-channel double-consumption:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb33"><pre class="sourceCode groovy code-with-copy"><code class="sourceCode groovy"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>BCFTOOLS_RENAME_CHROMS<span class="op">.</span>out<span class="op">.</span>vcf</span>
-<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span><span class="fu">tap</span> <span class="op">{</span> ch_renamed_for_ms <span class="op">}</span></span>
-<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span><span class="fu">tap</span> <span class="op">{</span> ch_renamed_for_cv <span class="op">}</span></span>
-<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a><span class="co">// Marker SNP set — uses per-group ms_maf and ms_ld from strainfile</span></span>
-<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a><span class="fu">PLINK_RECODE_MS_VCF</span><span class="op">(</span></span>
-<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a>    ch_renamed_for_ms<span class="op">,</span></span>
-<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a>    ch_mito_num<span class="op">,</span></span>
-<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a>    ch_sf<span class="op">.</span>ms_maf_vals<span class="op">.</span><span class="fu">map</span> <span class="op">{</span> meta<span class="op">,</span> ms_maf <span class="op">-&gt;</span> ms_maf <span class="op">},</span></span>
-<span id="cb33-10"><a href="#cb33-10" aria-hidden="true" tabindex="-1"></a>    ch_sf<span class="op">.</span>ms_ld_vals<span class="op">.</span><span class="fu">map</span>  <span class="op">{</span> meta<span class="op">,</span> ms_ld  <span class="op">-&gt;</span> ms_ld  <span class="op">}</span></span>
-<span id="cb33-11"><a href="#cb33-11" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span>
-<span id="cb33-12"><a href="#cb33-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb33-13"><a href="#cb33-13" aria-hidden="true" tabindex="-1"></a><span class="co">// Causal variant pool — uses global cv_maf/cv_ld (or per-group ms_maf fallback)</span></span>
-<span id="cb33-14"><a href="#cb33-14" aria-hidden="true" tabindex="-1"></a><span class="fu">PLINK_RECODE_CV_VCF</span><span class="op">(</span></span>
-<span id="cb33-15"><a href="#cb33-15" aria-hidden="true" tabindex="-1"></a>    ch_renamed_for_cv<span class="op">,</span></span>
-<span id="cb33-16"><a href="#cb33-16" aria-hidden="true" tabindex="-1"></a>    ch_mito_num<span class="op">,</span></span>
-<span id="cb33-17"><a href="#cb33-17" aria-hidden="true" tabindex="-1"></a>    ch_sf<span class="op">.</span>cv_maf_vals<span class="op">.</span><span class="fu">map</span> <span class="op">{</span> meta<span class="op">,</span> cv_maf_eff <span class="op">-&gt;</span> cv_maf_eff <span class="op">},</span></span>
-<span id="cb33-18"><a href="#cb33-18" aria-hidden="true" tabindex="-1"></a>    <span class="bu">Channel</span><span class="op">.</span><span class="fu">value</span><span class="op">(</span>cv_ld<span class="op">)</span></span>
-<span id="cb33-19"><a href="#cb33-19" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode groovy code-with-copy"><code class="sourceCode groovy"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>BCFTOOLS_RENAME_CHROMS<span class="op">.</span>out<span class="op">.</span>vcf</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span><span class="fu">tap</span> <span class="op">{</span> ch_renamed_for_ms <span class="op">}</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span><span class="fu">tap</span> <span class="op">{</span> ch_renamed_for_cv <span class="op">}</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="co">// Marker SNP set — uses per-group ms_maf and ms_ld from strainfile</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="fu">PLINK_RECODE_MS_VCF</span><span class="op">(</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    ch_renamed_for_ms<span class="op">,</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    ch_mito_num<span class="op">,</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>    ch_sf<span class="op">.</span>ms_maf_vals<span class="op">.</span><span class="fu">map</span> <span class="op">{</span> meta<span class="op">,</span> ms_maf <span class="op">-&gt;</span> ms_maf <span class="op">},</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>    ch_sf<span class="op">.</span>ms_ld_vals<span class="op">.</span><span class="fu">map</span>  <span class="op">{</span> meta<span class="op">,</span> ms_ld  <span class="op">-&gt;</span> ms_ld  <span class="op">}</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a><span class="co">// Causal variant pool — uses global cv_maf/cv_ld (or per-group ms_maf fallback)</span></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a><span class="fu">PLINK_RECODE_CV_VCF</span><span class="op">(</span></span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>    ch_renamed_for_cv<span class="op">,</span></span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a>    ch_mito_num<span class="op">,</span></span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a>    ch_sf<span class="op">.</span>cv_maf_vals<span class="op">.</span><span class="fu">map</span> <span class="op">{</span> meta<span class="op">,</span> cv_maf_eff <span class="op">-&gt;</span> cv_maf_eff <span class="op">},</span></span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a>    <span class="bu">Channel</span><span class="op">.</span><span class="fu">value</span><span class="op">(</span>cv_ld<span class="op">)</span></span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="module-change-each-maf-val-maf" class="level3">
 <h3 class="anchored" data-anchor-id="module-change-each-maf-val-maf">Module change: <code>each maf</code> → <code>val maf</code></h3>
 <p>The PLINK module input was changed from <code>each maf</code> (which creates a Cartesian product over a list of MAF values) to <code>val maf</code> (which receives a single pre-resolved value per upstream item). A new <code>val ld</code> input was added for the LD threshold:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb34"><pre class="sourceCode groovy code-with-copy"><code class="sourceCode groovy"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="co">// modules/plink/recode_vcf/main.nf</span></span>
-<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>input<span class="op">:</span></span>
-<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>tuple <span class="fu">val</span><span class="op">(</span>meta<span class="op">),</span> <span class="fu">path</span><span class="op">(</span>vcf<span class="op">),</span> <span class="fu">path</span><span class="op">(</span>vcf_index<span class="op">)</span></span>
-<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>val mito_name</span>
-<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>val maf          <span class="co">// was: each maf — val runs once per upstream item (no Cartesian product)</span></span>
-<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a>val ld           <span class="co">// LD R² threshold for --indep-pairwise; was hardcoded 0.8</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode groovy code-with-copy"><code class="sourceCode groovy"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co">// modules/plink/recode_vcf/main.nf</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>input<span class="op">:</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>tuple <span class="fu">val</span><span class="op">(</span>meta<span class="op">),</span> <span class="fu">path</span><span class="op">(</span>vcf<span class="op">),</span> <span class="fu">path</span><span class="op">(</span>vcf_index<span class="op">)</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>val mito_name</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>val maf          <span class="co">// was: each maf — val runs once per upstream item (no Cartesian product)</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>val ld           <span class="co">// LD R² threshold for --indep-pairwise; was hardcoded 0.8</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="data-flow-diagram" class="level3">
 <h3 class="anchored" data-anchor-id="data-flow-diagram">Data-flow diagram</h3>
@@ -4266,14 +4240,14 @@ BCFTOOLS_EXTRACT_STRAINS → BCFTOOLS_RENAME_CHROMS
 <section id="process-selector-nextflow.config" class="level3">
 <h3 class="anchored" data-anchor-id="process-selector-nextflow.config">Process selector (<code>nextflow.config</code>)</h3>
 <p><code>ext.tag</code> disambiguates SLURM job names when both aliases run for the same group:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb36"><pre class="sourceCode groovy code-with-copy"><code class="sourceCode groovy"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>process <span class="op">{</span></span>
-<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>    withName<span class="op">:</span> <span class="st">&#39;PLINK_RECODE_MS_VCF&#39;</span> <span class="op">{</span></span>
-<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>        ext<span class="op">.</span>tag <span class="op">=</span> <span class="op">{</span> <span class="st">&quot;</span><span class="ss">${</span>meta<span class="op">.</span>id<span class="ss">}</span><span class="st">_MS&quot;</span> <span class="op">}</span></span>
-<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
-<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a>    withName<span class="op">:</span> <span class="st">&#39;PLINK_RECODE_CV_VCF&#39;</span> <span class="op">{</span></span>
-<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a>        ext<span class="op">.</span>tag <span class="op">=</span> <span class="op">{</span> <span class="st">&quot;</span><span class="ss">${</span>meta<span class="op">.</span>id<span class="ss">}</span><span class="st">_CV&quot;</span> <span class="op">}</span></span>
-<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
-<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode groovy code-with-copy"><code class="sourceCode groovy"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>process <span class="op">{</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    withName<span class="op">:</span> <span class="st">&#39;PLINK_RECODE_MS_VCF&#39;</span> <span class="op">{</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>        ext<span class="op">.</span>tag <span class="op">=</span> <span class="op">{</span> <span class="st">&quot;</span><span class="ss">${</span>meta<span class="op">.</span>id<span class="ss">}</span><span class="st">_MS&quot;</span> <span class="op">}</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    withName<span class="op">:</span> <span class="st">&#39;PLINK_RECODE_CV_VCF&#39;</span> <span class="op">{</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>        ext<span class="op">.</span>tag <span class="op">=</span> <span class="op">{</span> <span class="st">&quot;</span><span class="ss">${</span>meta<span class="op">.</span>id<span class="ss">}</span><span class="st">_CV&quot;</span> <span class="op">}</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <hr>
 </section>
 </section>
@@ -4286,20 +4260,20 @@ BCFTOOLS_EXTRACT_STRAINS → BCFTOOLS_RENAME_CHROMS
 <section id="tap-fix-for-three-subscriber-queue-channel" class="level3">
 <h3 class="anchored" data-anchor-id="tap-fix-for-three-subscriber-queue-channel"><code>.tap{}</code> fix for three-subscriber queue channel</h3>
 <p><code>ch_sf.marker_set_params</code> is a Nextflow queue channel emitting one item per strain group. In DSL2, queue channels are consumed once — if three downstream processes each try to read from the same channel, emissions are distributed round-robin instead of broadcast. The fix uses <code>.tap{}</code> to clone the channel before any subscriber reads it:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb37"><pre class="sourceCode groovy code-with-copy"><code class="sourceCode groovy"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="co">// ch_sf.marker_set_params is a queue channel — fan out with .tap{} before</span></span>
-<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a><span class="co">// 3 subscribers consume it (write_marker_set, write_genotype_matrix, write_gwa_to_db).</span></span>
-<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a><span class="co">// Without this, DSL2 distributes emissions round-robin among competing readers.</span></span>
-<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>ch_sf<span class="op">.</span>marker_set_params</span>
-<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span><span class="fu">tap</span> <span class="op">{</span> ch_marker_set_params_for_ms <span class="op">}</span></span>
-<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span><span class="fu">tap</span> <span class="op">{</span> ch_marker_set_params_for_gm <span class="op">}</span></span>
-<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span><span class="fu">set</span> <span class="op">{</span> ch_marker_set_params_for_gwa <span class="op">}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode groovy code-with-copy"><code class="sourceCode groovy"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co">// ch_sf.marker_set_params is a queue channel — fan out with .tap{} before</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="co">// 3 subscribers consume it (write_marker_set, write_genotype_matrix, write_gwa_to_db).</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="co">// Without this, DSL2 distributes emissions round-robin among competing readers.</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>ch_sf<span class="op">.</span>marker_set_params</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span><span class="fu">tap</span> <span class="op">{</span> ch_marker_set_params_for_ms <span class="op">}</span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span><span class="fu">tap</span> <span class="op">{</span> ch_marker_set_params_for_gm <span class="op">}</span></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span><span class="fu">set</span> <span class="op">{</span> ch_marker_set_params_for_gwa <span class="op">}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Each of the three DB-write processes receives a complete, independent copy of the marker-set parameter tuples.</p>
 <hr>
 </section>
 </section>
 <section id="unit-tests" class="level2">
 <h2 class="anchored" data-anchor-id="unit-tests">6. Unit Tests</h2>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb38"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p><strong>Pre-captured output (2026-03-03):</strong></p>
 <pre><code>assessment_cross_validation: SSSSS
 assessment: .....................................................................
@@ -4337,7 +4311,7 @@ write_gwa_to_db: ......
 <h2 class="anchored" data-anchor-id="pipeline-stub-runs">7. Pipeline Stub Runs</h2>
 <section id="a.-single-species-test-profile" class="level3">
 <h3 class="anchored" data-anchor-id="a.-single-species-test-profile">7a. Single-species (<code>test</code> profile)</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb40"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="va">NXF_VER</span><span class="op">=</span>24.10.5 <span class="ex">nextflow</span> run . <span class="at">-profile</span> test <span class="at">-stub-run</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> run . <span class="at">-profile</span> test <span class="at">-stub-run</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <blockquote class="blockquote">
 <p>Note: Nextflow <code>&gt;=24.10.0,&lt;25.0.0</code> is required (manifest guard). The <code>&gt;&gt;</code> publish block syntax is a 24.x preview feature not supported in 25.x.</p>
 </blockquote>
@@ -4382,7 +4356,7 @@ Exit 0 — 48 tasks, 0 errors</code></pre>
 </section>
 <section id="b.-three-species-test_three_species-profile" class="level3">
 <h3 class="anchored" data-anchor-id="b.-three-species-test_three_species-profile">7b. Three-species (<code>test_three_species</code> profile)</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb42"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="va">NXF_VER</span><span class="op">=</span>24.10.5 <span class="ex">nextflow</span> run . <span class="at">-profile</span> test_three_species <span class="at">-stub-run</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> run . <span class="at">-profile</span> test_three_species <span class="at">-stub-run</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p><strong>Pre-captured output (2026-03-03):</strong></p>
 <pre><code>N E X T F L O W  ~  version 24.10.5
 Launching `./main.nf` DSL2 - revision: 85f6398865

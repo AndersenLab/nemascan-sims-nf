@@ -68,8 +68,12 @@ ul.task-list li input[type="checkbox"] {
     "search-label": "Search"
   }
 }</script>
+<script src="site_libs/quarto-diagram/mermaid.min.js"></script>
+<script src="site_libs/quarto-diagram/mermaid-init.js"></script>
+<link href="site_libs/quarto-diagram/mermaid.css" rel="stylesheet">
 
 
+<link rel="stylesheet" href="styles.css">
 </head>
 
 <body class="nav-fixed quarto-light">
@@ -122,8 +126,30 @@ ul.task-list li input[type="checkbox"] {
     <ul class="dropdown-menu" aria-labelledby="nav-menu-development">    
         <li>
     <a class="dropdown-item" href="./development.html">
- <span class="dropdown-text">Development</span></a>
+ <span class="dropdown-text">Development Guide</span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="./setup.html">
+ <span class="dropdown-text">Setup</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="./testing-local-e2e.html">
+ <span class="dropdown-text">Local End-to-End Testing</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./testing-integration.html">
+ <span class="dropdown-text">Local Integration Testing</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./testing-hpc.html">
+ <span class="dropdown-text">HPC End-to-End Testing</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./testing-output-validation.html">
+ <span class="dropdown-text">Output Validation</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
         <li>
     <a class="dropdown-item" href="./changelog.html">
  <span class="dropdown-text">Changelog</span></a>
@@ -173,6 +199,57 @@ ul.task-list li input[type="checkbox"] {
 
 
 <p>Pipeline documentation for <code>nemascan-sims-nf</code> — a Nextflow pipeline that simulates GWAS for <em>C. elegans</em> and related nematodes, evaluating the power and precision of different mapping algorithms.</p>
+<div class="cell" data-layout-align="default">
+<div class="cell-output-display">
+<div>
+<p></p><figure class="figure"><p></p>
+<div>
+<pre class="mermaid mermaid-js">%%{init: {'themeVariables': {'fontSize': '20px'}}}%%
+flowchart LR
+    classDef phase1 fill:#4e9af1,stroke:#2c6fad,color:#fff
+    classDef phase2 fill:#48b96e,stroke:#2d8150,color:#fff
+    classDef phase3 fill:#e07b3a,stroke:#a3572a,color:#fff
+    classDef phase4 fill:#9b59b6,stroke:#6c3483,color:#fff
+    classDef io fill:#f5f5f5,stroke:#999,color:#333
+
+    VCF(["Input VCF + strainfile"]):::io
+
+    subgraph P1["Phase 1: Marker Set Generation"]
+        A1["bcftools extract &amp; rename"]:::phase1
+        A2["PLINK LD pruning (MS + CV)"]:::phase1
+        A3["Genotype matrix &amp; eigenvalues"]:::phase1
+        A1 --&gt; A2 --&gt; A3
+    end
+
+    subgraph P2["Phase 2: Trait Simulation"]
+        B1["Select causal variants"]:::phase2
+        B2["GCTA simulate phenotypes"]:::phase2
+        B3["Variance check &amp; upscaling"]:::phase2
+        B1 --&gt; B2 --&gt; B3
+    end
+
+    subgraph P3["Phase 3: GWAS Mapping"]
+        C1["Build GRM (inbred + loco)"]:::phase3
+        C2["Map 4 mode x type combos"]:::phase3
+        C1 --&gt; C2
+    end
+
+    subgraph P4["Phase 4: QTL Detection &amp; Assessment"]
+        D1["DB ingestion (Parquet)"]:::phase4
+        D2["QTL interval detection"]:::phase4
+        D3["Performance assessment"]:::phase4
+        D1 --&gt; D2 --&gt; D3
+    end
+
+    OUT(["db_simulation_assessment_results.tsv"]):::io
+
+    VCF --&gt; P1 --&gt; P2 --&gt; P3 --&gt; P4 --&gt; OUT
+</pre>
+</div>
+<p></p></figure><p></p>
+</div>
+</div>
+</div>
 <section id="reports" class="level2">
 <h2 class="anchored" data-anchor-id="reports">Reports</h2>
 <ul>
@@ -182,7 +259,8 @@ ul.task-list li input[type="checkbox"] {
 <li><a href="./qtl-detection-assessment.html">QTL Detection &amp; Assessment</a> — Phase 4 process documentation covering database ingestion, QTL interval detection, and performance assessment through both the DB and legacy paths.</li>
 <li><a href="./database-structure.html">Database Structure</a> — Parquet database schema reference for marker sets, genotype matrices, simulated trait mappings, trait data (metadata, causal variants, phenotypes), and metadata tables.</li>
 <li><a href="./cross-validation.html">Assessment Cross-Validation</a> — How to run and interpret the cross-validation analysis comparing DB-path and legacy-path assessment outputs.</li>
-<li><a href="./development.html">Development</a> — Contributing guide covering documentation authoring, GitHub Pages publishing, testing, and project structure.</li>
+<li><a href="./development.html">Development Guide</a> — Contributing guide covering documentation authoring, GitHub Pages publishing, and project structure. Includes links to the setup page and four testing workflow pages (local end-to-end, integration, HPC, and output validation).</li>
+<li><a href="./setup.html">Setup</a> — Local and HPC environment prerequisites: Nextflow version pinning, Docker, R packages, Python, bcftools, and Rockfish conda/Singularity configuration.</li>
 </ul>
 
 
