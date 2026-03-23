@@ -1,0 +1,175 @@
+---
+title: "Issue Update"
+date: today
+format:
+  gfm:
+    preview-mode: raw
+engine: knitr
+---
+
+## Update — `2026-03-20`
+
+**Phase:** Fix
+**Status:** In Progress
+
+---
+
+## Solution
+
+### Approach
+
+GCTA's `--mlma-loco` internally recalculates allele frequencies and re-applies the MAF threshold,
+causing LOCO to test fewer markers than INBRED even when both receive the same PLINK binaries.
+Removing `--maf` alone is insufficient because GCTA has a non-zero default threshold (0.01) with
+uncertain exact behaviour, and GRM/GWA consistency requires both to operate on the same marker set.
+
+The fix uses `--extract` to pass GCTA a single-column SNP list derived directly from the PLINK
+`.bim` file (column 2, SNP IDs set by `--set-missing-var-ids @:#`). This makes PLINK the single
+source of truth for marker inclusion: GCTA's internal MAF recalculation still runs algorithmically
+but its filtering step has no effect — all markers in the extract list are included regardless.
+
+### Changes Made
+
+**`modules/gcta/make_grm/main.nf` — GRM build:**
+
+```bash
+# before
+gcta64 --bfile TO_SIMS_... \
+        --autosome --maf ${maf} ${GRM_OPTION} \
+        ...
+
+# after
+awk '{print \$2}' TO_SIMS_....bim > plink_snplist.txt
+
+gcta64 --bfile TO_SIMS_... \
+        --autosome --extract plink_snplist.txt ${GRM_OPTION} \
+        ...
+```
+
+**`modules/gcta/perform_gwa/main.nf` — GWA call (sparse GRM and PCA steps unchanged):**
+
+```bash
+# before
+gcta64 ${COMMAND} \
+    --bfile TO_SIMS_... \
+    ...
+    --maf ${maf} \
+    --thread-num ${GWA_THREADS}
+
+# after
+awk '{print \$2}' TO_SIMS_....bim > plink_snplist.txt
+
+gcta64 ${COMMAND} \
+    --bfile TO_SIMS_... \
+    ...
+    --extract plink_snplist.txt \
+    --thread-num ${GWA_THREADS}
+```
+
+### Correction — Nextflow string interpolation
+
+Initial implementation used `awk '{print $2}'`. Nextflow's Groovy string engine interpolates `$2`
+as a variable reference inside the script block heredoc, causing a `token recognition error` at
+compilation:
+
+```
+ERROR ~ Module compilation error
+- file : .../modules/gcta/make_grm/main.nf
+- cause: token recognition error at: '2' @ line 31, column 18.
+       awk '{print $2}' TO_SIMS_...bim > plink_snplist.txt
+                    ^
+```
+
+Fixed by escaping: `awk '{print \$2}'`. The `\$` passes a literal `$2` to the shell.
+
+### Rationale
+
+Both GCTA modules already stage the `.bim` in their work directories, so no channel wiring changes
+are needed. With `--extract`, LOCO and INBRED will both test the full 7016 PLINK-filtered markers.
+Combined with the PR #121 fix (`nrow(mapping_data)` for the BF denominator), the BF thresholds
+will also match between modes. Integration test fixtures (`db_simulation_assessment_results.tsv`)
+must be re-collected after a full pipeline run.
+
+---
+
+## Validation
+
+### Test Run
+
+**Command:**
+
+```bash
+# Wiring check
+nextflow run main.nf -profile test,docker -stub-run
+
+# Full run + fixture re-collection
+nextflow run main.nf -profile test,docker
+bash tests/collect_test_data.sh --collect-only
+Rscript tests/run_tests.R
+```
+
+**Executor:** local
+**Resume from cache:** no (clean run)
+
+### GCTA Log Check
+
+After the pipeline run, verify SNP counts directly from GCTA's `.command.log` files in the
+Nextflow work directory.
+
+**LOCO** — `--mlma-loco` logs the total SNPs saved at the end of the run. Before the fix this
+line reads `6602 SNPs`; after the fix it must read `7016 SNPs`.
+
+**INBRED** — `--fastGWA-mlm-exact` logs `N SNPs have been processed` at the end. This should
+already read `7016 SNPs` both before and after the fix (fastGWA does not apply an internal MAF
+re-filter when `--maf` is omitted).
+
+```{bash}
+# Set WORK_DIR to wherever Nextflow wrote its work directory.
+# Default is relative to this file's location (../../work = project root work/).
+# collect_test_data.sh uses tests/.nf-work; override: WORK_DIR=tests/.nf-work quarto render ...
+WORK_DIR="${WORK_DIR:-../../work}"
+
+echo "=== LOCO: SNPs saved by --mlma-loco ==="
+# For each GCTA_PERFORM_GWA LOCO work dir, print its "Saving results" line.
+# After the fix every line must contain 7016, not 6602.
+find "$WORK_DIR" -name ".command.sh" \
+  | xargs grep -l "mlma-loco" 2>/dev/null \
+  | while read -r cmd; do
+      log="$(dirname "$cmd")/.command.log"
+      grep "Saving the results of the mixed linear model association analyses of" \
+          "$log" 2>/dev/null
+    done | sort -u
+
+echo ""
+echo "=== INBRED: SNPs processed by --fastGWA-mlm-exact ==="
+# For each GCTA_PERFORM_GWA INBRED work dir, print its "SNPs have been processed" line.
+find "$WORK_DIR" -name ".command.sh" \
+  | xargs grep -l "fastGWA-mlm-exact" 2>/dev/null \
+  | while read -r cmd; do
+      log="$(dirname "$cmd")/.command.log"
+      grep "SNPs have been processed" "$log" 2>/dev/null
+    done | sort -u
+```
+
+> **Expected output (after fix):**
+> ```
+> === LOCO: SNPs saved by --mlma-loco ===
+> Saving the results ... of 7016 SNPs to [...]
+>
+> === INBRED: SNPs processed by --fastGWA-mlm-exact ===
+> 7016 SNPs have been processed. Saved 7016 SNPs.
+> ```
+> Any line showing `6602` in the LOCO block indicates the fix did not take effect for that task.
+
+### Pass / Fail
+
+- [X] Pipeline completed without error
+- [X] GCTA LOCO logs show 7016 SNPs included (no MAF-filter reduction)
+- [X] GCTA INBRED logs still show 7016 SNPs
+- [X] `nrow(mapping_data)` == 7016 for both LOCO and INBRED
+- [X] Integration fixtures re-collected and tests pass
+- [X] No regression in previously passing steps
+
+---
+
+*Comment generated from `comment.qmd` template · nemascan-sims-nf issue workflow*

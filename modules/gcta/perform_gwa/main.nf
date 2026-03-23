@@ -51,13 +51,15 @@ process GCTA_PERFORM_GWA {
         COVAR=""
     fi
 
+    awk '{print \$2}' TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bim > plink_snplist.txt
+
     gcta64 \${COMMAND} \\
         --bfile TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group} \\
         \${GRM_OPTION} ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \\
         \${COVAR} \\
         --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_lmm-exact_${mode}_${type} \\
         --pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno \\
-        --maf ${maf} \\
+        --extract plink_snplist.txt \\
         --thread-num \${GWA_THREADS}
 
     if [[ ${mode} == "loco" ]]; then
