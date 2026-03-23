@@ -9,6 +9,10 @@
 #   test_variable    - Variable architecture: 8 nQTL × 4 h² × 2 reps = 256 mappings
 #   test_three_species - 3 species × 3 populations = 9 groups, 36 mappings
 #   test_cv_pool     - CV pool broader than marker set (cv_maf=0.01 < ms_maf=0.05)
+#   test_hpc         - Fixed architecture, full Rockfish VCF (run on Rockfish with rockfish profile)
+#   test_hpc_variable  - Variable architecture, full Rockfish VCF (run on Rockfish)
+#   test_hpc_three_species - 3 species, full Rockfish VCFs (run on Rockfish)
+#   test_hpc_cv_pool - CV pool, full Rockfish VCF (--no-legacy required; run on Rockfish)
 #
 # Options:
 #   --no-legacy      Omit --legacy_assess (required for test_cv_pool: legacy path is
@@ -19,7 +23,9 @@
 # Artifacts are stored in tests/integration_data/<profile>/ so each profile's output
 # can be kept and tested independently.
 #
-# Requires: Docker, NXF_VER=24.10.4 (or any 24.10.x)
+# Requires: Docker for local runs, NXF_VER=24.10.4 (or any 24.10.x)
+# Note: HPC profiles (test_hpc*) are run with -profile <profile>,rockfish directly on
+# Rockfish, not via this script. Use --collect-only after the run to gather outputs.
 
 set -euo pipefail
 
@@ -71,6 +77,10 @@ fi
 
 # --- Pre-flight: verify VCF symlink targets exist ---
 check_vcfs() {
+  # HPC profiles reference VCFs on the Rockfish /vast filesystem — skip local check
+  if [[ "$PROFILE" == test_hpc* ]]; then
+    return 0
+  fi
   local missing=false
   if [[ "$PROFILE" == "test_three_species" ]]; then
     for spec in ce cb ct; do

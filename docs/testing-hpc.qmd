@@ -18,15 +18,17 @@ flowchart TD
     classDef data fill:#f5f5f5,stroke:#999,color:#333
 
     ENV["Activate nf24_env conda env"]:::step
-    VCF["Generate test VCF (module load bcftools)"]:::step
-    RUN["nextflow run -profile test,rockfish --legacy_assess"]:::step
+    VCF["Generate test VCF (for local test profiles)"]:::step
+    STRAIN["generate_hpc_strainfile.sh (for HPC profiles)"]:::step
+    RUN["nextflow run -profile test_hpc,rockfish --legacy_assess"]:::step
     WAIT(["SLURM jobs complete"]):::data
-    COLLECT["collect_test_data.sh --collect-only"]:::step
+    COLLECT["collect_test_data.sh --profile test_hpc --collect-only"]:::step
     RSYNC["rsync integration_data/ to local Mac"]:::step
     TEST["Rscript tests/run_tests.R with TEST_DB_DIR set"]:::step
     DONE(["All tests pass"]):::data
 
-    ENV --> VCF --> RUN --> WAIT --> COLLECT --> RSYNC --> TEST --> DONE
+    ENV --> VCF
+    ENV --> STRAIN --> RUN --> WAIT --> COLLECT --> RSYNC --> TEST --> DONE
 ```
 
 
@@ -86,16 +88,69 @@ module load bcftools/1.17   # adjust version as needed
 #     automatically; without this the script exits with "bcftools not found")
 export PATH
 
-# 3. Set the full path to the WI.20210901 VCF on Rockfish
-FULL_VCF=/vast/eande106/data/c_elegans/WI/variation/20210901/vcf/WI.20210901.hard-filter.isotype.vcf.gz
+# 3. Set the full path to the C. elegans VCF on Rockfish
+FULL_VCF=/vast/eande106/data/c_elegans/WI/variation/20250625/vcf/WI.20250625.hard-filter.isotype.vcf.gz
 
-# 4. Generate the test VCF (chromosomes I, II, V; 13 strains)
+# 4. Generate the test VCF (chromosomes I, II, V; 200 strains)
 bash data/test/generate_test_vcf.sh "$FULL_VCF"
 ```
 
-`data/test/test.20210901.vcf.gz` is a committed symlink that points to
-`data/test/test.vcf.gz`. The script creates `test.vcf.gz` (the symlink target),
-making the symlink valid for the first time on a fresh clone.
+`data/test/test_ce.vcf.gz` is the VCF target (gitignored). The script creates it and
+updates the dated symlink `test_ce.20250625.vcf.gz`, making it valid on a fresh clone.
+See `data/test/release_ids.sh` for the currently pinned CE release date.
+
+
+## Generating HPC Strainfiles
+
+HPC profiles (`test_hpc`, `test_hpc_variable`, `test_hpc_cv_pool`, `test_hpc_three_species`)
+use strainfiles that embed absolute Rockfish VCF paths, so the pipeline reads VCFs directly
+from the `/vast/eande106` filesystem rather than downloading from CaeNDR S3.
+
+`data/test/hpc_strains.txt` and `data/test/hpc_strains_three_species.txt` are committed to
+git as header-only placeholders. Run `generate_hpc_strainfile.sh` on Rockfish to populate them
+(requires bcftools on PATH and the same `module load` / `export PATH` steps as above):
+
+```bash
+# CE only — updates hpc_strains.txt (used by test_hpc, test_hpc_variable, test_hpc_cv_pool):
+bash data/test/generate_hpc_strainfile.sh \
+  /vast/eande106/data/c_elegans/WI/variation/20250625/vcf/WI.20250625.hard-filter.isotype.vcf.gz
+
+# All three species — updates both strainfiles (also needed for test_hpc_three_species):
+bash data/test/generate_hpc_strainfile.sh \
+  /vast/eande106/data/c_elegans/WI/variation/20250625/vcf/WI.20250625.hard-filter.isotype.vcf.gz \
+  /vast/eande106/data/c_briggsae/WI/variation/20250626/vcf/WI.20250626.hard-filter.isotype.vcf.gz \
+  /vast/eande106/data/c_tropicalis/WI/variation/20250627/vcf/WI.20250627.hard-filter.isotype.vcf.gz
+```
+
+After generating, commit the updated strainfiles so other developers and CI can use them:
+
+```bash
+git add data/test/hpc_strains.txt data/test/hpc_strains_three_species.txt
+git commit -m "Update HPC strainfiles from Rockfish VCFs"
+```
+
+See `data/test/release_ids.sh` for the currently pinned CaeNDR release dates.
+
+
+## Profile Reference
+
+All four local test profiles run on Rockfish (SLURM) by combining with `rockfish`. The four
+HPC profiles (`test_hpc*`) also run on Rockfish but use full CaeNDR VCFs from `/vast/eande106`
+instead of the 200-strain test subset:
+
+| Profile combination | VCF source | Strainfile | Legacy assess |
+|--------------------|-----------|-----------|---------------|
+| `-profile test,rockfish` | test VCF (200 strains) | `test_strains.txt` | ✓ |
+| `-profile test_variable,rockfish` | test VCF (200 strains) | `test_strains.txt` | ✓ |
+| `-profile test_three_species,rockfish` | test VCF (200 strains) | `test_strains_three_species.txt` | ✓ |
+| `-profile test_cv_pool,rockfish` | test VCF (200 strains) | `test_strains.txt` | ✗ |
+| `-profile test_hpc,rockfish` | full VCF (all strains) | `hpc_strains.txt` | ✓ |
+| `-profile test_hpc_variable,rockfish` | full VCF (all strains) | `hpc_strains.txt` | ✓ |
+| `-profile test_hpc_three_species,rockfish` | full VCF (all strains) | `hpc_strains_three_species.txt` | ✓ |
+| `-profile test_hpc_cv_pool,rockfish` | full VCF (all strains) | `hpc_strains.txt` | ✗ |
+
+HPC strainfiles must be populated with `generate_hpc_strainfile.sh` before using `test_hpc*`
+profiles (see [Generating HPC Strainfiles](#generating-hpc-strainfiles) above).
 
 
 ## Collecting Integration Test Data on Rockfish
@@ -114,12 +169,15 @@ nextflow run main.nf \
 bash tests/collect_test_data.sh --collect-only
 ```
 
+Substitute any profile from the table above. For `test_variable` and `test_three_species`,
+change `nf-work-test` to a distinct work-dir name to avoid mixing intermediate files.
+
 - `-work-dir` redirects intermediate files to `/scratch4/` (high-capacity scratch); without
   it Nextflow defaults to `./work/` on the login node's local disk, which is too small for
   a full pipeline run.
 - Replace `<yourname>` with your Rockfish username (e.g. `ryanmckeown`).
 - `--legacy_assess` is required to generate the legacy assessment file used by the
-  cross-validation tests.
+  cross-validation tests. Omit it for `test_cv_pool` and `test_hpc_cv_pool`.
 
 **Sync data to your local Mac** using `rsync` from your local terminal (not
 from Rockfish). `<rockfish-host>` is whatever SSH alias or hostname you use
@@ -149,10 +207,10 @@ directory itself.
 Then run the integration tests locally:
 
 ```bash
-TEST_DB_DIR=tests/integration_data/db \
+TEST_DB_DIR=tests/integration_data/test/db \
 TEST_WORK_DIR=tests/.nf-work \
-TEST_LEGACY_ASSESSMENT=tests/integration_data/simulation_assessment_results.tsv \
-TEST_DB_ASSESSMENT=tests/integration_data/db_simulation_assessment_results.tsv \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test/db_simulation_assessment_results.tsv \
 Rscript tests/run_tests.R
 ```
 
@@ -173,6 +231,70 @@ nextflow run main.nf \
   --strainfile strains.tsv \
   -stub-run
   # vcf is specified per-group in the strainfile (see README: Strainfile Format)
+```
+
+## Running HPC Integration Test Profiles
+
+Four HPC profiles mirror the local test profiles but use full CaeNDR VCFs on the Rockfish
+filesystem. Each combines with `rockfish` and optionally `--legacy_assess`. The work directory
+should be on `/scratch4/` to avoid filling the login node's local disk.
+
+```bash
+# Fixed architecture (equivalent to local `test` profile)
+nextflow run main.nf \
+  -profile test_hpc,rockfish \
+  --legacy_assess \
+  -work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc
+
+# Variable architecture grid (equivalent to local `test_variable` profile)
+nextflow run main.nf \
+  -profile test_hpc_variable,rockfish \
+  --legacy_assess \
+  -work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc-variable
+
+# Three-species (requires hpc_strains_three_species.txt to be populated)
+nextflow run main.nf \
+  -profile test_hpc_three_species,rockfish \
+  --legacy_assess \
+  -work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc-three-species
+
+# CV pool — omit --legacy_assess (incompatible with non-marker causal variants)
+nextflow run main.nf \
+  -profile test_hpc_cv_pool,rockfish \
+  -work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc-cv-pool
+```
+
+After each run completes, collect outputs on the login node:
+
+```bash
+bash tests/collect_test_data.sh --profile test_hpc --collect-only
+# Replace test_hpc with the profile name you ran
+```
+
+Sync to your local Mac and run integration tests:
+
+```bash
+# Sync (run from local Mac)
+rsync -av --delete \
+  <rockfish-host>:/vast/eande106/<yourname>/nemascan-sims-nf/tests/integration_data/ \
+  tests/integration_data/
+
+# Run tests — adjust profile name as needed
+TEST_DB_DIR=tests/integration_data/test_hpc/db \
+TEST_WORK_DIR=tests/.nf-work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test_hpc/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test_hpc/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+For `test_hpc_cv_pool`, omit `TEST_LEGACY_ASSESSMENT` and add `TEST_CV_POOL=true`:
+
+```bash
+TEST_DB_DIR=tests/integration_data/test_hpc_cv_pool/db \
+TEST_WORK_DIR=tests/.nf-work \
+TEST_DB_ASSESSMENT=tests/integration_data/test_hpc_cv_pool/db_simulation_assessment_results.tsv \
+TEST_CV_POOL=true \
+Rscript tests/run_tests.R
 ```
 
 ::: {.callout-tip}
