@@ -111,7 +111,14 @@ trait_hash <- ids$trait_id$hash
 log_msg(paste("Assessing mapping:", mapping_id))
 
 # Step 1: Read QTL regions from analyze_qtl.R output
-qtl_regions <- data.table::fread(opt$qtl_regions, header = TRUE) %>% as.data.frame()
+# file.size guard: write.table(data.frame(), col.names=TRUE) produces a 1-byte file
+# (just a newline) when no QTLs were detected. fread errors on such files; return
+# data.frame() instead so compile_full_assessment() handles the zero-detection case.
+qtl_regions <- if (file.size(opt$qtl_regions) <= 1L) {
+  data.frame()
+} else {
+  data.table::fread(opt$qtl_regions, header = TRUE) %>% as.data.frame()
+}
 log_msg(paste("Read", nrow(qtl_regions), "QTL regions"))
 
 # Step 2: Load causal variants from .par file
