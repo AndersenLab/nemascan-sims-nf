@@ -221,7 +221,9 @@ test_that("generate_mapping_id() is deterministic across invocations", {
   trait1 <- generate_trait_id(ms1$hash, as.integer(params_row$nQTL),
                               params_row$effect_distribution,
                               as.integer(params_row$simREP),
-                              as.numeric(params_row$h2))
+                              as.numeric(params_row$h2),
+                              cv_maf_effective = as.numeric(ms_meta1$ms_maf),
+                              cv_ld            = as.numeric(ms_meta1$ms_ld))
   map1   <- generate_mapping_id(trait1$hash, algorithm, pca)
 
   # Second independent computation with identical params — tests determinism
@@ -237,7 +239,9 @@ test_that("generate_mapping_id() is deterministic across invocations", {
   trait2 <- generate_trait_id(ms2$hash, as.integer(params_row$nQTL),
                               params_row$effect_distribution,
                               as.integer(params_row$simREP),
-                              as.numeric(params_row$h2))
+                              as.numeric(params_row$h2),
+                              cv_maf_effective = as.numeric(ms_meta2$ms_maf),
+                              cv_ld            = as.numeric(ms_meta2$ms_ld))
   map2   <- generate_mapping_id(trait2$hash, algorithm, pca)
 
   expect_equal(map1$hash, map2$hash,
@@ -395,6 +399,12 @@ test_that("per-mapping interval Jaccard concordance is 1.0 for all mappings", {
 #   DB path: NA_real_ by design — raw per-marker GWA r² was not stored in Phase 5. Even if
 #   attempted via ANOVA, peak GWAS markers are rarely the causal variant, so the join would
 #   produce NA anyway. This is a permanent design difference, not a missing feature.
+#
+# Non-marker causal variants (DB path only, when cv_maf < ms_maf):
+#   DB path: appear as Simulated=TRUE, Detected=FALSE FN rows with non-NA Simulated.QTL.VarExp.
+#   Legacy path: entirely absent (bin/Assess_Sims.R applies the same !is.na(log10p) filter
+#   and has no cv_maf < ms_maf support). The inner_join on QTL used for concordance comparison
+#   naturally excludes these DB-only rows — this is intentional, not an oversight.
 
 test_that("Simulated.QTL.VarExp is populated in DB assessment output", {
   skip_if_no_assessment_cross_validation()

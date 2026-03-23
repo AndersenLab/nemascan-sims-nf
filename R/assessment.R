@@ -143,13 +143,16 @@ load_causal_variants <- function(par_file) {
 #' Joins causal variant markers against mapping data by QTL == marker to obtain
 #' log10p and significance status for each causal variant.
 #'
-#' Causal variants are sampled post-MAF-filter in PYTHON_SIMULATE_EFFECTS_GLOBAL,
-#' so they should always be present in GWA output. The filter(!is.na(log10p))
-#' is defensive; both paths have identical behavior.
+#' When cv_maf < ms_maf, causal variants can be sampled from positions outside
+#' the GWA marker set. These non-marker causal variants are absent from
+#' mapping_data, so they receive NA log10p and NA significant from the left-join.
+#' They are retained in the output so that build_assessment_union() can classify
+#' them as Simulated=TRUE, Detected=FALSE (false-negative rows).
 #'
 #' @param mapping_data Processed mapping dataframe with marker, P, significant columns
 #' @param causal_variants Dataframe from load_causal_variants()
-#' @return Dataframe with causal variant info plus log10p and significant columns
+#' @return Dataframe with causal variant info plus log10p and significant columns;
+#'   non-marker causal variants have NA log10p and NA significant
 score_causal_markers <- function(mapping_data, causal_variants) {
   # Compute log10p on mapping data if not present
   if (!"log10p" %in% names(mapping_data)) {
@@ -164,10 +167,11 @@ score_causal_markers <- function(mapping_data, causal_variants) {
     dplyr::select(QTL, log10p, significant) %>%
     dplyr::filter(!duplicated(QTL))
 
-  # Add log10p and significance to causal variants
+  # Add log10p and significance to causal variants.
+  # Non-marker causal variants (absent from mapping_data) receive NA log10p —
+  # they are retained so build_assessment_union() can classify them as FN rows.
   effects_scores <- causal_variants %>%
-    dplyr::left_join(causal_marker_scores, by = "QTL") %>%
-    dplyr::filter(!is.na(log10p))
+    dplyr::left_join(causal_marker_scores, by = "QTL")
 
   effects_scores
 }

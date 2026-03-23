@@ -67,7 +67,7 @@ test_that("score_causal_markers joins causal variants with mapping scores", {
   expect_equal(result$significant, c(1L, 0L))
 })
 
-test_that("score_causal_markers filters out causal variants not in mapping", {
+test_that("score_causal_markers retains non-marker causal variants with NA log10p", {
   mapping_data <- data.frame(
     marker = c("2:100"),
     CHROM = c("2"),
@@ -88,9 +88,13 @@ test_that("score_causal_markers filters out causal variants not in mapping", {
   )
 
   result <- score_causal_markers(mapping_data, causal)
-  # Only 2:100 should be present (5:999 not in mapping → NA log10p → filtered)
-  expect_equal(nrow(result), 1)
-  expect_equal(result$QTL, "2:100")
+  # Both variants are retained: 2:100 with log10p, 5:999 (non-marker) with NA log10p
+  expect_equal(nrow(result), 2)
+  expect_true(all(c("2:100", "5:999") %in% result$QTL))
+  expect_false(is.na(result$log10p[result$QTL == "2:100"]),
+    label = "marker variant 2:100 has non-NA log10p")
+  expect_true(is.na(result$log10p[result$QTL == "5:999"]),
+    label = "non-marker variant 5:999 has NA log10p")
 })
 
 
