@@ -7,27 +7,32 @@ format:
     embed-resources: true
 ---
 
-The test suite has two tiers that can be run independently. Unit tests use
-static fixtures and require no pipeline output. Integration and cross-validation
-tests require output collected from a pipeline run, and skip automatically when
-their environment variables are absent.
+The test suite is organized around **integration tests as the primary evaluation
+metric**. Integration tests run against real pipeline output and catch bugs that
+static fixtures cannot — GCTA marker exclusions, Hive partition path construction,
+DuckDB view registration, Nextflow channel wiring, and schema drift between what
+R writes and what downstream queries read. Unit tests support them by pinning
+pure-computation correctness (hash determinism, ANOVA golden values, threshold
+math) where no real pipeline output is needed or helpful.
 
 ```{mermaid}
 %%{init: {'themeVariables': {'fontSize': '16px'}}}%%
 flowchart TD
-    classDef step fill:#48b96e,stroke:#2d8150,color:#fff
+    classDef primary fill:#48b96e,stroke:#2d8150,color:#fff
+    classDef supporting fill:#7ab0d4,stroke:#4a80a4,color:#fff
     classDef gate fill:#e07b3a,stroke:#a3572a,color:#fff
     classDef data fill:#f5f5f5,stroke:#999,color:#333
 
     A([Rscript tests/run_tests.R]):::data
     B{TEST_DB_DIR set?}:::gate
-    C[Unit tests only - static fixtures]:::step
-    D[Unit + integration tests]:::step
-    E[pytest tests/pytest/]:::step
+    C[Unit tests — spec and regression guards]:::supporting
+    D[Integration tests — primary evaluation]:::primary
+    E[pytest tests/pytest/]:::supporting
     F([Results reported]):::data
 
     A --> B
     B -- No --> C --> F
+    B -- Yes --> C --> F
     B -- Yes --> D --> F
     A --> E --> F
 ```
@@ -35,206 +40,90 @@ flowchart TD
 
 ## Test Tiers
 
-The test suite has four tiers with different requirements:
+| Tier | Files | Role | Requirements | Skips when |
+|------|-------|------|-------------|------------|
+| **Integration** | `test-db_structure.R`, `test-cross_validation.R`, `test-assessment_cross_validation.R` | **Primary** — evaluate pipeline correctness with real output | `TEST_DB_DIR`, `TEST_WORK_DIR`, `TEST_LEGACY_ASSESSMENT`, `TEST_DB_ASSESSMENT` | Env vars unset |
+| Unit | all other `test-*.R` | Supporting — pin pure-computation correctness | Static fixtures only; no pipeline run needed | — |
+| Python unit | `tests/pytest/test_create_causal_vars.py` | Supporting — validate Python scripts | `pytest`, `numpy`, `pandas` in Python env | `pytest` not installed |
 
-| Tier | Files | Requirements | Skips automatically when |
-|------|-------|-------------|--------------------------|
-| Unit | all `test-*.R` except integration/cross-val | Static fixtures only; no pipeline run needed | — |
-| Python unit | `tests/pytest/test_create_causal_vars.py` | `pytest`, `numpy`, `pandas` in Python env | `pytest` not installed or fixtures missing |
-| Integration | `test-db_structure.R`, `test-cross_validation.R` | Pipeline output (`TEST_DB_DIR`, `TEST_WORK_DIR`) | Env vars unset |
-| Cross-validation | `test-assessment_cross_validation.R` | Both DB and legacy output | `TEST_LEGACY_ASSESSMENT` unset |
-
-Run all tiers with a single command; integration and cross-validation tests
-skip automatically when their environment variables are absent:
+Run all tiers with a single command; integration tests skip automatically when
+their environment variables are absent:
 
 ```bash
 Rscript tests/run_tests.R
 ```
 
 
-## Unit Tests
-
-Unit tests use static fixtures and do not require pipeline output. Tests are
-organized by functional area in `tests/testthat/`:
-
-| File | What it tests |
-|------|--------------|
-| `test-library_check.R` | R library file existence and function availability after sourcing `setup.R` |
-| `test-read_raw_gwa.R` | `read_raw_gwa_file()` for `.fastGWA` and `.mlma` formats; column normalization; LOCO deduplication |
-| `test-read_bim.R` | `read_bim_file()` parses `.bim` format; column names; `CHROM:POS` marker construction |
-| `test-genotype_storage.R` | Round-trip `write_genotype_matrix()` / `read_genotype_matrix()`; schema validation (CHROM, POS, strain, allele); existence checks; verifies genotype files are excluded from the `markers` DuckDB view |
-| `test-trait_storage.R` | `generate_trait_id()` determinism (same params → same ID), uniqueness (different params → different IDs), and golden-value hash; round-trips for `write_trait_metadata()`, `write_causal_variants()`, `write_phenotype_data()`; `overwrite = TRUE` retry behavior; `phenotype_exists()` existence check |
-| `test-significance.R` | BF and EIGEN significance thresholds; verifies significance calls are identical whether log10p is computed on-the-fly or stored |
-| `test-write_gwa_to_db.R` | GWA data writes to Parquet DB with correct schema and values; partition path correctness |
-| `test-hash_generation.R` | `generate_marker_set_id()`, `generate_trait_id()`, `generate_mapping_id()` golden-value hashes; SHA-256 stability across calls; CV pool: verifies `generate_marker_set_id()` rejects `cv_maf` argument; `generate_trait_id()` v=2 encodes `cv_maf_effective` and `cv_ld`; golden value for v=2 trait hash; sensitivity to each CV parameter |
-| `test-safe_log10p.R` | `safe_log10p()` clamping at `LOG10P_MAX`; vector handling; known ground-truth values |
-| `test-module_sourcing.R` | All `db_migration` module R scripts reference `R_SOURCE_DIR` and are readable |
-| `test-assessment.R` | `R/assessment.R` functions: `load_causal_variants()`, QTL detection, `designate_qtl()` categories |
-| `test-assessment_var_exp.R` | `compute_var_exp_anova()` ANOVA-based variance explained; golden values for balanced QTLs; guard cases (monomorphic, near-monomorphic, all-NA alleles, no position overlap); non-marker position var.exp using supplied genotype data; missing genotype for non-marker returns `NA` |
-| `test-schema_changes.R` | `mappings_schema()` field count, required FK columns, exclusion of `N` and `log10p`; `trait_metadata_schema()` includes `cv_maf_effective` and `cv_ld` as `float64`; `marker_set_metadata_schema()` excludes CV params; `causal_genotypes_schema()` (6 columns: `trait_id`, `QTL`, `CHROM`, `POS`, `strain`, `allele`); `init_database()` creates `traits/causal_genotypes/` directory; causal genotype round-trip write/read |
-
-### Python Unit Tests
-
-`tests/pytest/` contains pytest tests for pipeline Python scripts. These tests invoke
-`bin/create_causal_vars.py` via `subprocess.run()` and verify observable behaviour without
-mocking internal functions.
-
-| File | What it tests |
-|------|--------------|
-| `test_create_causal_vars.py` | Pool guard: exits with code 1 when `nqtl` exceeds the filtered CV pool, reporting `--cv_maf`/`--cv_ld`/`nqtl` in the error; exits 0 at the boundary; RNG determinism (same `rep` → same `causal_vars.txt`); RNG advance (different `rep` values → different variant selections); output format (2 columns, no header, numeric effects); uniform effect range for `"low-high"` notation; `causal_genotypes.sim.{n}.{rep}.tsv` written with `QTL`/`strain`/`allele` columns |
-
-The `test_causal_genotypes_tsv_written` test requires `tests/fixtures/test.bed` and
-`test.fam` to be present and auto-skips when they are absent.
-
-Run all Python tests from the project root:
-
-```bash
-pytest tests/pytest/
-```
-
-`numpy` and `pandas` must be importable in the active Python environment. To run using
-the pipeline container instead:
-
-```bash
-docker run --rm -v "$PWD":/work -w /work andersenlab/numpy:20250506 \
-  pytest tests/pytest/
-```
-
-
-### Test Fixtures
-
-`tests/fixtures/` contains static synthetic inputs for unit tests:
-
-| File | Description |
-|------|-------------|
-| `test_genotype_matrix.tsv` | 5 markers × 3 strains, wide-format TSV with `-1`/`1`/`NA` encoding — includes a heterozygous (NA) case to verify encoding is preserved |
-| `test_sims.phen` | 3-strain phenotype file in GCTA `.phen` format (FID IID value, space-delimited, no header) |
-| `test_sims.par` | GCTA causal variant parameter file (`.par` format) with 4 causal variants; used by `test-assessment.R` |
-| `test.bim` | PLINK `.bim` marker file with 50 markers; used by `test-read_bim.R` |
-| `test.mlma` | Raw GCTA `.mlma` output (LOCO mode); used by `test-read_raw_gwa.R` |
-| `test.fastGWA` | Raw GCTA `.fastGWA` output (inbred mode); used by `test-read_raw_gwa.R` and `test-write_gwa_to_db.R` |
-| `test_loco_dedup.mlma` | Deduplicated LOCO `.mlma` for duplicate-marker handling tests |
-| `test_eigen.txt` | Eigenvalue count for significance threshold computation; used by `test-significance.R` |
-| `test_mapping.tsv` | Processed mapping with precomputed `log10p` column; used by `test-significance.R` and `test-safe_log10p.R` |
-| `test.bed` | PLINK binary genotype file for `bin/create_causal_vars.py` tests; same 5-marker × 3-strain dataset as `test_genotype_matrix.tsv`; required alongside `test.bim` and `test.fam` for pytest genotype extraction test |
-| `test.fam` | PLINK family file (3 strains) companion to `test.bed`; pytest `test_causal_genotypes_tsv_written` auto-skips when this file is absent |
-| `test_causal_genotypes.tsv` | Long-format causal genotype fixture; 2 QTL positions × 4 strains with `QTL`/`strain`/`allele` columns; used by `test-schema_changes.R` for `causal_genotypes` round-trip write/read |
-
-
-### Updating Test Fixtures
-
-Static fixtures must be updated whenever a pipeline output format or database schema changes. The update strategy depends on the type of fixture.
-
-#### Text and TSV fixtures
-
-Most fixtures are plain-text or tab-separated files that can be edited directly in any text editor. The table below maps each fixture to the change that would require an update:
-
-| Fixture | Update when… | Format reminder |
-|---------|-------------|-----------------|
-| `test.fastGWA` | Raw GCTA inbred-mode column names change | Tab-separated: `CHR SNP POS A1 A2 N AF1 BETA SE P` |
-| `test.mlma` | Raw GCTA LOCO-mode column names change | Tab-separated: `Chr SNP bp A1 A2 Freq b se p` |
-| `test_loco_dedup.mlma` | LOCO deduplication logic or column layout changes | Same as `.mlma` |
-| `test_sims.par`, `test_causal_anova.par` | Causal variant `.par` format or `causal_variants_schema()` changes | Space-separated, no header: `QTL RefAllele Frequency Effect` |
-| `test_sims.phen`, `test_phenotypes_anova.tsv` | Phenotype file format changes | Space-separated, no header: `FID IID value` |
-| `test_causal_genotypes.tsv` | `causal_genotypes_schema()` adds or removes columns | Tab-separated header: `QTL strain allele` |
-| `test_eigen.txt` | Eigenvalue output format from `Get_GenoMatrix_Eigen.R` changes | Single numeric value on one line |
-
-When adding a column to a schema, add the same column (with a representative value) to each fixture row that the affected tests read. When removing a column, delete it from the fixture file and remove any assertions in the test file that reference it. Run `Rscript tests/run_tests.R` after each edit to catch mismatches immediately.
-
-#### Processed mapping fixture (`test_mapping.tsv`)
-
-This 1.6 MB TSV contains a processed GWA result set with a precomputed `log10p` column. It is the output of `read_raw_gwa_file()` from `R/io.R` followed by `safe_log10p()` from `R/analysis.R`. Update it when either of those functions changes its output columns or types — not when unrelated schema changes occur.
-
-To regenerate from a real pipeline run:
-
-```r
-source("R/setup.R")
-# Point to any .fastGWA file from a completed test pipeline run
-raw <- read_raw_gwa_file("path/to/output.fastGWA")
-raw$log10p <- safe_log10p(raw$P)
-write.table(raw, "tests/fixtures/test_mapping.tsv",
-            sep = "\t", row.names = FALSE, quote = FALSE)
-```
-
-A `--collect-only` run of `tests/collect_test_data.sh` places `.fastGWA` files in the Nextflow work directory (`tests/.nf-work/`), which can be passed directly to `read_raw_gwa_file()`.
-
-#### Genotype matrix ANOVA fixture (`test_genotype_matrix_anova.tsv`)
-
-This long-format fixture is the DB-schema representation of `test_genotype_matrix.tsv`. When `test_genotype_matrix.tsv` changes (e.g., new strains or markers), regenerate the ANOVA fixture by pivoting the wide-format source into long format. The expected output columns are `CHROM POS strain allele`, matching `read_genotype_matrix()` in `R/database.R`:
-
-```r
-source("R/setup.R")
-wide <- read.table("tests/fixtures/test_genotype_matrix.tsv",
-                   header = TRUE, sep = "\t", check.names = FALSE)
-# Identify metadata columns vs strain columns
-meta_cols <- c("CHROM", "POS", "REF", "ALT")   # adjust if wide format changes
-strain_cols <- setdiff(names(wide), meta_cols)
-long <- tidyr::pivot_longer(wide, cols = all_of(strain_cols),
-                            names_to = "strain", values_to = "allele") |>
-  dplyr::select(CHROM, POS, strain, allele)
-write.table(long, "tests/fixtures/test_genotype_matrix_anova.tsv",
-            sep = "\t", row.names = FALSE, quote = FALSE)
-```
-
-Verify the output column names match what `read_genotype_matrix()` expects before committing.
-
-#### PLINK binary fixture (`test.bed`)
-
-`test.bed` is a binary PLINK file — it cannot be edited as text. `test.bim` and `test.fam` are plain-text companions. If the test strain set or marker count needs to change, regenerate all three together from the test VCF using PLINK inside the pipeline container:
-
-```bash
-docker run --rm -v "$PWD":/work -w /work andersenlab/plink:20230116 \
-  plink \
-    --vcf data/test/test.vcf.gz \
-    --allow-extra-chr \
-    --thin-count 5 \
-    --make-bed \
-    --out tests/fixtures/test
-```
-
-`--thin-count 5` retains 5 randomly selected markers. Adjust to control fixture size. After regeneration, verify `test.bim` has the expected marker count and that `test.fam` contains the expected strain IDs.
-
-#### Golden-value hash assertions
-
-`generate_marker_set_id()`, `generate_trait_id()`, and `generate_mapping_id()` in `R/database.R` produce deterministic hashes from their input parameters. When any function's signature changes (new parameters added or removed), the hardcoded expected values in `tests/testthat/test-hash_generation.R` and `tests/testthat/test-trait_storage.R` will fail with an actual-vs-expected mismatch.
-
-To update a golden value, run the function interactively with the same arguments used in the failing test, then replace the old hash string with the new one:
-
-```r
-source("R/setup.R")
-# Use the exact arguments from the failing expect_equal() call
-ms <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)
-cat(ms$hash, "\n")   # paste this output into the test file
-```
-
-The test failure output shows both the old expected value and the new actual value, so you can identify which `expect_equal()` line to update without needing to rerun interactively.
-
-::: {.callout-important}
-## Schema-change checklist
-
-When `mappings_schema()`, `trait_metadata_schema()`, `causal_variants_schema()`, or `causal_genotypes_schema()` in `R/database.R` changes:
-
-1. Update the affected fixture TSV files (add/remove columns)
-2. Update `expect_equal(ncol(...), N)` column-count assertions in `test-schema_changes.R`
-3. Recompute any golden hash values that encode the changed parameters
-4. Run `Rscript tests/run_tests.R` — `test-schema_changes.R` runs first and surfaces mismatches immediately
-:::
-
-
 ## Integration Tests
 
-Integration tests validate that the full pipeline produces correct output end-to-end.
-Unit tests check individual R functions with synthetic fixtures; integration tests use
-actual pipeline output to catch bugs that only appear with real GCTA output — edge cases
-in file format parsing, Hive partition path construction, DuckDB view registration, and
-Nextflow channel wiring.
+Integration tests are the primary evaluation metric for pipeline correctness.
+They run against real pipeline output produced by `tests/collect_test_data.sh`
+and are the authoritative check that the pipeline is working correctly end-to-end.
+Unit tests check isolated R functions with static fixtures; integration tests catch
+the broader class of bugs that only appear with real GCTA output — edge cases in
+file format parsing, Hive partition path construction, DuckDB view registration,
+Nextflow channel wiring, and schema drift between what R writes and what queries read.
 
-- **`test-db_structure.R`** — verifies the Parquet database written by the `DB_MIGRATION_*`
-  modules has the expected directory structure, metadata files, and schema-conformant data
-  queryable via DuckDB.
-- **`test-cross_validation.R`** — compares what was written to the Parquet DB against the
-  raw `.fastGWA`/`.mlma` files in the Nextflow work directory to verify round-trip fidelity
-  (no dropped rows, truncated values, or mangled column types).
+### `test-db_structure.R` (27 tests)
+
+Verifies the Parquet database written by `DB_MIGRATION_*` modules. Requires `TEST_DB_DIR`.
+
+| Test group | What it checks |
+|-----------|---------------|
+| Directory structure | `markers/`, `mappings/`, `traits/`, `traits/causal_variants/`, `traits/phenotypes/` all exist |
+| Marker set files | Parquet files exist; filenames derived from metadata hash lookup |
+| Hive partitions | `population=` / `mapping_id=` directories exist with `data.parquet` files |
+| Metadata files | `mappings_metadata.parquet` and `marker_set_metadata.parquet` present |
+| Marker set metadata | Required columns; `strainfile_hash` is 64-char SHA-256; `strain_list` non-empty |
+| Marker set schema | Correct 6-column schema; FK columns absent from data files |
+| Mappings metadata | Core columns present; algorithm values `"inbred"`/`"loco"`; both PCA flags present; mapping IDs are 20-char hex |
+| Genotype matrix schema | Long-format schema: `marker_set_id utf8`, `CHROM utf8`, `POS int32`, `strain utf8`, `allele float64` |
+| Trait metadata schema | 13 columns including `nqtl int32`, `sim_seed int32`, `h2 float64`; `trait_id utf8` |
+| Phenotype schema | `strain`/`phenotype` columns; no NA phenotype values |
+| Causal variants schema | 6 columns; `QTL` values in `CHROM:POS` format |
+| **Inbred marker invariant** | `meta$n_markers == marker_set_metadata$n_markers` — GCTA processes all markers for inbred |
+| **Loco marker invariant** | `meta$n_markers < marker_set_metadata$n_markers` — GCTA silently excludes near-singular markers from loco output (issue111 regression guard) |
+| Database queryability | `open_mapping_db()`, DuckDB table listing, `COUNT(*)` query, `db_stats()` |
+| Mapping data integrity | All partitions non-empty; P ∈ (0, 1]; no NULL P; `var.exp` absent or all-NA |
+| Query functions | `query_mapping_data()` returns joined data with CHROM/POS; `get_threshold_params()` returns valid BF and EIGEN thresholds |
+
+### `test-cross_validation.R` (8 tests)
+
+Compares DB Parquet contents against raw GWA files in the Nextflow work directory.
+Requires `TEST_DB_DIR` and `TEST_WORK_DIR`.
+
+| Test | What it checks |
+|------|---------------|
+| P and BETA round-trip | DB values match raw `.fastGWA`/`.mlma` files to 1e-12 tolerance |
+| SE round-trip | DB SE values match raw source |
+| AF1 round-trip | DB AF1 values match raw source |
+| EIGEN threshold | DB `n_independent_tests` matches the pipeline EIGEN file |
+| GWA column normalization | `read_raw_gwa_file()` returns 9 normalized columns (`marker`, `CHROM`, `POS`, `A1`, `A2`, `AF1`, `BETA`, `SE`, `P`) for both `.fastGWA` and `.mlma` formats |
+| Full coverage | `query_by_mapping_id()` returns a non-empty result for every `mapping_id` in metadata |
+| Marker count consistency | `meta$n_markers` matches actual partition row counts |
+| **Loco/inbred invariant** | `loco$n_markers < inbred$n_markers` for the same marker set — regression guard documenting the GCTA exclusion behavior (issue111) |
+
+### `test-assessment_cross_validation.R` (10 tests)
+
+Compares `db_simulation_assessment_results.tsv` (DB path) against
+`simulation_assessment_results.tsv` (legacy path). Requires `TEST_LEGACY_ASSESSMENT`
+and `TEST_DB_ASSESSMENT`.
+
+| Test | What it checks |
+|------|---------------|
+| File existence | Both assessment TSVs present and non-empty |
+| Hash determinism | `generate_mapping_id()` produces identical 20-char hash across two independent calls |
+| **Column completeness** | DB assessment has exactly 35 columns matching the `format_assessment_tsv()` schema |
+| **`calculate_simrep_performance()`** | Runs without error on real data; Power and FDR are in [0, 1] |
+| **`designate_qtl()` categories** | Only the 4 valid designations (`Detected.CV`, `Missed.CV`, `CV.Not.Significant.In.Interval`, `False.Discovery`) appear in real data |
+| Detection concordance | Detected flag agreement between DB and legacy paths is 1.0 for all mappings |
+| Designation concordance | `designate_qtl()` category agreement is 1.0 for all mappings |
+| Interval concordance | Jaccard overlap of `[startPOS, endPOS]` intervals is 1.0 for all detected QTLs |
+| VarExp populated | DB assessment has at least some non-NA `Simulated.QTL.VarExp` values |
+| VarExp concordance | `Simulated.QTL.VarExp` matches between DB and legacy paths within 1e-6 |
+
+
+### Collecting Integration Test Data
 
 Integration tests require pipeline output collected by `tests/collect_test_data.sh`:
 
