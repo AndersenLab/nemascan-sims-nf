@@ -26,8 +26,9 @@
 #   data/test/test_cb.YYYYMMDD.vcf.gz    (dated symlink → test_cb.vcf.gz)
 #   data/test/test_cb.YYYYMMDD.vcf.gz.tbi (dated symlink → test_cb.vcf.gz.tbi)
 #
-# On completion the script prints the assembled strainfile row ready to paste
-# into data/test/test_strains_three_species.txt.
+# On completion the script writes the three C. briggsae rows directly into
+# data/test/test_strains_three_species.txt, replacing any existing cb.* rows.
+# Rows for other species (ce.*, ct.*) are preserved unchanged.
 
 set -euo pipefail
 
@@ -146,20 +147,31 @@ echo "  Variants:   $VARIANT_COUNT"
 echo "  Contigs:    $(echo $CONTIGS | tr '\n' ' ')"
 echo ""
 
-# --- Print assembled strainfile rows ---
+# --- Update test_strains_three_species.txt ---
+THREE_SPECIES_FILE="${SCRIPT_DIR}/test_strains_three_species.txt"
 STRAINS_CSV=$(bcftools query -l "$OUTPUT_VCF" | tr '\n' ',' | sed 's/,$//')
 POPA_CSV=$(bcftools query -l "$OUTPUT_VCF" | head -${POP_SPLIT_COUNT} | tr '\n' ',' | sed 's/,$//')
 POPB_CSV=$(bcftools query -l "$OUTPUT_VCF" | tail -${POP_SPLIT_COUNT} | tr '\n' ',' | sed 's/,$//')
-echo "=== Strainfile rows (paste into test_strains_three_species.txt) ==="
-printf "cb.test\tc_briggsae\tdata/test/test_cb.%s.vcf.gz\t0.05\t0.8\t%s\n" \
-    "$DATE" "$STRAINS_CSV"
-printf "cb.test.popA\tc_briggsae\tdata/test/test_cb.%s.vcf.gz\t0.05\t0.8\t%s\n" \
-    "$DATE" "$POPA_CSV"
-printf "cb.test.popB\tc_briggsae\tdata/test/test_cb.%s.vcf.gz\t0.05\t0.8\t%s\n" \
-    "$DATE" "$POPB_CSV"
-echo ""
+
+{
+    printf "group\tspecies\tvcf\tms_maf\tms_ld\tstrains\n"
+    # Preserve non-cb rows from existing strainfile
+    if [[ -f "$THREE_SPECIES_FILE" ]]; then
+        awk -F'\t' 'NR>1 && $1 !~ /^cb\./' "$THREE_SPECIES_FILE"
+    fi
+    printf "cb.test\tc_briggsae\tdata/test/test_cb.%s.vcf.gz\t0.05\t0.8\t%s\n" \
+        "$DATE" "$STRAINS_CSV"
+    printf "cb.test.popA\tc_briggsae\tdata/test/test_cb.%s.vcf.gz\t0.05\t0.8\t%s\n" \
+        "$DATE" "$POPA_CSV"
+    printf "cb.test.popB\tc_briggsae\tdata/test/test_cb.%s.vcf.gz\t0.05\t0.8\t%s\n" \
+        "$DATE" "$POPB_CSV"
+} > "${THREE_SPECIES_FILE}.tmp"
+mv "${THREE_SPECIES_FILE}.tmp" "$THREE_SPECIES_FILE"
+echo "Updated $THREE_SPECIES_FILE (cb.test, cb.test.popA, cb.test.popB)"
+
 echo "Remember to:"
 echo "  1. git add data/test/test_cb.${DATE}.vcf.gz data/test/test_cb.${DATE}.vcf.gz.tbi"
-echo "  2. Paste the strainfile rows above into data/test/test_strains_three_species.txt"
+echo "  2. git add data/test/test_strains_three_species.txt"
+echo "  3. Update CB_VCF_RELEASE in data/test/release_ids.sh to ${DATE}"
 echo ""
 echo "Done."
