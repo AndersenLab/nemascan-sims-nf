@@ -43,6 +43,7 @@ flowchart TD
 | Tier | Files | Role | Requirements | Skips when |
 |------|-------|------|-------------|------------|
 | **Integration** | `test-db_structure.R`, `test-cross_validation.R`, `test-assessment_cross_validation.R` | **Primary** — evaluate pipeline correctness with real output | `TEST_DB_DIR`, `TEST_WORK_DIR`, `TEST_LEGACY_ASSESSMENT`, `TEST_DB_ASSESSMENT` | Env vars unset |
+| **CV Pool** | `test-cv_pool.R` | **Scenario-specific** — validate non-marker causal variant handling | `TEST_DB_DIR`, `TEST_DB_ASSESSMENT`, `TEST_CV_POOL=true` | `TEST_CV_POOL` not set |
 | Unit | all other `test-*.R` | Supporting — pin pure-computation correctness | Static fixtures only; no pipeline run needed | — |
 | Python unit | `tests/pytest/test_create_causal_vars.py` | Supporting — validate Python scripts | `pytest`, `numpy`, `pandas` in Python env | `pytest` not installed |
 
@@ -103,7 +104,7 @@ Requires `TEST_DB_DIR` and `TEST_WORK_DIR`.
 | Marker count consistency | `meta$n_markers` matches actual partition row counts |
 | **Loco/inbred invariant** | `loco$n_markers < inbred$n_markers` for the same marker set — regression guard documenting the GCTA exclusion behavior (issue111) |
 
-### `test-assessment_cross_validation.R` (10 tests)
+### `test-assessment_cross_validation.R` (12 tests)
 
 Compares `db_simulation_assessment_results.tsv` (DB path) against
 `simulation_assessment_results.tsv` (legacy path). Requires `TEST_LEGACY_ASSESSMENT`
@@ -121,33 +122,112 @@ and `TEST_DB_ASSESSMENT`.
 | Interval concordance | Jaccard overlap of `[startPOS, endPOS]` intervals is 1.0 for all detected QTLs |
 | VarExp populated | DB assessment has at least some non-NA `Simulated.QTL.VarExp` values |
 | VarExp concordance | `Simulated.QTL.VarExp` matches between DB and legacy paths within 1e-6 |
+| **Per-population concordance** | Detection concordance holds independently within each `strain_set_id` (multi-population guard) |
+| **Chromosome name consistency** | `CHROM` portion of `QTL` column matches between DB and legacy paths (multi-species guard) |
+
+### `test-cv_pool.R` (7 tests)
+
+Validates the `test_cv_pool` scenario where `cv_maf < ms_maf`, producing causal
+variants absent from GWA output. Requires `TEST_DB_DIR`, `TEST_DB_ASSESSMENT`, and
+`TEST_CV_POOL=true`. **Do not set** `TEST_LEGACY_ASSESSMENT` for this scenario —
+the legacy path is incompatible (non-marker causal variants are invisible to it).
+
+| Test | What it checks |
+|------|---------------|
+| Causal genotypes directory | `traits/causal_genotypes/` exists with non-empty parquet files |
+| Causal genotype schema | `(trait_id, QTL, CHROM, POS, strain, allele)` columns present |
+| Non-marker FN rows | Assessment output contains rows with `Simulated=TRUE, log10p=NA` |
+| `significant=NA` pattern | Non-marker FN rows have `significant=NA` (not `FALSE`) — distinguishes "absent from GWA" |
+| VarExp for non-marker rows | `Simulated.QTL.VarExp` is populated for non-marker FN rows (per-trait causal genotype path) |
+| Non-marker in causal but not markers | Causal QTLs absent from DuckDB markers view — confirms superset pool was exercised |
+| `designate_qtl()` classification | Non-marker FN rows (`significant=NA`) classified as `Missed.CV` for Power denominator |
+| Standalone Power/FDR | `calculate_simrep_performance()` runs correctly; Power < 1 for at least one replicate |
+
+
+### Environment Variables
+
+| Variable | Purpose | Required By |
+|----------|---------|-------------|
+| `TEST_DB_DIR` | Path to pipeline Parquet database (`{outputDir}/db/`) | All integration tests |
+| `TEST_WORK_DIR` | Path to Nextflow work directory (`.nf-work/`) | `test-cross_validation.R` |
+| `TEST_LEGACY_ASSESSMENT` | Path to `simulation_assessment_results.tsv` (legacy path) | `test-assessment_cross_validation.R` |
+| `TEST_DB_ASSESSMENT` | Path to `db_simulation_assessment_results.tsv` (DB path) | `test-assessment_cross_validation.R`, `test-cv_pool.R` |
+| `TEST_POPULATION` | Expected population name for single-population assertions | `test-db_structure.R` (default: `ce.test.200strains`) |
+| `TEST_EXPECTED_MAPPINGS` | Expected `nrow(mappings_metadata)` | `test-db_structure.R` (default: `4`) |
+| `TEST_EXPECTED_MARKER_SETS` | Expected `nrow(marker_set_metadata)` | `test-db_structure.R` (default: `1`) |
+| `TEST_EXPECTED_POPULATIONS` | Comma-separated list of all expected population names | `test-db_structure.R` (enables multi-population assertions) |
+| `TEST_CV_POOL` | Set to `true` to activate cv_pool-specific assertions | `test-cv_pool.R` |
 
 
 ### Collecting Integration Test Data
 
-Integration tests require pipeline output collected by `tests/collect_test_data.sh`:
+Integration tests require pipeline output collected by `tests/collect_test_data.sh`.
+Each profile stores artifacts in its own subdirectory so outputs can be tested independently:
 
 ```bash
-# Run pipeline (requires Docker) and collect outputs
+# --- Default test profile (fixed architecture, 1 population) ---
 bash tests/collect_test_data.sh
+# Artifacts: tests/integration_data/test/
 
-# Collect from a previous run (no pipeline re-run)
-bash tests/collect_test_data.sh --collect-only
-
-# Remove previous results before running
-bash tests/collect_test_data.sh --clean
-
-# Run integration tests with collected data
-TEST_DB_DIR=tests/integration_data/db \
+# Run integration tests
+TEST_DB_DIR=tests/integration_data/test/db \
 TEST_WORK_DIR=tests/.nf-work \
-TEST_LEGACY_ASSESSMENT=tests/integration_data/simulation_assessment_results.tsv \
-TEST_DB_ASSESSMENT=tests/integration_data/db_simulation_assessment_results.tsv \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test/db_simulation_assessment_results.tsv \
 Rscript tests/run_tests.R
 ```
 
-The default pipeline run inside `collect_test_data.sh` uses `-profile test,docker`,
-so Docker must be available for a local integration test collection run. Integration
-test files skip automatically when the required environment variables are not set.
+```bash
+# --- test_variable profile (8 nQTL × 4 h² × 2 reps = 256 mappings) ---
+bash tests/collect_test_data.sh --profile test_variable
+# Artifacts: tests/integration_data/test_variable/
+
+TEST_DB_DIR=tests/integration_data/test_variable/db \
+TEST_WORK_DIR=tests/.nf-work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test_variable/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test_variable/db_simulation_assessment_results.tsv \
+TEST_EXPECTED_MAPPINGS=256 \
+Rscript tests/run_tests.R
+```
+
+```bash
+# --- test_three_species profile (3 species × 3 populations = 9 groups, 36 mappings) ---
+bash tests/collect_test_data.sh --profile test_three_species
+# Artifacts: tests/integration_data/test_three_species/
+
+TEST_DB_DIR=tests/integration_data/test_three_species/db \
+TEST_WORK_DIR=tests/.nf-work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test_three_species/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test_three_species/db_simulation_assessment_results.tsv \
+TEST_EXPECTED_MAPPINGS=36 \
+TEST_EXPECTED_MARKER_SETS=9 \
+TEST_POPULATION=ce.test \
+TEST_EXPECTED_POPULATIONS=ce.test,ce.test.popA,ce.test.popB,cb.test,cb.test.popA,cb.test.popB,ct.test,ct.test.popA,ct.test.popB \
+Rscript tests/run_tests.R
+```
+
+```bash
+# --- test_cv_pool profile (cv_maf=0.01 < ms_maf=0.05; no legacy assess) ---
+bash tests/collect_test_data.sh --profile test_cv_pool --no-legacy
+# Artifacts: tests/integration_data/test_cv_pool/
+# Note: do NOT set TEST_LEGACY_ASSESSMENT for this profile
+
+TEST_DB_DIR=tests/integration_data/test_cv_pool/db \
+TEST_WORK_DIR=tests/.nf-work \
+TEST_DB_ASSESSMENT=tests/integration_data/test_cv_pool/db_simulation_assessment_results.tsv \
+TEST_CV_POOL=true \
+Rscript tests/run_tests.R
+```
+
+The `--collect-only` and `--clean` flags work with all profiles:
+
+```bash
+bash tests/collect_test_data.sh --profile test_variable --collect-only  # collect without re-running
+bash tests/collect_test_data.sh --profile test_variable --clean         # clean then run
+```
+
+Docker must be available for all local integration test collection runs. Integration
+test files skip automatically when their required environment variables are not set.
 
 ::: {.callout-tip}
 ## Related pages

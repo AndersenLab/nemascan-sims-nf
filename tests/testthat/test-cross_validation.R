@@ -326,28 +326,37 @@ test_that("loco GWA has fewer markers than inbred for same marker set (issue111 
     skip("both inbred and loco mappings required for this test")
   }
 
-  inbred_row <- meta[meta$algorithm == "inbred", ][1, ]
-  loco_candidates <- meta[
-    meta$algorithm == "loco" &
-    meta$population == inbred_row$population &
-    meta$maf == inbred_row$maf,
-  ]
-  if (nrow(loco_candidates) == 0) skip("no loco mapping found for same population/maf as inbred")
-  loco_row <- loco_candidates[1, ]
-
+  # Check all unique populations — not just [1,].
   # GCTA mlma-loco silently excludes near-singular markers from GWA output.
   # Regression guard for issue111: the BF threshold denominator in analyze_qtl.R
   # must use nrow(mapping_data), not n_markers from marker_set_metadata, because
   # loco output has fewer rows than the .bim file. If this assertion fails on a new
   # run, the BF threshold fix may have been reverted.
-  expect_lt(
-    loco_row$n_markers, inbred_row$n_markers,
-    label = sprintf(
-      "loco n_markers (%d) < inbred n_markers (%d) for population=%s maf=%s",
+  populations <- unique(meta$population)
+  any_checked <- FALSE
+
+  for (pop in populations) {
+    inbred_pop <- meta[meta$algorithm == "inbred" & meta$population == pop, ]
+    loco_pop   <- meta[meta$algorithm == "loco"   & meta$population == pop, ]
+    if (nrow(inbred_pop) == 0 || nrow(loco_pop) == 0) next
+
+    # Use the first MAF available for this population
+    maf_val <- inbred_pop$maf[1]
+    inbred_row <- inbred_pop[inbred_pop$maf == maf_val, ][1, ]
+    loco_row   <- loco_pop[loco_pop$maf == maf_val, ][1, ]
+    if (is.na(loco_row$n_markers)) next
+
+    expect_lt(
       loco_row$n_markers, inbred_row$n_markers,
-      inbred_row$population, inbred_row$maf
+      label = sprintf(
+        "loco n_markers (%d) < inbred n_markers (%d) for population=%s maf=%s",
+        loco_row$n_markers, inbred_row$n_markers, pop, maf_val
+      )
     )
-  )
+    any_checked <- TRUE
+  }
+
+  if (!any_checked) skip("no matching inbred+loco population pairs found")
 })
 
 # ── Marker Count Consistency ─────────────────────────────────────────────────

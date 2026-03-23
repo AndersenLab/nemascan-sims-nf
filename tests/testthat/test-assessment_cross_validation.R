@@ -490,6 +490,67 @@ test_that("designate_qtl() produces only valid categories on real data", {
 })
 
 
+test_that("concordance holds for each population independently (multi-species guard)", {
+  skip_if_no_assessment_cross_validation()
+
+  joined <- build_joined_assessment()
+  # If join returned 0 rows (e.g., chromosome naming mismatch between paths),
+  # surface this explicitly rather than silently skipping.
+  if (nrow(joined) == 0) {
+    # Check whether both files have rows to help diagnose silent join failures
+    legacy_n <- nrow(read_legacy_assessment(legacy_assessment_path))
+    db_n     <- nrow(read_db_assessment(db_assessment_path))
+    skip(sprintf(
+      "joined assessment has 0 rows (legacy has %d rows, DB has %d rows); possible chromosome naming mismatch",
+      legacy_n, db_n
+    ))
+  }
+
+  populations <- unique(joined$strain_set_id)
+
+  for (pop in populations) {
+    pop_rows <- joined[joined$strain_set_id == pop, ]
+    if (nrow(pop_rows) == 0) next
+
+    n_detect_agree <- sum(pop_rows$Detected_legacy == pop_rows$Detected_db)
+    detection_conc <- n_detect_agree / nrow(pop_rows)
+
+    expect_equal(
+      detection_conc, 1.0,
+      label = paste("detection concordance = 1.0 for population:", pop)
+    )
+  }
+})
+
+test_that("QTL chromosome names are consistent between DB and legacy paths", {
+  skip_if_no_assessment_cross_validation()
+
+  legacy    <- read_legacy_assessment(legacy_assessment_path)
+  db_assess <- read_db_assessment(db_assessment_path)
+
+  # QTL column is CHROM:POS — extract CHROM
+  legacy_chroms   <- unique(sub(":.*", "", legacy$QTL))
+  db_chroms       <- unique(sub(":.*", "", db_assess$QTL))
+
+  in_legacy_not_db <- setdiff(legacy_chroms, db_chroms)
+  in_db_not_legacy <- setdiff(db_chroms, legacy_chroms)
+
+  expect_equal(
+    length(in_legacy_not_db), 0,
+    label = paste(
+      "chromosome names present in legacy but absent from DB QTL column:",
+      paste(in_legacy_not_db, collapse = ", ")
+    )
+  )
+  expect_equal(
+    length(in_db_not_legacy), 0,
+    label = paste(
+      "chromosome names present in DB but absent from legacy QTL column:",
+      paste(in_db_not_legacy, collapse = ", ")
+    )
+  )
+})
+
 test_that("Simulated.QTL.VarExp is concordant between DB and legacy paths", {
   skip_if_no_assessment_cross_validation()
 

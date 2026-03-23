@@ -19,6 +19,18 @@ skip_if_no_db <- function() {
 # Expected population for test profile (override with TEST_POPULATION env var)
 expected_population <- Sys.getenv("TEST_POPULATION", unset = "ce.test.200strains")
 
+# Expected marker set count — 1 for single-population profiles, N for multi-population
+expected_marker_sets <- as.integer(Sys.getenv("TEST_EXPECTED_MARKER_SETS", unset = "1"))
+
+# Expected populations — comma-separated list for multi-population runs.
+# When unset, multi-population assertions are skipped.
+expected_populations_str <- Sys.getenv("TEST_EXPECTED_POPULATIONS", unset = "")
+expected_populations <- if (nchar(expected_populations_str) == 0) {
+  character(0)
+} else {
+  trimws(strsplit(expected_populations_str, ",")[[1]])
+}
+
 # ── Directory Structure ──────────────────────────────────────────────────────
 
 test_that("database root directory exists and has expected subdirectories", {
@@ -98,9 +110,10 @@ test_that("marker_set_metadata.parquet has required columns and valid data", {
     )
   )
 
-  # At least one record
-
-  expect_gt(nrow(ms_meta), 0)
+  # Assert expected number of marker sets (parameterized for multi-population runs)
+  expect_equal(nrow(ms_meta), expected_marker_sets,
+    label = paste("expected", expected_marker_sets, "marker set(s), got", nrow(ms_meta))
+  )
 
   # n_markers should be positive integers
   expect_true(all(ms_meta$n_markers > 0))
@@ -216,12 +229,15 @@ test_that("hash_string columns are present in metadata files and absent from dat
   }
 })
 
-test_that("mappings_metadata has correct row count for test profile", {
+test_that("mappings_metadata has correct row count", {
   skip_if_no_db()
   meta <- get_metadata(db_dir)
 
-  # For -profile test (1 group, 1 maf, 1 nqtl=5, 1 h2=0.8, 1 rep, 1 effect):
-  # 2 modes (inbred, loco) × 2 types (pca, nopca) = 4 mappings
+  # Default of 4 matches -profile test (1 group × 1 nqtl × 1 h2 × 1 rep × 4 mappings).
+  # Override with TEST_EXPECTED_MAPPINGS for other profiles:
+  #   test_variable:     256  (64 traits × 4 mappings)
+  #   test_three_species: 36  (9 groups × 4 mappings)
+  #   test_cv_pool:        4  (same structure as test)
   expected_count <- as.integer(Sys.getenv("TEST_EXPECTED_MAPPINGS", unset = "4"))
   expect_equal(nrow(meta), expected_count,
     label = paste("expected", expected_count, "mappings, got", nrow(meta))
@@ -464,6 +480,45 @@ test_that("causal variant parquets have correct schema and QTL format", {
   )
 })
 
+# ── Multi-Population Assertions (gated on TEST_EXPECTED_POPULATIONS) ─────────
+
+test_that("all expected populations appear in mappings_metadata and are queryable", {
+  skip_if_no_db()
+  if (length(expected_populations) == 0) {
+    skip("TEST_EXPECTED_POPULATIONS not set — skipping multi-population assertions")
+  }
+
+  meta <- get_metadata(db_dir)
+  db_populations <- unique(meta$population)
+
+  missing_pops <- setdiff(expected_populations, db_populations)
+  expect_equal(
+    length(missing_pops), 0,
+    label = paste(
+      "populations missing from mappings_metadata:",
+      paste(missing_pops, collapse = ", ")
+    )
+  )
+
+  # Each expected population must return non-zero query results
+  for (pop in expected_populations) {
+    data <- tryCatch(
+      query_mapping_data(population = pop, base_dir = db_dir),
+      error = function(e) NULL
+    )
+    expect_false(
+      is.null(data),
+      label = paste("query_mapping_data() succeeded for population:", pop)
+    )
+    if (!is.null(data)) {
+      expect_gt(
+        nrow(data), 0,
+        label = paste("non-empty query result for population:", pop)
+      )
+    }
+  }
+})
+
 # ── Inbred/Loco Marker Count Invariants ──────────────────────────────────────
 
 test_that("inbred GWA marker count equals marker set size", {
@@ -474,18 +529,22 @@ test_that("inbred GWA marker count equals marker set size", {
   inbred_rows <- meta[meta$algorithm == "inbred", ]
   if (nrow(inbred_rows) == 0) skip("no inbred mappings found")
 
-  row <- inbred_rows[1, ]
-  ms_row <- ms_meta_all[ms_meta_all$marker_set_id == row$marker_set_id, ]
-  if (nrow(ms_row) == 0) skip("marker set metadata not found for inbred mapping")
+  # Check all unique populations — not just [1,]
+  for (pop in unique(inbred_rows$population)) {
+    pop_rows <- inbred_rows[inbred_rows$population == pop, ]
+    row <- pop_rows[1, ]
+    ms_row <- ms_meta_all[ms_meta_all$marker_set_id == row$marker_set_id, ]
+    if (nrow(ms_row) == 0) next
 
-  # GCTA fastGWA-mlm-exact processes all markers — no exclusions
-  expect_equal(
-    row$n_markers, ms_row$n_markers[1],
-    label = sprintf(
-      "inbred n_markers (%d) equals marker set size (%d)",
-      row$n_markers, ms_row$n_markers[1]
+    # GCTA fastGWA-mlm-exact processes all markers — no exclusions
+    expect_equal(
+      row$n_markers, ms_row$n_markers[1],
+      label = sprintf(
+        "inbred n_markers (%d) equals marker set size (%d) for population=%s",
+        row$n_markers, ms_row$n_markers[1], pop
+      )
     )
-  )
+  }
 })
 
 test_that("loco GWA marker count is less than marker set size (GCTA exclusion invariant)", {
@@ -496,20 +555,24 @@ test_that("loco GWA marker count is less than marker set size (GCTA exclusion in
   loco_rows <- meta[meta$algorithm == "loco", ]
   if (nrow(loco_rows) == 0) skip("no loco mappings found")
 
-  row <- loco_rows[1, ]
-  ms_row <- ms_meta_all[ms_meta_all$marker_set_id == row$marker_set_id, ]
-  if (nrow(ms_row) == 0) skip("marker set metadata not found for loco mapping")
-
+  # Check all unique populations — not just [1,].
   # GCTA mlma-loco silently excludes near-singular markers from GWA output.
   # This is the invariant exposed by issue111: if loco n_markers == ms n_markers,
   # the BF threshold denominator would be wrong.
-  expect_lt(
-    row$n_markers, ms_row$n_markers[1],
-    label = sprintf(
-      "loco n_markers (%d) < marker set size (%d) — GCTA exclusions present",
-      row$n_markers, ms_row$n_markers[1]
+  for (pop in unique(loco_rows$population)) {
+    pop_rows <- loco_rows[loco_rows$population == pop, ]
+    row <- pop_rows[1, ]
+    ms_row <- ms_meta_all[ms_meta_all$marker_set_id == row$marker_set_id, ]
+    if (nrow(ms_row) == 0) next
+
+    expect_lt(
+      row$n_markers, ms_row$n_markers[1],
+      label = sprintf(
+        "loco n_markers (%d) < marker set size (%d) for population=%s — GCTA exclusions present",
+        row$n_markers, ms_row$n_markers[1], pop
+      )
     )
-  )
+  }
 })
 
 test_that("var.exp is absent or NA for inline-path mappings", {

@@ -13,6 +13,34 @@ not use version tags; entries are organized by development phase and date.
 
 ## [Unreleased] — March 2026
 
+### Added
+- **Multi-profile integration testing support** (`fix/merge-unit-with-integration`, 2026-03-23):
+  Extended the integration test framework to cover four testing profiles beyond the
+  default `test` baseline.
+  - `tests/collect_test_data.sh` now accepts `--profile <name>`, `--no-legacy`, and
+    `--clean` flags; artifacts are stored in `tests/integration_data/<profile>/`
+    subdirectories so each profile's outputs can be tested independently
+  - `test-db_structure.R` gains `TEST_EXPECTED_MARKER_SETS` and
+    `TEST_EXPECTED_POPULATIONS` env var guards; the inbred/loco marker count
+    invariants now loop over all populations (not just `[1,]`) to cover
+    multi-population and multi-species runs
+  - `test-cross_validation.R`: per-population LOCO < INBRED marker count loop
+  - `test-assessment_cross_validation.R` gains per-population concordance breakdown
+    and chromosome-naming consistency check (multi-species guard)
+  - `test-cv_pool.R` (new, 7 tests): cv_pool-specific assertions — causal genotypes
+    directory and schema, non-marker FN row presence and `significant=NA` pattern,
+    `Simulated.QTL.VarExp` for non-marker positions via per-trait causal genotypes,
+    non-marker causal QTLs absent from markers DB view, standalone Power/FDR check
+
+### Fixed
+- **`designate_qtl()` now classifies non-marker FN rows as `Missed.CV`**
+  (`fix/merge-unit-with-integration`, 2026-03-23): when `cv_maf < ms_maf`, causal
+  variants absent from GWA output receive `significant=NA`. Previously `case_when`
+  produced `designation=NA` for these rows, excluding them from the Power denominator
+  and causing `calculate_simrep_performance()` to overstate Power. The fix adds an
+  `is.na(.sig)` branch to the `Missed.CV` case so structurally undetectable causal
+  variants are correctly counted as False Negatives.
+
 ### Changed
 - **Integration tests are now the sole evaluation framework** (`fix/merge-unit-with-integration`, 2026-03-23):
   Static-fixture unit tests (`test-*.R` in `tests/testthat/` except the three integration

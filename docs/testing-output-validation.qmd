@@ -74,6 +74,39 @@ regression guard for issue111.
 
 All three tests skip automatically unless all required env vars are set.
 
+### CV Pool Scenario: No Legacy Cross-Validation Path
+
+When testing the `test_cv_pool` profile (`cv_maf=0.01 < ms_maf=0.05`), the legacy
+path is incompatible and **`test-assessment_cross_validation.R` must not be run**.
+Non-marker causal variants (MAF between 0.01 and 0.05) are entirely absent from GWA
+output files and therefore invisible to `Get_GCTA_Intervals.R` and `Assess_Sims.R`.
+A legacy assessment TSV for this profile would silently misrepresent False Negative
+rates by omitting these variants from scoring.
+
+The standalone `test-cv_pool.R` (7 tests, requires `TEST_CV_POOL=true`) provides
+DB-path-only quality checks for this scenario:
+
+- Confirms that non-marker causal variants appear as `Simulated=TRUE, log10p=NA` FN
+  rows in the DB assessment output
+- Validates `Simulated.QTL.VarExp` is populated for these rows via the per-trait
+  causal genotype path (`traits/causal_genotypes/`)
+- Asserts `significant=NA` (not `FALSE`) for non-marker rows — distinguishing "absent
+  from GWA" from "tested but below threshold"
+- Verifies `designate_qtl()` classifies `significant=NA` FN rows as `Missed.CV` so
+  they contribute to the Power denominator in `calculate_simrep_performance()`
+- Confirms Power < 1 for at least one replicate (non-marker causal variants are
+  structurally undetectable, reducing achievable power)
+
+::: {.callout-note}
+## Power interpretation for cv_pool runs
+
+When `cv_maf < ms_maf`, the maximum achievable Power is less than 1 because some
+simulated causal variants are invisible to GWA by design. This is the intended
+behaviour for studying the effect of rare causal variants below the GWA MAF cutoff —
+it is not a pipeline bug. The `test-cv_pool.R` assertion `Power < 1` validates this
+scenario is being exercised.
+:::
+
 
 ## R Package Lockfile
 

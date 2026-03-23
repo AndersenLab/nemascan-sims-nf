@@ -20,9 +20,14 @@ library(tidyr)
 #'
 #' Adds a `designation` column with one of four values:
 #'   - Detected.CV: Simulated=TRUE, Detected=TRUE, significant=TRUE (true positive)
-#'   - Missed.CV: Simulated=TRUE, Detected=FALSE, significant=FALSE (false negative)
+#'   - Missed.CV: Simulated=TRUE, Detected=FALSE, significant=FALSE or NA (false negative)
 #'   - CV.Not.Significant.In.Interval: Simulated=TRUE, Detected=TRUE, significant=FALSE
 #'   - False.Discovery: Simulated=FALSE, Detected=TRUE, significant=TRUE (false positive)
+#'
+#' significant=NA rows arise when a causal variant is absent from GWA output entirely
+#' (e.g., when cv_maf < ms_maf produces non-marker causal variants). These are treated
+#' as Missed.CV when Detected=FALSE — they are structurally undetectable, not merely
+#' below-threshold, making them false negatives for Power calculation purposes.
 #'
 #' Auto-detects `significant` (Phase 4 schema) vs `aboveBF` (legacy schema) column.
 #' The significance column is coerced to logical for consistent case_when evaluation.
@@ -52,7 +57,9 @@ designate_qtl <- function(df) {
     dplyr::mutate(
       designation = dplyr::case_when(
         .sim == TRUE  & .det == TRUE  & .sig == TRUE  ~ "Detected.CV",
-        .sim == TRUE  & .det == FALSE & .sig == FALSE ~ "Missed.CV",
+        # significant=NA means absent from GWA output (non-marker causal variant);
+        # counts as Missed.CV so Power denominator includes structurally undetectable variants
+        .sim == TRUE  & .det == FALSE & (.sig == FALSE | is.na(.sig)) ~ "Missed.CV",
         .sim == TRUE  & .det == TRUE  & .sig == FALSE ~ "CV.Not.Significant.In.Interval",
         .sim == FALSE & .det == TRUE  & .sig == TRUE  ~ "False.Discovery"
       )

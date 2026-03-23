@@ -2,9 +2,22 @@
 # Runs the test pipeline and collects outputs for integration tests.
 #
 # Usage:
-#   bash tests/collect_test_data.sh              # Run pipeline + collect outputs
-#   bash tests/collect_test_data.sh --collect-only  # Collect from previous run
-#   bash tests/collect_test_data.sh --clean         # Remove previous results first
+#   bash tests/collect_test_data.sh [--profile <name>] [--no-legacy] [--collect-only] [--clean]
+#
+# Profiles:
+#   test             - Fixed architecture: 1 population, 5 nQTL, 0.8 h², 1 rep (default)
+#   test_variable    - Variable architecture: 8 nQTL × 4 h² × 2 reps = 256 mappings
+#   test_three_species - 3 species × 3 populations = 9 groups, 36 mappings
+#   test_cv_pool     - CV pool broader than marker set (cv_maf=0.01 < ms_maf=0.05)
+#
+# Options:
+#   --no-legacy      Omit --legacy_assess (required for test_cv_pool: legacy path is
+#                    incompatible when non-marker causal variants are present)
+#   --collect-only   Skip pipeline run; collect from most recent Analysis_Results-*
+#   --clean          Remove previous profile artifacts and work directory before running
+#
+# Artifacts are stored in tests/integration_data/<profile>/ so each profile's output
+# can be kept and tested independently.
 #
 # Requires: Docker, NXF_VER=24.10.4 (or any 24.10.x)
 
@@ -12,32 +25,60 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-OUTPUT_DIR="$PROJECT_DIR/tests/integration_data"
-WORK_DIR="$PROJECT_DIR/tests/.nf-work"
 
+PROFILE="test"
+NO_LEGACY=false
 MODE="run"
-for arg in "$@"; do
-  case "$arg" in
-    --collect-only) MODE="collect" ;;
+DO_CLEAN=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --profile)
+      PROFILE="$2"
+      shift 2
+      ;;
+    --no-legacy)
+      NO_LEGACY=true
+      shift
+      ;;
+    --collect-only)
+      MODE="collect"
+      shift
+      ;;
     --clean)
-      echo "Cleaning previous results..."
-      rm -rf "$OUTPUT_DIR" "$WORK_DIR"
-      # Remove any Analysis_Results directories
-      rm -rf "$PROJECT_DIR"/Analysis_Results-*
+      DO_CLEAN=true
+      shift
       ;;
     -h|--help)
-      sed -n '2,9p' "$0"
+      sed -n '2,21p' "$0"
       exit 0
       ;;
-    *) echo "Unknown option: $arg"; exit 1 ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 1
+      ;;
   esac
 done
 
+OUTPUT_DIR="$PROJECT_DIR/tests/integration_data/$PROFILE"
+WORK_DIR="$PROJECT_DIR/tests/.nf-work"
+
+if [[ "$DO_CLEAN" == "true" ]]; then
+  echo "Cleaning previous results for profile: $PROFILE..."
+  rm -rf "$OUTPUT_DIR" "$WORK_DIR"
+  rm -rf "$PROJECT_DIR"/Analysis_Results-*
+fi
+
 # --- Run pipeline (unless --collect-only) ---
 if [[ "$MODE" != "collect" ]]; then
-  echo "Running test pipeline with --legacy_assess (both DB and legacy paths)..."
+  LEGACY_FLAG=""
+  if [[ "$NO_LEGACY" == "false" ]]; then
+    LEGACY_FLAG="--legacy_assess"
+  fi
+
+  echo "Running test pipeline (profile: ${PROFILE}${NO_LEGACY:+, no legacy assess})..."
   NXF_VER="${NXF_VER:-24.10.4}" nextflow run "$PROJECT_DIR/main.nf" \
-    -profile test,docker --legacy_assess \
+    -profile "${PROFILE},docker" $LEGACY_FLAG \
     -work-dir "$WORK_DIR"
 fi
 
@@ -71,8 +112,23 @@ echo ""
 echo "Test data collected to: $OUTPUT_DIR"
 echo ""
 echo "Run integration tests with:"
-echo "  TEST_DB_DIR=$OUTPUT_DIR/db \\"
-echo "  TEST_WORK_DIR=$WORK_DIR \\"
-echo "  TEST_LEGACY_ASSESSMENT=$OUTPUT_DIR/simulation_assessment_results.tsv \\"
-echo "  TEST_DB_ASSESSMENT=$OUTPUT_DIR/db_simulation_assessment_results.tsv \\"
-echo "  Rscript tests/run_tests.R"
+echo ""
+
+if [[ "$PROFILE" == "test_cv_pool" ]] || [[ "$NO_LEGACY" == "true" ]]; then
+  # cv_pool: no legacy assessment; use TEST_CV_POOL flag for cv_pool-specific assertions
+  CV_POOL_FLAG=""
+  if [[ "$PROFILE" == "test_cv_pool" ]]; then
+    CV_POOL_FLAG="  TEST_CV_POOL=true \\"$'\n'
+  fi
+  printf "  TEST_DB_DIR=%s/db \\\\\n" "$OUTPUT_DIR"
+  printf "  TEST_WORK_DIR=%s \\\\\n" "$WORK_DIR"
+  printf "  TEST_DB_ASSESSMENT=%s/db_simulation_assessment_results.tsv \\\\\n" "$OUTPUT_DIR"
+  printf "%s" "$CV_POOL_FLAG"
+  printf "  Rscript tests/run_tests.R\n"
+else
+  printf "  TEST_DB_DIR=%s/db \\\\\n" "$OUTPUT_DIR"
+  printf "  TEST_WORK_DIR=%s \\\\\n" "$WORK_DIR"
+  printf "  TEST_LEGACY_ASSESSMENT=%s/simulation_assessment_results.tsv \\\\\n" "$OUTPUT_DIR"
+  printf "  TEST_DB_ASSESSMENT=%s/db_simulation_assessment_results.tsv \\\\\n" "$OUTPUT_DIR"
+  printf "  Rscript tests/run_tests.R\n"
+fi
