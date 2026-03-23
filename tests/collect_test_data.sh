@@ -83,11 +83,12 @@ check_vcfs() {
       fi
     done
   else
-    local vcf="$PROJECT_DIR/data/test/test.vcf.gz"
+    local vcf="$PROJECT_DIR/data/test/test_ce.vcf.gz"
     if [[ ! -f "$vcf" ]]; then
-      echo "ERROR: Missing VCF target: data/test/test.vcf.gz" >&2
+      echo "ERROR: Missing VCF target: data/test/test_ce.vcf.gz" >&2
       echo "       Generate it with:" >&2
-      echo "         bash data/test/generate_test_vcf.sh /path/to/WI.20220216.hard-filter.isotype.vcf.gz" >&2
+      echo "         bash data/test/generate_test_vcf.sh /path/to/WI.YYYYMMDD.hard-filter.isotype.vcf.gz" >&2
+      echo "       See data/test/release_ids.sh for the canonical release date." >&2
       missing=true
     fi
   fi
