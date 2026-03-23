@@ -104,7 +104,7 @@ version prefix is encoded in the hash input string, making v=1 and v=2 hashes
 structurally incompatible — any existing DB built with v=1 hashes must be regenerated.
 
 ```{r}
-#| eval: true
+#| eval: false
 Sys.setenv(NEMASCAN_R_LIB = normalizePath("../R"))
 source("../R/setup.R")
 
@@ -115,7 +115,7 @@ ms$hash_string  # → "v=2|population=ce.test|maf=0.0500000000|..."
 ```
 
 ```{r}
-#| eval: true
+#| eval: false
 # Show trait and mapping ID chain
 tr  <- generate_trait_id(ms$hash, 5, "gamma", 1, 0.8)
 map <- generate_mapping_id(tr$hash, "inbred", TRUE)
@@ -126,7 +126,7 @@ cat("mapping_id    :", map$hash, "\n")
 ```
 
 ```{r}
-#| eval: true
+#| eval: false
 # Sensitivity: changing species changes the marker set hash
 ms_cb <- generate_marker_set_id("ce.test", 0.05, "c_briggsae", "20220216", 0.8)
 cat("c_elegans hash :", ms$hash, "\n")
@@ -135,7 +135,7 @@ cat("hashes equal?  :", ms$hash == ms_cb$hash, "\n")  # → FALSE
 ```
 
 ```{r}
-#| eval: true
+#| eval: false
 # CV parameters are NOT in the hash — runs differing only in cv_maf/cv_ld reuse the same marker set record
 ms2 <- generate_marker_set_id("ce.test", 0.05, "c_elegans", "20220216", 0.8)
 cat("same hash on rerun?:", ms$hash == ms2$hash, "\n")  # → TRUE
