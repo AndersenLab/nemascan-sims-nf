@@ -206,9 +206,9 @@ absolute-path symlinks rather than re-running the generate scripts:
 MAIN="/path/to/nemascan-sims-nf/data/test"   # main repo with real VCF files
 WT="/path/to/your-worktree/data/test"         # this worktree
 
-# Single-species profiles (test, test_variable, test_cv_pool)
-ln -s "$MAIN/test.vcf.gz"     "$WT/test.vcf.gz"
-ln -s "$MAIN/test.vcf.gz.tbi" "$WT/test.vcf.gz.tbi"
+# Single-species profiles (test, test_variable, test_cv_pool) — CE VCF only
+ln -s "$MAIN/test_ce.vcf.gz"     "$WT/test_ce.vcf.gz"
+ln -s "$MAIN/test_ce.vcf.gz.tbi" "$WT/test_ce.vcf.gz.tbi"
 
 # Three-species profile (test_three_species) — run for each species needed
 for spec in ce cb ct; do
@@ -219,7 +219,7 @@ done
 
 Because the targets are gitignored, these symlinks will not appear in `git status` and
 cannot be accidentally committed. The existing dated symlinks (e.g.
-`test.20210901.vcf.gz → test.vcf.gz`) already tracked in git then resolve through the
+`test_ce.20250625.vcf.gz → test_ce.vcf.gz`) already tracked in git then resolve through the
 new absolute-path link to the real file.
 
 ::: {.callout-tip}
