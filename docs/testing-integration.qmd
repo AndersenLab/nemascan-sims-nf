@@ -83,7 +83,7 @@ Verifies the Parquet database written by `DB_MIGRATION_*` modules. Requires `TES
 | Phenotype schema | `strain`/`phenotype` columns; no NA phenotype values |
 | Causal variants schema | 6 columns; `QTL` values in `CHROM:POS` format |
 | **Inbred marker invariant** | `meta$n_markers == marker_set_metadata$n_markers` — GCTA processes all markers for inbred |
-| **Loco marker invariant** | `meta$n_markers < marker_set_metadata$n_markers` — GCTA silently excludes near-singular markers from loco output (issue111 regression guard) |
+| **Loco marker invariant** | `meta$n_markers == marker_set_metadata$n_markers` — after the LOCO marker count fix, loco stores the full marker set size in metadata (same as inbred) |
 | Database queryability | `open_mapping_db()`, DuckDB table listing, `COUNT(*)` query, `db_stats()` |
 | Mapping data integrity | All partitions non-empty; P ∈ (0, 1]; no NULL P; `var.exp` absent or all-NA |
 | Query functions | `query_mapping_data()` returns joined data with CHROM/POS; `get_threshold_params()` returns valid BF and EIGEN thresholds |
@@ -102,7 +102,7 @@ Requires `TEST_DB_DIR` and `TEST_WORK_DIR`.
 | GWA column normalization | `read_raw_gwa_file()` returns 9 normalized columns (`marker`, `CHROM`, `POS`, `A1`, `A2`, `AF1`, `BETA`, `SE`, `P`) for both `.fastGWA` and `.mlma` formats |
 | Full coverage | `query_by_mapping_id()` returns a non-empty result for every `mapping_id` in metadata |
 | Marker count consistency | `meta$n_markers` matches actual partition row counts |
-| **Loco/inbred invariant** | `loco$n_markers < inbred$n_markers` for the same marker set — regression guard documenting the GCTA exclusion behavior (issue111) |
+| **Loco/inbred invariant** | `loco$n_markers == inbred$n_markers` for the same marker set — both modes store equal marker counts after the LOCO marker count fix |
 
 ### `test-assessment_cross_validation.R` (12 tests)
 
