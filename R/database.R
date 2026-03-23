@@ -31,15 +31,17 @@ library(glue)
   marker_sets_subdir     = "marker_sets",
   genotypes_subdir       = "genotypes",
   traits_dir             = "traits",
-  causal_variants_subdir = "causal_variants",
-  phenotypes_subdir      = "phenotypes",
+  causal_variants_subdir   = "causal_variants",
+  causal_genotypes_subdir  = "causal_genotypes",
+  phenotypes_subdir        = "phenotypes",
   mappings_dir           = "mappings",
   markers_pattern        = "{marker_set_id}_markers.parquet",
   genotypes_pattern      = "{marker_set_id}_genotypes.parquet",
   mappings_pattern       = "{population}_mappings.parquet",
   traits_pattern         = "{trait_id}.parquet",
-  causal_variants_pattern = "{trait_id}_causal.parquet",
-  phenotypes_pattern     = "{trait_id}_phenotype.parquet",
+  causal_variants_pattern  = "{trait_id}_causal.parquet",
+  causal_genotypes_pattern = "{trait_id}_causal_geno.parquet",
+  phenotypes_pattern       = "{trait_id}_phenotype.parquet",
   metadata_file          = "mappings_metadata.parquet",
   marker_set_metadata_file = "marker_set_metadata.parquet",
   compression            = "snappy"
@@ -356,6 +358,8 @@ trait_metadata_schema <- function() {
     maf               = arrow::float64(),
     effect            = arrow::utf8(),
     population        = arrow::utf8(),
+    cv_maf_effective  = arrow::float64(),
+    cv_ld             = arrow::float64(),
     created_at        = arrow::utf8()
   )
 }
@@ -372,6 +376,28 @@ phenotype_schema <- function() {
 }
 
 
+#' Define Arrow schema for per-trait causal genotype data
+#'
+#' Stores per-strain genotypes at causal variant positions, keyed by trait_id.
+#' Enables var.exp computation for non-marker causal variants (positions absent
+#' from the marker set genotype matrix) via inner_join on CHROM/POS.
+#'
+#' Allele encoding: -1.0 (hom ref / A1), 1.0 (hom alt / A2), NA (het or missing).
+#' Matches the encoding convention of the marker set genotype matrix.
+#'
+#' @return Arrow schema object
+causal_genotypes_schema <- function() {
+  arrow::schema(
+    trait_id = arrow::utf8(),
+    QTL      = arrow::utf8(),   # "CHROM:POS" string — matches .par file format
+    CHROM    = arrow::utf8(),
+    POS      = arrow::int32(),
+    strain   = arrow::utf8(),
+    allele   = arrow::float64() # -1.0 (hom ref), 1.0 (hom alt), NA (het/missing)
+  )
+}
+
+
 # ==============================================================================
 # Database Initialization
 # ==============================================================================
@@ -382,15 +408,17 @@ phenotype_schema <- function() {
 #' @return Invisibly returns the base directory path
 init_database <- function(base_dir = "data/db") {
   config <- .make_db_config(base_dir)
-  markers_dir            <- file.path(base_dir, config$markers_dir)
-  marker_sets_subdir     <- file.path(markers_dir, config$marker_sets_subdir)
-  genotypes_subdir       <- file.path(markers_dir, config$genotypes_subdir)
-  traits_dir             <- file.path(base_dir, config$traits_dir)
-  causal_variants_subdir <- file.path(traits_dir, config$causal_variants_subdir)
-  phenotypes_subdir      <- file.path(traits_dir, config$phenotypes_subdir)
-  mappings_dir           <- file.path(base_dir, config$mappings_dir)
+  markers_dir               <- file.path(base_dir, config$markers_dir)
+  marker_sets_subdir        <- file.path(markers_dir, config$marker_sets_subdir)
+  genotypes_subdir          <- file.path(markers_dir, config$genotypes_subdir)
+  traits_dir                <- file.path(base_dir, config$traits_dir)
+  causal_variants_subdir    <- file.path(traits_dir, config$causal_variants_subdir)
+  causal_genotypes_subdir   <- file.path(traits_dir, config$causal_genotypes_subdir)
+  phenotypes_subdir         <- file.path(traits_dir, config$phenotypes_subdir)
+  mappings_dir              <- file.path(base_dir, config$mappings_dir)
   for (dir in c(base_dir, markers_dir, marker_sets_subdir, genotypes_subdir,
-                traits_dir, causal_variants_subdir, phenotypes_subdir, mappings_dir)) {
+                traits_dir, causal_variants_subdir, causal_genotypes_subdir,
+                phenotypes_subdir, mappings_dir)) {
     if (!dir.exists(dir)) dir.create(dir, recursive = TRUE, showWarnings = FALSE)
   }
   invisible(base_dir)
@@ -441,10 +469,15 @@ generate_marker_set_id <- function(population, maf, species, vcf_release_id, ms_
 #'   matching a row from the --effect_size CSV. Normalized to lowercase; passed verbatim to hash.
 #' @param rep Simulation replicate number (integer)
 #' @param h2 Heritability (numeric)
+#' @param cv_maf_effective Effective MAF threshold for the CV pool (numeric). Two runs with
+#'   identical MS params but different CV pool configs select from different variant universes
+#'   and deserve different trait IDs.
+#' @param cv_ld LD R² pruning threshold for the CV pool (numeric).
 #' @return list with $hash (20-char lowercase hex) and $hash_string (human-readable input)
 #'
-#' hash_schema_version prefix "v=1": increment if hash construction rules change; existing DBs regenerated
-generate_trait_id <- function(marker_set_hash, nqtl, effect, rep, h2) {
+#' hash_schema_version prefix "v=2": encodes cv_maf_effective and cv_ld; v=1 hashes incompatible
+generate_trait_id <- function(marker_set_hash, nqtl, effect, rep, h2,
+                               cv_maf_effective, cv_ld) {
   if (!requireNamespace("digest", quietly = TRUE)) {
     stop("Package 'digest' is required for generate_trait_id()")
   }
@@ -453,11 +486,13 @@ generate_trait_id <- function(marker_set_hash, nqtl, effect, rep, h2) {
   }
   effect      <- tolower(trimws(effect))
   hash_string <- paste0(
-    "v=1|parent=", marker_set_hash,
-    "|nqtl=",   as.integer(nqtl),
-    "|effect=", effect,
-    "|rep=",    as.integer(rep),
-    "|h2=",     sprintf("%.10f", as.numeric(h2))
+    "v=2|parent=", marker_set_hash,
+    "|nqtl=",              as.integer(nqtl),
+    "|effect=",            effect,
+    "|rep=",               as.integer(rep),
+    "|h2=",                sprintf("%.10f", as.numeric(h2)),
+    "|cv_maf_effective=",  sprintf("%.10f", as.numeric(cv_maf_effective)),
+    "|cv_ld=",             sprintf("%.10f", as.numeric(cv_ld))
   )
   list(
     hash_string = hash_string,
@@ -499,6 +534,48 @@ generate_mapping_id <- function(trait_hash, algorithm, pca) {
     hash_string = hash_string,
     hash        = substr(digest::digest(hash_string, algo = "sha256", serialize = FALSE), 1, 20)
   )
+}
+
+
+#' Build all simulation IDs from a named parameter list
+#'
+#' Canonical entry point for ID computation in all four DB migration scripts.
+#' Adding a new simulation dimension requires updating only this function's
+#' generate_*() calls and the sim_params list construction at each call site.
+#'
+#' @param params Named list with fields: population, maf, species, vcf_release_id,
+#'   ms_ld, nqtl, effect, rep, h2, cv_maf_effective, cv_ld.
+#'   Use \code{population} (not \code{group}) — the CLI \code{--group} arg maps to
+#'   \code{params$population} at all four call sites to match the DB schema column name.
+#'   species/vcf_release_id/ms_ld come from \code{read_marker_set_metadata()} at runtime.
+#' @param mode GWA mode string ("inbred" or "loco"). If NULL, mapping_id is omitted.
+#' @param pca Logical scalar (TRUE/FALSE). Derived from \code{opt$type == "pca"}.
+#'   If NULL (or mode is NULL), mapping_id is omitted from the result.
+#' @return Named list with \code{ms_id}, \code{trait_id}, and (if both mode and pca
+#'   are non-NULL) \code{mapping_id}. Each element is the full ID object from the
+#'   corresponding \code{generate_*()} call (use \code{$hash} for the 20-char string).
+build_ids_from_params <- function(params, mode = NULL, pca = NULL) {
+  if (is.null(params$population) || is.na(params$population))   stop("params$population is NA/NULL")
+  if (is.null(params$maf)        || is.na(params$maf))          stop("params$maf is NA/NULL")
+  if (is.null(params$species)    || is.na(params$species))      stop("params$species is NA/NULL — check marker set metadata read")
+  if (is.null(params$vcf_release_id) || is.na(params$vcf_release_id)) stop("params$vcf_release_id is NA/NULL — check marker set metadata read")
+  if (is.null(params$ms_ld) || is.na(as.numeric(params$ms_ld))) stop("params$ms_ld is NA/NULL — check marker set metadata read")
+  if (is.null(params$nqtl)       || is.na(params$nqtl))         stop("params$nqtl is NA/NULL")
+  if (is.null(params$effect)     || is.na(params$effect))       stop("params$effect is NA/NULL")
+  if (is.null(params$rep)        || is.na(params$rep))          stop("params$rep is NA/NULL")
+  if (is.null(params$h2)         || is.na(params$h2))           stop("params$h2 is NA/NULL")
+  if (is.null(params$cv_maf_effective) || is.na(params$cv_maf_effective)) stop("params$cv_maf_effective is NA/NULL")
+  if (is.null(params$cv_ld)      || is.na(params$cv_ld))        stop("params$cv_ld is NA/NULL")
+
+  ms_id    <- generate_marker_set_id(params$population, params$maf, params$species,
+                                     params$vcf_release_id, params$ms_ld)
+  trait_id <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep,
+                                params$h2, params$cv_maf_effective, params$cv_ld)
+  result   <- list(ms_id = ms_id, trait_id = trait_id)
+  if (!is.null(mode) && !is.null(pca)) {
+    result$mapping_id <- generate_mapping_id(trait_id$hash, mode, pca)
+  }
+  result
 }
 
 
@@ -813,7 +890,8 @@ get_trait_metadata_path <- function(trait_id, base_dir) {
 #' @param overwrite Overwrite existing file (default TRUE for retry safety)
 write_trait_metadata <- function(trait_id, trait_hash_string, marker_set_id,
                                  nqtl, rep, sim_seed, h2, maf, effect,
-                                 population, base_dir, overwrite = TRUE) {
+                                 population, cv_maf_effective, cv_ld,
+                                 base_dir, overwrite = TRUE) {
   out_path <- get_trait_metadata_path(trait_id, base_dir)
   if (file.exists(out_path) && !overwrite) {
     return(invisible(out_path))
@@ -822,14 +900,16 @@ write_trait_metadata <- function(trait_id, trait_hash_string, marker_set_id,
     trait_id          = trait_id,
     trait_hash_string = as.character(trait_hash_string),
     marker_set_id     = as.character(marker_set_id),
-    nqtl       = as.integer(nqtl),
-    rep        = as.integer(rep),
-    sim_seed   = as.integer(sim_seed),
-    h2         = as.numeric(h2),
-    maf        = as.numeric(maf),
-    effect     = as.character(effect),
-    population = as.character(population),
-    created_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"),
+    nqtl             = as.integer(nqtl),
+    rep              = as.integer(rep),
+    sim_seed         = as.integer(sim_seed),
+    h2               = as.numeric(h2),
+    maf              = as.numeric(maf),
+    effect           = as.character(effect),
+    population       = as.character(population),
+    cv_maf_effective = as.numeric(cv_maf_effective),
+    cv_ld            = as.numeric(cv_ld),
+    created_at       = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"),
     stringsAsFactors = FALSE
   )
   arrow::write_parquet(
@@ -1006,6 +1086,93 @@ read_phenotype_data <- function(trait_id, base_dir) {
 
 
 # ==============================================================================
+# Causal Genotype Operations
+# ==============================================================================
+
+#' Get path to per-trait causal genotype file
+#'
+#' @param trait_id Deterministic 20-character hex hash from generate_trait_id()
+#' @param base_dir Database base directory
+#' @return Path to causal genotype Parquet file
+get_causal_genotypes_path <- function(trait_id, base_dir) {
+  cg_dir <- file.path(base_dir, .db_constants$traits_dir,
+                      .db_constants$causal_genotypes_subdir)
+  filename <- gsub("\\{trait_id\\}", trait_id,
+                   .db_constants$causal_genotypes_pattern)
+  file.path(cg_dir, filename)
+}
+
+
+#' Check if per-trait causal genotype file exists in database
+#'
+#' @param trait_id Deterministic 20-character hex hash
+#' @param base_dir Database base directory
+#' @return TRUE if causal genotype file exists
+causal_genotypes_exist <- function(trait_id, base_dir) {
+  file.exists(get_causal_genotypes_path(trait_id, base_dir))
+}
+
+
+#' Write per-trait causal genotype data to database
+#'
+#' Reads a TSV file with QTL, strain, allele columns (written by
+#' create_causal_vars.py), parses CHROM/POS from the QTL "CHROM:POS" string,
+#' adds trait_id, casts types to schema, and writes Parquet.
+#'
+#' @param causal_geno_file Path to TSV file with QTL, strain, allele columns
+#' @param trait_id Deterministic 20-character hex hash from generate_trait_id()
+#' @param base_dir Database base directory
+#' @param overwrite Overwrite existing file (default TRUE for retry safety)
+#' @return Invisibly returns the output path
+write_causal_genotypes <- function(causal_geno_file, trait_id, base_dir,
+                                   overwrite = TRUE) {
+  if (!requireNamespace("tidyr", quietly = TRUE)) {
+    stop("Package 'tidyr' is required for write_causal_genotypes()")
+  }
+  out_path <- get_causal_genotypes_path(trait_id, base_dir)
+  if (file.exists(out_path) && !overwrite) {
+    return(invisible(out_path))
+  }
+  raw <- read.table(causal_geno_file, header = TRUE, sep = "\t",
+                    na.strings = "NA", stringsAsFactors = FALSE)
+  df <- raw %>%
+    tidyr::separate(QTL, into = c("CHROM", "POS"), sep = ":", remove = FALSE,
+                    convert = FALSE) %>%
+    dplyr::mutate(
+      trait_id = trait_id,
+      CHROM    = as.character(CHROM),
+      POS      = as.integer(POS),
+      strain   = as.character(strain),
+      allele   = as.numeric(allele)
+    ) %>%
+    dplyr::select(trait_id, QTL, CHROM, POS, strain, allele)
+  arrow::write_parquet(
+    arrow::as_arrow_table(df, schema = causal_genotypes_schema()),
+    sink = out_path
+  )
+  invisible(out_path)
+}
+
+
+#' Read per-trait causal genotype data from database
+#'
+#' Returns genotypes at causal variant positions for a specific trait.
+#' The returned data frame has CHROM/POS columns enabling direct
+#' inner_join(by = c("CHROM", "POS")) with the marker set genotype matrix.
+#'
+#' @param trait_id Deterministic 20-character hex hash
+#' @param base_dir Database base directory
+#' @return data.frame with columns: trait_id, QTL, CHROM, POS, strain, allele
+read_causal_genotypes <- function(trait_id, base_dir) {
+  path <- get_causal_genotypes_path(trait_id, base_dir)
+  if (!file.exists(path)) {
+    stop("Causal genotypes not found: ", path)
+  }
+  as.data.frame(arrow::read_parquet(path))
+}
+
+
+# ==============================================================================
 # Marker Set Metadata Operations
 # ==============================================================================
 
@@ -1091,7 +1258,10 @@ read_marker_set_metadata <- function(population, maf, base_dir = "data/db") {
   }
 
   metadata <- as.data.frame(arrow::read_parquet(metadata_path))
-  record <- metadata[metadata$population == population & metadata$maf == maf, ]
+  record <- metadata[
+    metadata$population == population &
+    sprintf("%.10f", metadata$maf) == sprintf("%.10f", maf),
+  ]
 
   if (nrow(record) == 0) {
     return(NULL)

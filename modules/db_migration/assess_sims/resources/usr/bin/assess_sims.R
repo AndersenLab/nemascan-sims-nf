@@ -29,6 +29,8 @@ option_list <- list(
   make_option("--par_file", type = "character", help = "Path to .par file with causal variants"),
   make_option("--qtl_regions", type = "character", help = "Path to QTL regions TSV from analyze_qtl.R"),
   make_option("--base_dir", type = "character", help = "Database output directory"),
+  make_option("--cv_maf_effective", type = "double", help = "Effective CV MAF threshold"),
+  make_option("--cv_ld", type = "double", help = "CV LD pruning threshold"),
   make_option("--ci_size", type = "integer", default = 150, help = "CI size in markers"),
   make_option("--snp_grouping", type = "integer", default = 1000, help = "SNP grouping distance"),
   make_option("--alpha", type = "double", default = 0.05, help = "Significance level")
@@ -38,7 +40,8 @@ opt <- parse_args(OptionParser(option_list = option_list))
 
 # Validate required args
 required <- c("group", "maf", "nqtl", "effect", "rep", "h2", "mode", "type",
-               "threshold", "par_file", "qtl_regions", "base_dir")
+               "threshold", "par_file", "qtl_regions", "base_dir",
+               "cv_maf_effective", "cv_ld")
 missing <- required[!required %in% names(opt) | sapply(opt[required], is.null)]
 if (length(missing) > 0) {
   stop(paste("Missing required arguments:", paste(missing, collapse = ", ")))
@@ -89,13 +92,22 @@ if (is.null(ms_meta)) {
 if (is.na(as.numeric(ms_meta$ms_ld))) {
   stop("ms_ld field is NA in marker set metadata — DB may be corrupt")
 }
-ms_id <- generate_marker_set_id(
-  params$population, as.numeric(params$maf),
-  ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld)
+sim_params <- list(
+  population       = params$population,
+  maf              = as.numeric(params$maf),
+  species          = ms_meta$species,
+  vcf_release_id   = ms_meta$vcf_release_id,
+  ms_ld            = as.numeric(ms_meta$ms_ld),
+  nqtl             = params$nqtl,
+  effect           = params$effect,
+  rep              = params$rep,
+  h2               = params$h2,
+  cv_maf_effective = as.numeric(opt$cv_maf_effective),
+  cv_ld            = as.numeric(opt$cv_ld)
 )
-trait      <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
-mapping    <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
-mapping_id <- mapping$hash
+ids        <- build_ids_from_params(sim_params, mode = opt$mode, pca = opt$type == "pca")
+mapping_id <- ids$mapping_id$hash
+trait_hash <- ids$trait_id$hash
 log_msg(paste("Assessing mapping:", mapping_id))
 
 # Step 1: Read QTL regions from analyze_qtl.R output
@@ -121,12 +133,57 @@ genotype_matrix <- tryCatch(
     "', maf=", params$maf, ": ", conditionMessage(e)))
 )
 phenotype_data <- tryCatch(
-  read_phenotype_data(trait$hash, opt$base_dir),
+  read_phenotype_data(trait_hash, opt$base_dir),
   error = function(e) stop(paste0(
-    "Failed to read phenotype data for trait='", trait$hash, "': ",
+    "Failed to read phenotype data for trait='", trait_hash, "': ",
     conditionMessage(e)))
 )
-var_exp_df     <- compute_var_exp_anova(genotype_matrix, phenotype_data, causal_variants)
+
+# Read per-trait causal genotypes (covers non-marker positions when cv_maf < ms_maf).
+causal_geno <- tryCatch(
+  read_causal_genotypes(trait_hash, opt$base_dir),
+  error = function(e) {
+    warning("Could not read causal genotypes for trait='", trait_hash,
+            "': ", conditionMessage(e))
+    NULL
+  }
+)
+
+# Detect non-marker causal positions and warn so users can distinguish sources.
+non_marker_count <- causal_variants %>%
+  dplyr::anti_join(
+    genotype_matrix %>%
+      dplyr::mutate(CHROM = as.character(CHROM), POS = as.integer(POS)) %>%
+      dplyr::select(CHROM, POS) %>% dplyr::distinct(),
+    by = c("CHROM", "POS")
+  ) %>% nrow()
+
+if (non_marker_count > 0) {
+  message(non_marker_count,
+          " non-marker causal variant(s): var.exp computed from per-trait causal genotypes")
+}
+
+# Merge genotype sources: causal genotypes are authoritative for non-marker positions;
+# marker genotype matrix supplies the rest.
+merged_geno <- if (!is.null(causal_geno) && nrow(causal_geno) > 0) {
+  cg_cols <- causal_geno %>%
+    dplyr::mutate(CHROM = as.character(CHROM), POS = as.integer(POS)) %>%
+    dplyr::select(CHROM, POS, strain, allele)
+  marker_only <- genotype_matrix %>%
+    dplyr::mutate(CHROM = as.character(CHROM), POS = as.integer(POS)) %>%
+    dplyr::select(CHROM, POS, strain, allele) %>%
+    dplyr::anti_join(
+      cg_cols %>% dplyr::select(CHROM, POS) %>% dplyr::distinct(),
+      by = c("CHROM", "POS")
+    )
+  dplyr::bind_rows(marker_only, cg_cols)
+} else {
+  genotype_matrix %>%
+    dplyr::mutate(CHROM = as.character(CHROM), POS = as.integer(POS)) %>%
+    dplyr::select(CHROM, POS, strain, allele)
+}
+
+var_exp_df <- compute_var_exp_anova(merged_geno, phenotype_data, causal_variants)
 
 # Augment causal_variants with Simulated.QTL.VarExp before compile_full_assessment().
 # build_assessment_union() picks it up via score_causal_markers() join (any_of select).

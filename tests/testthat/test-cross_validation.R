@@ -80,7 +80,7 @@ test_that("DB mapping P and BETA values match raw GWA source files", {
     if (is.null(ms_meta)) next
     ms_id <- generate_marker_set_id(params$population, params$maf,
                                     ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld))
-    trait <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
+    trait <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2, 0.05, 0.8)
     mapping_id <- generate_mapping_id(trait$hash, params$algorithm, params$pca)$hash
 
     # Read raw GWA file
@@ -145,7 +145,7 @@ test_that("DB SE values match raw GWA source files", {
     if (is.null(ms_meta)) next
     ms_id <- generate_marker_set_id(params$population, params$maf,
                                     ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld))
-    trait <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
+    trait <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2, 0.05, 0.8)
     mapping_id <- generate_mapping_id(trait$hash, params$algorithm, params$pca)$hash
     raw_df <- tryCatch(read_raw_gwa_file(gwa_file, verbose = FALSE),
                        error = function(e) NULL)
@@ -183,7 +183,7 @@ test_that("DB AF1 values match raw GWA source files", {
     if (is.null(ms_meta)) next
     ms_id <- generate_marker_set_id(params$population, params$maf,
                                     ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld))
-    trait <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
+    trait <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2, 0.05, 0.8)
     mapping_id <- generate_mapping_id(trait$hash, params$algorithm, params$pca)$hash
     raw_df <- tryCatch(read_raw_gwa_file(gwa_file, verbose = FALSE),
                        error = function(e) NULL)

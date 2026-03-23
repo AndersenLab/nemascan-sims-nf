@@ -20,13 +20,26 @@ website:
         href: cross-validation.qmd
       - text: "Development"
         menu:
-          - text: "Development"
+          - text: "Development Guide"
             href: development.qmd
+          - text: "Setup"
+            href: setup.qmd
+          - text: "---"
+          - text: "Local End-to-End Testing"
+            href: testing-local-e2e.qmd
+          - text: "Local Integration Testing"
+            href: testing-integration.qmd
+          - text: "HPC End-to-End Testing"
+            href: testing-hpc.qmd
+          - text: "Output Validation"
+            href: testing-output-validation.qmd
+          - text: "---"
           - text: "Changelog"
             href: changelog.qmd
 
 format:
   html:
     theme: cosmo
+    css: styles.css
     toc: true
     toc-depth: 3

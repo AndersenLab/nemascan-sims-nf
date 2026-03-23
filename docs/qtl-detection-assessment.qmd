@@ -18,31 +18,41 @@ variants. Two parallel paths produce equivalent output:
 - **Legacy path** (opt-in via `--legacy_assess`) &mdash; operates directly on
   intermediate files using R and GenomicRanges
 
-```
-GWA results (from Phase 3)
- │
- ├─── DB PATH (default) ──────────────────────────────────────────┐
- │                                                                │
- │  Stage 1: Database Ingestion                                   │
- │    DB_MIGRATION_WRITE_MARKER_SET  (barrier)                    │
- │    DB_MIGRATION_WRITE_GENOTYPE_MATRIX                          │
- │    DB_MIGRATION_WRITE_GWA_TO_DB                                │
- │    DB_MIGRATION_WRITE_TRAIT_DATA                               │
- │    DB_MIGRATION_AGGREGATE_METADATA (barrier)                   │
- │                                                                │
- │  Stage 2: QTL Analysis                                         │
- │    DB_MIGRATION_ANALYZE_QTL ──► *_qtl_regions.tsv              │
- │    DB_MIGRATION_ASSESS_SIMS ──► *_db_assessment.tsv            │
- │              ▼                                                 │
- │    db_simulation_assessment_results.tsv                         │
- │                                                                │
- ├─── LEGACY PATH (--legacy_assess) ──────────────────────────────┐
- │                                                                │
- │    R_GET_GCTA_INTERVALS ──► processed mapping + QTL regions    │
- │    R_ASSESS_SIMS ──────────► *_mapping.tsv                     │
- │              ▼                                                 │
- │    simulation_assessment_results.tsv                            │
- └────────────────────────────────────────────────────────────────┘
+```{mermaid}
+%%{init: {'themeVariables': {'fontSize': '17px'}}}%%
+flowchart TD
+    classDef db fill:#1a9e8f,stroke:#0e6b61,color:#fff
+    classDef legacy fill:#d4a017,stroke:#9a7510,color:#fff
+    classDef io fill:#f5f5f5,stroke:#999,color:#333
+
+    GWA(["GWA results: .fastGWA / .mlma (Phase 3)"]):::io
+
+    subgraph DBPATH["DB Path (default)"]
+        direction TB
+        W1["WRITE_MARKER_SET (barrier)"]:::db
+        W2["WRITE_GENOTYPE_MATRIX"]:::db
+        W3["WRITE_GWA_TO_DB"]:::db
+        W4["WRITE_TRAIT_DATA"]:::db
+        W5["AGGREGATE_METADATA (barrier)"]:::db
+        AQ["ANALYZE_QTL (BF / EIGEN threshold)"]:::db
+        AS["ASSESS_SIMS (var.exp ANOVA)"]:::db
+        DBOUT(["db_simulation_assessment_results.tsv"]):::io
+        W1 --> W3 --> W5
+        W2 --> W5
+        W4 --> W5
+        W5 --> AQ --> AS --> DBOUT
+    end
+
+    subgraph LEGPATH["Legacy Path (--legacy_assess)"]
+        direction TB
+        INT["R_GET_GCTA_INTERVALS"]:::legacy
+        RSA["R_ASSESS_SIMS"]:::legacy
+        LEGOUT(["simulation_assessment_results.tsv"]):::io
+        INT --> RSA --> LEGOUT
+    end
+
+    GWA --> DBPATH
+    GWA --> LEGPATH
 ```
 
 Both paths expand each upstream GWA result by threshold &mdash; every

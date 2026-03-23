@@ -30,7 +30,9 @@ option_list <- list(
   make_option("--base_dir", type = "character", help = "Database output directory"),
   make_option("--ci_size", type = "integer", default = 150, help = "CI size in markers"),
   make_option("--snp_grouping", type = "integer", default = 1000, help = "SNP grouping distance"),
-  make_option("--alpha", type = "double", default = 0.05, help = "Significance level")
+  make_option("--alpha", type = "double", default = 0.05, help = "Significance level"),
+  make_option("--cv_maf_effective", type = "double", help = "Effective CV MAF threshold"),
+  make_option("--cv_ld", type = "double", help = "CV LD pruning threshold")
 )
 
 opt <- parse_args(OptionParser(option_list = option_list))
@@ -38,7 +40,7 @@ opt <- parse_args(OptionParser(option_list = option_list))
 # Validate required args
 required <- c(
   "group", "maf", "nqtl", "effect", "rep", "h2", "mode", "type",
-  "threshold", "base_dir"
+  "threshold", "base_dir", "cv_maf_effective", "cv_ld"
 )
 missing <- required[!required %in% names(opt) | sapply(opt[required], is.null)]
 if (length(missing) > 0) {
@@ -85,13 +87,21 @@ if (is.null(ms_meta)) {
 if (is.na(as.numeric(ms_meta$ms_ld))) {
   stop("ms_ld field is NA in marker set metadata — DB may be corrupt")
 }
-ms_id <- generate_marker_set_id(
-  params$population, as.numeric(params$maf),
-  ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld)
+sim_params <- list(
+  population       = params$population,
+  maf              = as.numeric(params$maf),
+  species          = ms_meta$species,
+  vcf_release_id   = ms_meta$vcf_release_id,
+  ms_ld            = as.numeric(ms_meta$ms_ld),
+  nqtl             = params$nqtl,
+  effect           = params$effect,
+  rep              = params$rep,
+  h2               = params$h2,
+  cv_maf_effective = as.numeric(opt$cv_maf_effective),
+  cv_ld            = as.numeric(opt$cv_ld)
 )
-trait      <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2)
-mapping    <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
-mapping_id <- mapping$hash
+ids        <- build_ids_from_params(sim_params, mode = opt$mode, pca = opt$type == "pca")
+mapping_id <- ids$mapping_id$hash
 log_msg(paste("Analyzing mapping:", mapping_id, "with threshold:", opt$threshold))
 
 # Step 1: Query mapping data from database

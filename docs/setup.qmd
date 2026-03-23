@@ -1,0 +1,293 @@
+---
+title: "Setup"
+subtitle: "Local and HPC environment prerequisites"
+date: last-modified
+format:
+  html:
+    embed-resources: true
+---
+
+This page covers everything required before running the pipeline or its test
+suite — local development on macOS and HPC execution on the Rockfish cluster.
+
+```{mermaid}
+%%{init: {'themeVariables': {'fontSize': '16px'}}}%%
+flowchart TD
+    classDef step fill:#4e9af1,stroke:#2c6fad,color:#fff
+    classDef hpc fill:#9b59b6,stroke:#6c3483,color:#fff
+    classDef data fill:#f5f5f5,stroke:#999,color:#333
+
+    CLONE([Clone repository]):::data
+    CHOICE{Target environment}:::data
+
+    NF[Install Nextflow 24.10.x]:::step
+    DOCKER[Install Docker Desktop]:::step
+    R[Install R packages]:::step
+    PY[Install Python + pytest]:::step
+    BCFT[Install bcftools + tabix]:::step
+    VCF[Generate test VCF]:::step
+    LOCAL_DONE([Ready: local runs and tests]):::data
+
+    ENV[conda activate nf24_env]:::hpc
+    SING[Set NXF_SINGULARITY_CACHEDIR]:::hpc
+    VCF_HPC[Generate test VCF on Rockfish]:::hpc
+    HPC_DONE([Ready: HPC runs]):::data
+
+    CLONE --> CHOICE
+    CHOICE -- Local --> NF --> DOCKER --> R --> PY --> BCFT --> VCF --> LOCAL_DONE
+    CHOICE -- Rockfish --> ENV --> SING --> VCF_HPC --> HPC_DONE
+```
+
+
+## Prerequisites
+
+| Tool | Version | Required for |
+|------|---------|-------------|
+| Nextflow | `>=24.10.0,<25.0.0` | All pipeline runs |
+| Docker Desktop | any | Local containerized runs, integration test collection |
+| R | >= 4.1 | Unit and integration tests |
+| Python | >= 3.9 | pytest tests for `bin/create_causal_vars.py` |
+| bcftools | >= 1.16 | Test VCF generation (one-time) |
+| tabix | any (htslib) | Test VCF generation (one-time) |
+| Quarto | any | Rendering or publishing the documentation site |
+
+
+## Local Setup
+
+### Nextflow
+
+The pipeline requires Nextflow `>=24.10.0,<25.0.0`. The `nextflow.preview.output`
+publish block syntax used in `main.nf` is a preview feature in 24.x that is absent
+in 25.x — installing the latest Nextflow will cause the pipeline to fail.
+
+Install a pinned version using the official install script:
+
+```bash
+export NXF_VER=24.10.5
+curl -s https://get.nextflow.io | bash
+chmod +x nextflow
+mv nextflow ~/.local/bin/   # move to any directory on PATH
+```
+
+Or install via conda:
+
+```bash
+conda install -c bioconda -c conda-forge nextflow=24.10.5
+```
+
+Verify the installed version:
+
+```bash
+nextflow -version
+# Expected: version 24.10.x build ...
+```
+
+### Docker
+
+Docker is required for containerized local runs (`-profile docker`) and for the
+integration test collection script (`tests/collect_test_data.sh`). Stub runs do
+not require Docker.
+
+Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and
+verify it is running:
+
+```bash
+docker run --rm hello-world
+```
+
+### R Packages
+
+Unit and integration tests run with any R installation that has the required
+packages. To reproduce the exact versions from the `andersenlab/r_packages:20250519`
+container, restore from `renv.lock`:
+
+```r
+install.packages("renv")
+renv::restore(lockfile = "renv.lock")
+```
+
+The lockfile covers packages used by `R_.*` Nextflow processes. `DB_MIGRATION_.*`
+processes use a separate container (`andersenlab/migrate-sims:20260202`). Install
+the DB migration packages manually if they are not already present:
+
+```r
+install.packages(c("arrow", "duckdb", "dplyr", "tidyr", "purrr",
+                    "digest", "testthat", "readr", "data.table"))
+```
+
+See [Output Validation](testing-output-validation.qmd#r-package-lockfile) for
+full details on the lockfile and how to regenerate it.
+
+### Python
+
+`tests/pytest/` contains tests for `bin/create_causal_vars.py`. The tests require
+`numpy`, `pandas`, and `pytest`:
+
+```bash
+pip install "numpy==2.2.3" "pandas==2.2.3" pytest
+```
+
+To run tests inside the pipeline container instead (no local Python install required):
+
+```bash
+docker run --rm -v "$PWD":/work -w /work andersenlab/numpy:20250506 \
+  pytest tests/pytest/
+```
+
+### bcftools and tabix
+
+Required only for generating test VCF files locally. Not needed for stub runs or
+unit tests. bcftools >= 1.16 is required.
+
+**macOS (Homebrew):**
+
+```bash
+brew install htslib    # includes tabix
+brew install bcftools
+```
+
+Verify:
+
+```bash
+bcftools --version | head -1   # should report 1.16 or later
+tabix --version | head -1
+```
+
+### Quarto
+
+Required only for rendering or publishing the documentation site. Not needed for
+pipeline runs or tests.
+
+[Install Quarto](https://quarto.org/docs/get-started/) from the official site, then verify:
+
+```bash
+quarto --version
+```
+
+### Test VCF Generation
+
+The test VCF (`data/test/test.vcf.gz`) is not committed to the repository due to
+its size. This is a one-time step required before any non-stub local pipeline run.
+Requires bcftools >= 1.16 and tabix.
+
+The generate script accepts a local file path or an HTTPS URL from the CaeNDR S3
+bucket. Using a URL is recommended — bcftools fetches only chromosomes I, II, and V
+via tabix random access, avoiding a multi-GB download:
+
+```bash
+# Using an HTTPS URL (recommended — fetches only needed chromosomes)
+bash data/test/generate_test_vcf.sh "https://..."
+
+# Or using a local copy of the source VCF
+bash data/test/generate_test_vcf.sh /path/to/WI.20220216.hard-filter.isotype.vcf.gz
+```
+
+See [Local End-to-End Testing](testing-local-e2e.qmd#generating-test-data) for the
+full generate commands, including multi-species VCFs for the `test_three_species`
+profile.
+
+
+## HPC Setup (Rockfish)
+
+### Clone
+
+```bash
+git clone https://github.com/AndersenLab/nemascan-sims-nf
+cd nemascan-sims-nf
+```
+
+### Conda Environment
+
+The `nf24_env` conda environment on Rockfish provides Nextflow 24.10.x and its
+Java runtime. Source your bash profile first so that `conda` is on PATH:
+
+```bash
+source ~/.bash_profile
+conda activate /data/eande106/software/conda_envs/nf24_env
+```
+
+Verify:
+
+```bash
+nextflow -version   # should report 24.10.x
+```
+
+### Singularity Cache
+
+Container images are cached at `/vast/eande106/singularity`. Set
+`NXF_SINGULARITY_CACHEDIR` so Nextflow finds them automatically without
+re-pulling:
+
+```bash
+export NXF_SINGULARITY_CACHEDIR=/vast/eande106/singularity
+```
+
+Add this to `~/.bash_profile` to make it persistent across sessions:
+
+```bash
+echo 'export NXF_SINGULARITY_CACHEDIR=/vast/eande106/singularity' >> ~/.bash_profile
+```
+
+### SLURM Account and Custom Paths
+
+`conf/rockfish.config` ships with defaults for the `eande106` account. Override
+any of these on the command line without editing the config file:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--slurm_account` | `eande106` | SLURM account name passed to `-A` |
+| `--scratch_dir` | `/scratch4/eande106` | Nextflow work directory on scratch |
+| `--baseDir` | `/vast/eande106` | Base directory for data and Singularity cache |
+| `--dataDir` | `/vast/eande106/data` | Data directory |
+| `--softwareDir` | `/data/eande106/software` | Software directory |
+
+Example — run under a different account:
+
+```bash
+nextflow run main.nf \
+  -profile test,rockfish \
+  --slurm_account myaccount \
+  --scratch_dir /scratch4/myaccount \
+  --baseDir /vast/myaccount
+```
+
+### Test VCF Generation on Rockfish
+
+Generate the test VCF from an interactive node. Request one via `interact`
+(adjust partition as needed):
+
+```bash
+interact -n 1 -c 1 -a eande106 -m 64G -t 30
+```
+
+Load bcftools and **export PATH** before running the generate script. The
+`module load` command modifies the current shell's PATH but does not export it;
+without `export PATH`, the bash subprocess spawned by the script exits with
+"bcftools not found":
+
+```bash
+module spider bcftools        # list available versions
+module load bcftools/1.17     # any version >= 1.16
+export PATH                   # required — exports module changes to subprocesses
+```
+
+Then generate the test VCF:
+
+```bash
+FULL_VCF=/vast/eande106/data/c_elegans/WI/variation/20210901/vcf/WI.20210901.hard-filter.isotype.vcf.gz
+bash data/test/generate_test_vcf.sh "$FULL_VCF"
+```
+
+`data/test/test.20210901.vcf.gz` is a committed symlink that points to
+`data/test/test.vcf.gz`. The script creates the symlink target on a fresh clone,
+making the symlink valid for the first time.
+
+See [HPC End-to-End Testing](testing-hpc.qmd#generating-the-test-vcf-on-rockfish)
+for additional context on this step.
+
+
+::: {.callout-tip}
+## Next steps
+With the environment in place, verify pipeline wiring with a stub run:
+[Local End-to-End Testing](testing-local-e2e.qmd)
+:::
