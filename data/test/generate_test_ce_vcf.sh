@@ -27,12 +27,13 @@
 #   data/test/test_ce.YYYYMMDD.vcf.gz    (dated symlink → test_ce.vcf.gz)
 #   data/test/test_ce.YYYYMMDD.vcf.gz.tbi (dated symlink → test_ce.vcf.gz.tbi)
 #
-# On completion the script prints the assembled strainfile rows (small and large)
-# ready to paste into data/test/test_strains_three_species.txt.
+# On completion the script writes the three C. elegans rows directly into
+# data/test/test_strains_three_species.txt, replacing any existing ce.* rows.
+# Rows for other species (cb.*, ct.*) are preserved unchanged.
 #
-# Note: This script outputs to test_ce.vcf.gz (CE-prefixed). The existing
-# test.vcf.gz and its test.YYYYMMDD.vcf.gz symlink are kept intact for the
-# legacy `test` and `test_variable` Nextflow profiles.
+# Note: This script outputs to test_ce.vcf.gz. generate_test_vcf.sh is a
+# convenience wrapper that reads strains from the source VCF header and also
+# outputs to test_ce.vcf.gz with a dated symlink, and rewrites test_strains.txt.
 
 set -euo pipefail
 
@@ -151,21 +152,31 @@ echo "  Variants:   $VARIANT_COUNT"
 echo "  Contigs:    $(echo $CONTIGS | tr '\n' ' ')"
 echo ""
 
-# --- Print assembled strainfile rows ---
+# --- Update test_strains_three_species.txt ---
+THREE_SPECIES_FILE="${SCRIPT_DIR}/test_strains_three_species.txt"
 STRAINS_CSV=$(bcftools query -l "$OUTPUT_VCF" | tr '\n' ',' | sed 's/,$//')
 POPA_CSV=$(bcftools query -l "$OUTPUT_VCF" | head -${POP_SPLIT_COUNT} | tr '\n' ',' | sed 's/,$//')
 POPB_CSV=$(bcftools query -l "$OUTPUT_VCF" | tail -${POP_SPLIT_COUNT} | tr '\n' ',' | sed 's/,$//')
 
-echo "=== Strainfile rows (paste into test_strains_three_species.txt) ==="
-printf "ce.test\tc_elegans\tdata/test/test_ce.%s.vcf.gz\t0.05\t0.8\t%s\n" \
-    "$DATE" "$STRAINS_CSV"
-printf "ce.test.popA\tc_elegans\tdata/test/test_ce.%s.vcf.gz\t0.05\t0.8\t%s\n" \
-    "$DATE" "$POPA_CSV"
-printf "ce.test.popB\tc_elegans\tdata/test/test_ce.%s.vcf.gz\t0.05\t0.8\t%s\n" \
-    "$DATE" "$POPB_CSV"
-echo ""
+{
+    printf "group\tspecies\tvcf\tms_maf\tms_ld\tstrains\n"
+    # Preserve non-ce rows from existing strainfile
+    if [[ -f "$THREE_SPECIES_FILE" ]]; then
+        awk -F'\t' 'NR>1 && $1 !~ /^ce\./' "$THREE_SPECIES_FILE"
+    fi
+    printf "ce.test\tc_elegans\tdata/test/test_ce.%s.vcf.gz\t0.05\t0.8\t%s\n" \
+        "$DATE" "$STRAINS_CSV"
+    printf "ce.test.popA\tc_elegans\tdata/test/test_ce.%s.vcf.gz\t0.05\t0.8\t%s\n" \
+        "$DATE" "$POPA_CSV"
+    printf "ce.test.popB\tc_elegans\tdata/test/test_ce.%s.vcf.gz\t0.05\t0.8\t%s\n" \
+        "$DATE" "$POPB_CSV"
+} > "${THREE_SPECIES_FILE}.tmp"
+mv "${THREE_SPECIES_FILE}.tmp" "$THREE_SPECIES_FILE"
+echo "Updated $THREE_SPECIES_FILE (ce.test, ce.test.popA, ce.test.popB)"
+
 echo "Remember to:"
 echo "  1. git add data/test/test_ce.${DATE}.vcf.gz data/test/test_ce.${DATE}.vcf.gz.tbi"
-echo "  2. Paste the strainfile rows above into data/test/test_strains_three_species.txt"
+echo "  2. git add data/test/test_strains_three_species.txt"
+echo "  3. Update CE_VCF_RELEASE in data/test/release_ids.sh to ${DATE}"
 echo ""
 echo "Done."
