@@ -547,7 +547,7 @@ test_that("inbred GWA marker count equals marker set size", {
   }
 })
 
-test_that("loco GWA marker count is less than marker set size (GCTA exclusion invariant)", {
+test_that("loco GWA marker count equals marker set size", {
   skip_if_no_db()
   meta <- get_metadata(db_dir)
   ms_meta_all <- arrow::read_parquet(file.path(db_dir, "marker_set_metadata.parquet"))
@@ -556,19 +556,20 @@ test_that("loco GWA marker count is less than marker set size (GCTA exclusion in
   if (nrow(loco_rows) == 0) skip("no loco mappings found")
 
   # Check all unique populations — not just [1,].
-  # GCTA mlma-loco silently excludes near-singular markers from GWA output.
-  # This is the invariant exposed by issue111: if loco n_markers == ms n_markers,
-  # the BF threshold denominator would be wrong.
+  # After the LOCO marker count fix, n_markers stored in mappings metadata equals
+  # the LD-pruned marker set size for both LOCO and INBRED. The BF threshold
+  # denominator uses nrow(mapping_data) at runtime in analyze_qtl.R, independently
+  # of this stored value.
   for (pop in unique(loco_rows$population)) {
     pop_rows <- loco_rows[loco_rows$population == pop, ]
     row <- pop_rows[1, ]
     ms_row <- ms_meta_all[ms_meta_all$marker_set_id == row$marker_set_id, ]
     if (nrow(ms_row) == 0) next
 
-    expect_lt(
+    expect_equal(
       row$n_markers, ms_row$n_markers[1],
       label = sprintf(
-        "loco n_markers (%d) < marker set size (%d) for population=%s — GCTA exclusions present",
+        "loco n_markers (%d) == marker set size (%d) for population=%s",
         row$n_markers, ms_row$n_markers[1], pop
       )
     )

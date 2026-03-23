@@ -318,7 +318,7 @@ test_that("query_by_mapping_id() returns non-empty result for every mapping_id i
 
 # ── Loco/Inbred Marker Count Invariant ───────────────────────────────────────
 
-test_that("loco GWA has fewer markers than inbred for same marker set (issue111 regression guard)", {
+test_that("loco and inbred GWA have equal marker counts for same marker set", {
   skip_if_no_cross_validation()
 
   meta <- get_metadata(db_dir)
@@ -327,11 +327,10 @@ test_that("loco GWA has fewer markers than inbred for same marker set (issue111 
   }
 
   # Check all unique populations — not just [1,].
-  # GCTA mlma-loco silently excludes near-singular markers from GWA output.
-  # Regression guard for issue111: the BF threshold denominator in analyze_qtl.R
-  # must use nrow(mapping_data), not n_markers from marker_set_metadata, because
-  # loco output has fewer rows than the .bim file. If this assertion fails on a new
-  # run, the BF threshold fix may have been reverted.
+  # After the LOCO marker count fix, both inbred and loco store n_markers equal
+  # to the full LD-pruned marker set size in mappings metadata. The BF threshold
+  # denominator in analyze_qtl.R uses nrow(mapping_data) at runtime regardless of
+  # this stored value.
   populations <- unique(meta$population)
   any_checked <- FALSE
 
@@ -346,10 +345,10 @@ test_that("loco GWA has fewer markers than inbred for same marker set (issue111 
     loco_row   <- loco_pop[loco_pop$maf == maf_val, ][1, ]
     if (is.na(loco_row$n_markers)) next
 
-    expect_lt(
+    expect_equal(
       loco_row$n_markers, inbred_row$n_markers,
       label = sprintf(
-        "loco n_markers (%d) < inbred n_markers (%d) for population=%s maf=%s",
+        "loco n_markers (%d) == inbred n_markers (%d) for population=%s maf=%s",
         loco_row$n_markers, inbred_row$n_markers, pop, maf_val
       )
     )
