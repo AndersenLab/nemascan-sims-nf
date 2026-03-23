@@ -1,13 +1,13 @@
 #!/usr/bin/env Rscript
 # write_gwa_to_db.R - Write raw GWA output to Parquet database
 #
-# Reads a GCTA GWA output file (.fastGWA or .mlma), constructs mapping params
-# from Nextflow channel metadata, and writes to Hive-partitioned Parquet.
+# Reads a GCTA GWA output file (.fastGWA or .mlma), reads species/vcf_release_id/ms_ld
+# from marker_set_metadata.parquet (written by DB_MIGRATION_WRITE_MARKER_SET), computes
+# IDs via build_ids_from_params(), and writes to Hive-partitioned Parquet.
 #
 # Usage: write_gwa_to_db.R --group <group> --maf <maf> --nqtl <nqtl>
 #            --effect <effect> --rep <rep> --h2 <h2> --mode <mode>
-#            --type <type> --species <species> --vcf_release_id <vcf_release_id>
-#            --ms_ld <ms_ld> --cv_maf_effective <num> --cv_ld <num>
+#            --type <type> --cv_maf_effective <num> --cv_ld <num>
 #            --gwa_file <file> --base_dir <db_dir>
 
 library(optparse)
@@ -21,11 +21,8 @@ option_list <- list(
   make_option("--h2",             type = "double",    help = "Heritability"),
   make_option("--mode",           type = "character", help = "GWA mode (inbred/loco)"),
   make_option("--type",           type = "character", help = "PCA type (pca/nopca)"),
-  make_option("--species",        type = "character", help = "Species identifier"),
-  make_option("--vcf_release_id", type = "character", help = "VCF release date"),
-  make_option("--ms_ld",            type = "double",    help = "LD R² threshold for marker SNP selection"),
-  make_option("--cv_maf_effective", type = "double",    help = "Effective MAF threshold for the CV pool"),
-  make_option("--cv_ld",            type = "double",    help = "CV LD pruning threshold"),
+  make_option("--cv_maf_effective", type = "double",  help = "Effective MAF threshold for the CV pool"),
+  make_option("--cv_ld",            type = "double",  help = "CV LD pruning threshold"),
   make_option("--gwa_file",         type = "character", help = "Path to GWA output file"),
   make_option("--base_dir",         type = "character", help = "Database output directory")
 )
@@ -34,8 +31,7 @@ opt <- parse_args(OptionParser(option_list = option_list))
 
 # Validate required args
 required <- c("group", "maf", "nqtl", "effect", "rep", "h2", "mode", "type",
-              "species", "vcf_release_id", "ms_ld", "cv_maf_effective", "cv_ld",
-              "gwa_file", "base_dir")
+              "cv_maf_effective", "cv_ld", "gwa_file", "base_dir")
 missing <- required[!required %in% names(opt) | sapply(opt[required], is.null)]
 if (length(missing) > 0) {
   stop(paste("Missing required arguments:", paste(missing, collapse = ", ")))
@@ -63,37 +59,58 @@ if (n_before != n_after) {
                 n_before - n_after, "duplicates)"))
 }
 
-# Construct mapping params from Nextflow channel metadata
-# algorithm = opt$mode ("inbred" or "loco") — canonical form per Step 1
-#   type "pca"    → pca = TRUE
-#   type "nopca"  → pca = FALSE
 pca <- opt$type == "pca"
 
-params <- list(
-  population     = opt$group,
-  maf            = as.numeric(opt$maf),
-  species        = opt$species,
-  vcf_release_id = opt$vcf_release_id,
-  ms_ld          = as.numeric(opt$ms_ld),
-  nqtl           = as.integer(opt$nqtl),
-  effect         = opt$effect,
-  rep            = as.integer(opt$rep),
-  h2             = as.numeric(opt$h2),
-  algorithm      = opt$mode,   # "inbred" or "loco" — canonical form per Step 1
-  pca            = pca
-)
+# Read species/vcf_release_id/ms_ld from marker_set_metadata.parquet.
+# DB_MIGRATION_WRITE_MARKER_SET is guaranteed to have completed before this task
+# starts (via ch_marker_barrier in main.nf), so the metadata file always exists here.
+ms_meta <- read_marker_set_metadata(opt$group, as.numeric(opt$maf), opt$base_dir)
+if (is.null(ms_meta)) {
+  stop(paste0(
+    "Marker set metadata not found for population='", opt$group,
+    "', maf=", opt$maf, " in ", opt$base_dir,
+    ". Ensure DB_MIGRATION_WRITE_MARKER_SET completed before resuming. ",
+    "If VCF/species parameters changed, a full re-run (not -resume) is required."
+  ))
+}
+if (is.na(as.numeric(ms_meta$ms_ld))) {
+  stop("ms_ld field is NA in marker set metadata — DB may be corrupt")
+}
 
-# ⚠ cv_maf/cv_ld are NOT included in marker_set_id — see README Marker Set ID section
-ms_id   <- generate_marker_set_id(
-  params$population, params$maf, params$species, params$vcf_release_id, params$ms_ld
+# Compute all IDs via canonical wrapper
+sim_params <- list(
+  population       = opt$group,
+  maf              = as.numeric(opt$maf),
+  species          = ms_meta$species,
+  vcf_release_id   = ms_meta$vcf_release_id,
+  ms_ld            = as.numeric(ms_meta$ms_ld),
+  nqtl             = opt$nqtl,
+  effect           = opt$effect,
+  rep              = opt$rep,
+  h2               = opt$h2,
+  cv_maf_effective = as.numeric(opt$cv_maf_effective),
+  cv_ld            = as.numeric(opt$cv_ld)
 )
-trait   <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2,
-                             as.numeric(opt$cv_maf_effective), as.numeric(opt$cv_ld))
-mapping <- generate_mapping_id(trait$hash, params$algorithm, params$pca)
+ids     <- build_ids_from_params(sim_params, mode = opt$mode, pca = pca)
+ms_id   <- ids$ms_id
+trait   <- ids$trait_id
+mapping <- ids$mapping_id
 
 log_msg(paste("Marker set ID:", ms_id$hash))
 log_msg(paste("Trait ID:",      trait$hash))
 log_msg(paste("Writing mapping:", mapping$hash))
+
+# params list for write functions (algorithm/pca needed; species/vcf/ms_ld are not)
+params <- list(
+  population = opt$group,
+  maf        = as.numeric(opt$maf),
+  nqtl       = as.integer(opt$nqtl),
+  effect     = opt$effect,
+  rep        = as.integer(opt$rep),
+  h2         = as.numeric(opt$h2),
+  algorithm  = opt$mode,
+  pca        = pca
+)
 
 # Write to Hive-partitioned Parquet
 write_mapping_partitioned(
