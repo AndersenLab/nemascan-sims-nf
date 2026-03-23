@@ -1,0 +1,18 @@
+/* Increase base reading font size across all pages */
+body {
+    font-size: 1.1rem;
+}
+
+/* Make Mermaid diagrams responsive and full-width */
+.mermaid svg {
+    max-width: 100%;
+    width: 100%;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+}
+
+/* Breathing room around diagrams */
+.cell-output-display {
+    margin: 2rem 0;
+}
