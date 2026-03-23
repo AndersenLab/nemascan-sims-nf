@@ -13,6 +13,23 @@ not use version tags; entries are organized by development phase and date.
 
 ## [Unreleased] — March 2026
 
+### Changed
+- **Integration tests are now the sole evaluation framework** (`fix/merge-unit-with-integration`, 2026-03-23):
+  Static-fixture unit tests (`test-*.R` in `tests/testthat/` except the three integration
+  files) removed. The integration framework was extended to cover the behaviors they
+  tested — now evaluated against real pipeline output rather than synthetic fixtures.
+  - `test-db_structure.R` gains 7 new tests: `traits/` subdirectory existence,
+    genotype matrix Arrow schema, trait metadata schema (`sim_seed int32`), phenotype
+    schema (no-NA check), causal variants schema (`QTL` in `CHROM:POS` format),
+    inbred `n_markers == marker_set_metadata$n_markers`, and loco
+    `n_markers < marker_set_metadata$n_markers` (issue111 regression guard; 27 tests total)
+  - `test-assessment_cross_validation.R` gains 3 new tests: DB assessment column
+    completeness (35 columns from `format_assessment_tsv()`), `calculate_simrep_performance()`
+    on real data, `designate_qtl()` valid-category assertion (10 tests total)
+  - `test-cross_validation.R` gains 3 new tests: `read_raw_gwa_file()` normalized column
+    schema for both `.fastGWA` and `.mlma`, `query_by_mapping_id()` full coverage, loco
+    < inbred marker count invariant (8 tests total)
+
 ### Fixed
 - **Eigen calculation uses full decomposition (Li & Ji 2005)** (`fix-eigen-calculation`, 2026-03-20):
   Replaced the `RSpectra::eigs_sym()` partial-decomposition while-loop in

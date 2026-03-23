@@ -134,24 +134,33 @@ Quarto, one-time test VCF generation, and Rockfish conda/Singularity configurati
 
 ## Testing
 
-The test and validation workflow is documented across four dedicated pages:
+Integration tests are the primary evaluation metric. All three test files in
+`tests/testthat/` require real pipeline output and skip automatically when the
+required environment variables are not set.
 
 | Page | Contents |
 |------|---------|
 | [Local End-to-End Testing](testing-local-e2e.qmd) | Stub runs, test VCF generation, container updates |
-| [Local Integration Testing](testing-integration.qmd) | Unit tests (R + pytest), test fixtures, integration test collection |
+| [Local Integration Testing](testing-integration.qmd) | Integration test inventory, test collection, environment variables |
 | [HPC End-to-End Testing](testing-hpc.qmd) | Rockfish environment, running the pipeline, collecting integration data |
 | [Output Validation](testing-output-validation.qmd) | Cross-validation tests, R package lockfile, thread-count determinism |
 
-Run all test tiers with:
+Run all tests with:
 
 ```bash
+# Without env vars — all tests skip (no pipeline output available)
+Rscript tests/run_tests.R
+
+# With integration data
+TEST_DB_DIR=tests/integration_data/db \
+TEST_WORK_DIR=tests/.nf-work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/db_simulation_assessment_results.tsv \
 Rscript tests/run_tests.R
 ```
 
-Integration and cross-validation tests skip automatically when their required
-environment variables are not set. See [Local Integration Testing](testing-integration.qmd)
-for the full environment variable reference.
+See [Local Integration Testing](testing-integration.qmd) for the full
+environment variable reference and test inventory.
 
 
 ## Project Structure

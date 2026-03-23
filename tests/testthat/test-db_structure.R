@@ -356,6 +356,162 @@ test_that("P values are in valid range (0, 1]", {
   expect_equal(result$null_count[1], 0, label = "no NULL P values")
 })
 
+# ── Trait Data Directories ───────────────────────────────────────────────────
+
+test_that("traits directory exists with expected subdirectories", {
+  skip_if_no_db()
+  expect_true(dir.exists(file.path(db_dir, "traits")),
+    label = "traits/ directory exists"
+  )
+  expect_true(dir.exists(file.path(db_dir, "traits", "causal_variants")),
+    label = "traits/causal_variants/ subdirectory exists"
+  )
+  expect_true(dir.exists(file.path(db_dir, "traits", "phenotypes")),
+    label = "traits/phenotypes/ subdirectory exists"
+  )
+})
+
+test_that("genotype matrix parquets have correct schema", {
+  skip_if_no_db()
+  geno_files <- list.files(
+    file.path(db_dir, "markers", "genotypes"),
+    pattern = "_genotypes\\.parquet$", full.names = TRUE
+  )
+  if (length(geno_files) == 0) skip("no genotype parquet files found")
+
+  geno <- arrow::read_parquet(geno_files[1], as_data_frame = FALSE)
+  schema <- geno$schema
+
+  expected_cols <- c("marker_set_id", "CHROM", "POS", "strain", "allele")
+  expect_true(all(expected_cols %in% names(schema)),
+    label = paste(
+      "genotype matrix missing columns:",
+      paste(setdiff(expected_cols, names(schema)), collapse = ", ")
+    )
+  )
+  expect_equal(schema$GetFieldByName("marker_set_id")$type, arrow::utf8())
+  expect_equal(schema$GetFieldByName("CHROM")$type, arrow::utf8())
+  expect_equal(schema$GetFieldByName("POS")$type, arrow::int32())
+  expect_equal(schema$GetFieldByName("strain")$type, arrow::utf8())
+  expect_equal(schema$GetFieldByName("allele")$type, arrow::float64())
+  expect_gt(nrow(geno), 0, label = "genotype matrix is non-empty")
+})
+
+test_that("trait metadata parquets have correct schema", {
+  skip_if_no_db()
+  trait_files <- list.files(
+    file.path(db_dir, "traits"),
+    pattern = "^[0-9a-f]{20}\\.parquet$", full.names = TRUE
+  )
+  if (length(trait_files) == 0) skip("no trait metadata parquet files found")
+
+  schema <- arrow::read_parquet(trait_files[1], as_data_frame = FALSE)$schema
+  expected_cols <- c(
+    "trait_id", "trait_hash_string", "marker_set_id",
+    "nqtl", "rep", "sim_seed", "h2", "maf", "effect",
+    "population", "cv_maf_effective", "cv_ld", "created_at"
+  )
+  expect_true(all(expected_cols %in% names(schema)),
+    label = paste(
+      "trait metadata missing columns:",
+      paste(setdiff(expected_cols, names(schema)), collapse = ", ")
+    )
+  )
+  expect_equal(schema$GetFieldByName("trait_id")$type, arrow::utf8())
+  expect_equal(schema$GetFieldByName("nqtl")$type, arrow::int32())
+  expect_equal(schema$GetFieldByName("sim_seed")$type, arrow::int32())
+  expect_equal(schema$GetFieldByName("h2")$type, arrow::float64())
+})
+
+test_that("phenotype parquets have correct schema and non-NA values", {
+  skip_if_no_db()
+  phen_files <- list.files(
+    file.path(db_dir, "traits", "phenotypes"),
+    pattern = "_phenotype\\.parquet$", full.names = TRUE
+  )
+  if (length(phen_files) == 0) skip("no phenotype parquet files found")
+
+  phen <- arrow::read_parquet(phen_files[1])
+  expect_true(all(c("strain", "phenotype") %in% names(phen)),
+    label = "phenotype parquet has strain and phenotype columns"
+  )
+  expect_gt(nrow(phen), 0, label = "phenotype parquet is non-empty")
+  expect_equal(sum(is.na(phen$phenotype)), 0,
+    label = "phenotype values are non-NA"
+  )
+})
+
+test_that("causal variant parquets have correct schema and QTL format", {
+  skip_if_no_db()
+  cv_files <- list.files(
+    file.path(db_dir, "traits", "causal_variants"),
+    pattern = "_causal\\.parquet$", full.names = TRUE
+  )
+  if (length(cv_files) == 0) skip("no causal variant parquet files found")
+
+  cv <- arrow::read_parquet(cv_files[1])
+  expected_cols <- c("QTL", "CHROM", "POS", "RefAllele", "Frequency", "Effect")
+  expect_true(all(expected_cols %in% names(cv)),
+    label = paste(
+      "causal variants missing columns:",
+      paste(setdiff(expected_cols, names(cv)), collapse = ", ")
+    )
+  )
+  expect_gt(nrow(cv), 0, label = "causal variants parquet is non-empty")
+  # QTL column must be in CHROM:POS format
+  expect_true(all(grepl("^[^:]+:[0-9]+$", cv$QTL)),
+    label = "QTL values are in CHROM:POS format"
+  )
+})
+
+# ── Inbred/Loco Marker Count Invariants ──────────────────────────────────────
+
+test_that("inbred GWA marker count equals marker set size", {
+  skip_if_no_db()
+  meta <- get_metadata(db_dir)
+  ms_meta_all <- arrow::read_parquet(file.path(db_dir, "marker_set_metadata.parquet"))
+
+  inbred_rows <- meta[meta$algorithm == "inbred", ]
+  if (nrow(inbred_rows) == 0) skip("no inbred mappings found")
+
+  row <- inbred_rows[1, ]
+  ms_row <- ms_meta_all[ms_meta_all$marker_set_id == row$marker_set_id, ]
+  if (nrow(ms_row) == 0) skip("marker set metadata not found for inbred mapping")
+
+  # GCTA fastGWA-mlm-exact processes all markers — no exclusions
+  expect_equal(
+    row$n_markers, ms_row$n_markers[1],
+    label = sprintf(
+      "inbred n_markers (%d) equals marker set size (%d)",
+      row$n_markers, ms_row$n_markers[1]
+    )
+  )
+})
+
+test_that("loco GWA marker count is less than marker set size (GCTA exclusion invariant)", {
+  skip_if_no_db()
+  meta <- get_metadata(db_dir)
+  ms_meta_all <- arrow::read_parquet(file.path(db_dir, "marker_set_metadata.parquet"))
+
+  loco_rows <- meta[meta$algorithm == "loco", ]
+  if (nrow(loco_rows) == 0) skip("no loco mappings found")
+
+  row <- loco_rows[1, ]
+  ms_row <- ms_meta_all[ms_meta_all$marker_set_id == row$marker_set_id, ]
+  if (nrow(ms_row) == 0) skip("marker set metadata not found for loco mapping")
+
+  # GCTA mlma-loco silently excludes near-singular markers from GWA output.
+  # This is the invariant exposed by issue111: if loco n_markers == ms n_markers,
+  # the BF threshold denominator would be wrong.
+  expect_lt(
+    row$n_markers, ms_row$n_markers[1],
+    label = sprintf(
+      "loco n_markers (%d) < marker set size (%d) — GCTA exclusions present",
+      row$n_markers, ms_row$n_markers[1]
+    )
+  )
+})
+
 test_that("var.exp is absent or NA for inline-path mappings", {
   skip_if_no_db()
   con <- open_mapping_db(db_dir)

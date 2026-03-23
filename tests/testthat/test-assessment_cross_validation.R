@@ -417,6 +417,79 @@ test_that("Simulated.QTL.VarExp is populated in DB assessment output", {
 })
 
 
+# ── Assessment Output Column Completeness ─────────────────────────────────────
+
+test_that("DB assessment output has all expected columns from format_assessment_tsv()", {
+  skip_if_no_assessment_cross_validation()
+
+  # File is written without header (col.names = FALSE); count raw columns
+  db_raw <- data.table::fread(db_assessment_path, header = FALSE, nrows = 1) %>%
+    as.data.frame()
+
+  expected_col_count <- 35L  # format_assessment_tsv() produces exactly 35 columns
+  expect_equal(
+    ncol(db_raw), expected_col_count,
+    label = sprintf(
+      "DB assessment has %d columns (expected %d from format_assessment_tsv)",
+      ncol(db_raw), expected_col_count
+    )
+  )
+})
+
+
+# ── sim_performance.R Coverage ────────────────────────────────────────────────
+
+test_that("calculate_simrep_performance() runs without error on real assessment data", {
+  skip_if_no_assessment_cross_validation()
+
+  db_assess <- read_db_assessment(db_assessment_path)
+
+  perf <- db_assess %>%
+    designate_qtl() %>%
+    dplyr::group_by(nQTL, simREP, h2, maf, effect_distribution, strain_set_id, mode, type) %>%
+    count_outcomes() %>%
+    calculate_simrep_performance()
+
+  expect_gt(nrow(perf), 0, label = "performance dataframe has rows")
+  expect_true(all(c("Power", "FDR") %in% names(perf)),
+    label = "Power and FDR columns present"
+  )
+  expect_true(all(perf$Power >= 0 & perf$Power <= 1),
+    label = "Power values in [0, 1]"
+  )
+  expect_true(all(perf$FDR >= 0 & perf$FDR <= 1),
+    label = "FDR values in [0, 1]"
+  )
+})
+
+test_that("designate_qtl() produces only valid categories on real data", {
+  skip_if_no_assessment_cross_validation()
+
+  db_assess <- read_db_assessment(db_assessment_path)
+  designated <- designate_qtl(db_assess)
+
+  valid_designations <- c(
+    "Detected.CV", "Missed.CV",
+    "CV.Not.Significant.In.Interval", "False.Discovery"
+  )
+  # NA designation is allowed for rows where Simulated=FALSE AND Detected=FALSE
+  # (non-marker causal variants that were not detected and not above threshold);
+  # all other combinations must map to one of the 4 categories.
+  unexpected <- unique(designated$designation[
+    !is.na(designated$designation) &
+    !designated$designation %in% valid_designations
+  ])
+  expect_equal(
+    length(unexpected), 0,
+    label = paste("unexpected designations:", paste(unexpected, collapse = ", "))
+  )
+  expect_gt(
+    sum(!is.na(designated$designation)), 0,
+    label = "at least some QTLs receive a designation"
+  )
+})
+
+
 test_that("Simulated.QTL.VarExp is concordant between DB and legacy paths", {
   skip_if_no_assessment_cross_validation()
 
