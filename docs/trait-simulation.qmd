@@ -15,19 +15,33 @@ outputs feed into GWAS mapping (Phase 3).
 
 The processing flow is:
 
-```
-MS PLINK binaries (PLINK_RECODE_MS_VCF, Phase 1)
- └─► [Phase 3: GWAS Mapping — unchanged]
+```{mermaid}
+%%{init: {'themeVariables': {'fontSize': '17px'}}}%%
+flowchart TD
+    classDef proc fill:#48b96e,stroke:#2d8150,color:#fff
+    classDef db fill:#1a9e8f,stroke:#0e6b61,color:#fff
+    classDef io fill:#f5f5f5,stroke:#999,color:#333
+    classDef param fill:#d6eedd,stroke:#48b96e,color:#333
 
-CV PLINK binaries (PLINK_RECODE_CV_VCF, Phase 1)
- └─► PYTHON_SIMULATE_EFFECTS_GLOBAL ──► causal_variants.txt
-       │ (cv_plink output: CV_TO_SIMS.*)
-       ▼
-      GCTA_SIMULATE_PHENOTYPES ──────► .phen + .par files
-       │ (MS plink pass-through: TO_SIMS.*)
-       ▼
-      PLINK_UPDATE_BY_H2 ───────────► Phenotype-annotated MS PLINK binaries
-                                       (to Phase 3: GWAS Mapping)
+    CV(["CV_TO_SIMS.* CV pool BIM (Phase 1)"]):::io
+    MS(["TO_SIMS.* marker SNP set (Phase 1)"]):::io
+    PARAMS(["rep x nqtl x effect x h2 cartesian product"]):::param
+
+    PY["PYTHON_SIMULATE_EFFECTS_GLOBAL"]:::proc
+    GCTA["GCTA_SIMULATE_PHENOTYPES"]:::proc
+    CHK["PYTHON_CHECK_VP"]:::proc
+    WTD["DB_MIGRATION_WRITE_TRAIT_DATA"]:::db
+    PLINK["PLINK_UPDATE_BY_H2"]:::proc
+    P3(["Phase 3: GWAS Mapping"]):::io
+
+    CV --> PY
+    PARAMS --> PY
+    PY --> GCTA
+    MS --> GCTA
+    GCTA --> CHK
+    CHK --> WTD
+    CHK --> PLINK
+    PLINK --> P3
 ```
 
 Each process is described below with the exact commands run, key parameters,

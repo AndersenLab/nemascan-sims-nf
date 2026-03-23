@@ -15,25 +15,37 @@ phenotype simulation (Phase 2) and GWAS mapping (Phase 3).
 
 The processing flow is:
 
-```
-VCF
- ├─ LOCAL_GET_CONTIG_INFO ──► contig_mapping.tsv, contigs.txt
- │                                    │
- ▼                                    │
- BCFTOOLS_EXTRACT_STRAINS             │
- ▼                                    │
- BCFTOOLS_RENAME_CHROMS ◄─────────────┘
- ▼
- PLINK_RECODE_MS_VCF ────────► TO_SIMS.* binaries + markers.txt (marker SNP set)
- PLINK_RECODE_CV_VCF ────────► CV_TO_SIMS.* binaries (causal variant pool)
- │                                    │
- ▼                                    ▼
- (to Phase 2/3)          BCFTOOLS_CREATE_GENOTYPE_MATRIX ──► genotype matrix TSV
-                                       │
-                          (DB path — see callout notes below)
-                          ├─ DB_MIGRATION_WRITE_MARKER_SET ──► marker_sets/{id}_markers.parquet
-                          │    (requires .bim + n_indep_tests from EIGEN)
-                          └─ DB_MIGRATION_WRITE_GENOTYPE_MATRIX ──► genotypes/{id}_genotypes.parquet
+```{mermaid}
+%%{init: {'themeVariables': {'fontSize': '17px'}}}%%
+flowchart TD
+    classDef proc fill:#4e9af1,stroke:#2c6fad,color:#fff
+    classDef db fill:#1a9e8f,stroke:#0e6b61,color:#fff
+    classDef io fill:#f5f5f5,stroke:#999,color:#333
+
+    VCF(["vcf.gz + strainfile"]):::io
+    CONTIG["LOCAL_GET_CONTIG_INFO"]:::proc
+    EXTRACT["BCFTOOLS_EXTRACT_STRAINS"]:::proc
+    RENAME["BCFTOOLS_RENAME_CHROMS"]:::proc
+    MS["PLINK_RECODE_MS_VCF (TO_SIMS.*)"]:::proc
+    CV["PLINK_RECODE_CV_VCF (CV_TO_SIMS.*)"]:::proc
+    GENO["BCFTOOLS_CREATE_GENOTYPE_MATRIX"]:::proc
+    EIGEN["R_FIND_GENOTYPE_MATRIX_EIGEN"]:::proc
+    WMS["DB_MIGRATION_WRITE_MARKER_SET"]:::db
+    WGM["DB_MIGRATION_WRITE_GENOTYPE_MATRIX"]:::db
+    P2(["Phase 2: Trait Simulation"]):::io
+    P3(["Phase 3: GWAS Mapping"]):::io
+
+    VCF --> CONTIG
+    VCF --> EXTRACT
+    CONTIG --> RENAME
+    EXTRACT --> RENAME
+    RENAME --> MS & CV
+    CV --> P2
+    MS --> P3
+    MS --> GENO & EIGEN
+    GENO --> WGM
+    EIGEN --> WMS
+    MS --> WMS
 ```
 
 Each process is described below with the exact commands run, key parameters,
