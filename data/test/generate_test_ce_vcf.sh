@@ -41,7 +41,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUTPUT_VCF="${SCRIPT_DIR}/test_ce.vcf.gz"
 CHROMOSOMES="I,II,V"
 DEFAULT_STRAIN_COUNT=200
-POP_SPLIT_COUNT=100   # strains per popA / popB (must be <= DEFAULT_STRAIN_COUNT / 2)
+# POP_SPLIT_COUNT is calculated dynamically from actual strain count (see below)
+
+# Fraction of variants to randomly retain. Values < 1.0 reduce PLINK marker counts,
+# keeping EIGEN matrices small enough for local Docker execution.
+# Set VARIANT_SAMPLE_FRACTION=1.0 to disable sampling (production use).
+VARIANT_SAMPLE_FRACTION="${VARIANT_SAMPLE_FRACTION:-0.15}"
+VARIANT_SAMPLE_SEED="${VARIANT_SAMPLE_SEED:-42}"  # RNG seed for reproducibility
 
 # --- Parse arguments ---
 if [[ $# -lt 1 ]]; then
@@ -93,7 +99,8 @@ else
 fi
 
 STRAIN_COUNT=$(wc -l < "$STRAIN_LIST_FILE" | tr -d ' ')
-echo "Subsetting ${STRAIN_COUNT} strains to chromosomes ${CHROMOSOMES}..."
+POP_SPLIT_COUNT=$(( (STRAIN_COUNT + 1) / 2 ))
+echo "Subsetting ${STRAIN_COUNT} strains (popA=${POP_SPLIT_COUNT}, popB=$(( STRAIN_COUNT - POP_SPLIT_COUNT ))) to chromosomes ${CHROMOSOMES}..."
 
 # --- Subset VCF ---
 echo "Running bcftools view (this may take several minutes for a large source VCF)..."
@@ -104,6 +111,18 @@ bcftools view \
     --min-ac 1 \
     -Oz -o "$TEMP_VCF" \
     "$SOURCE_VCF"
+
+# --- Random variant sampling ---
+# Randomly retain VARIANT_SAMPLE_FRACTION of variants to keep PLINK marker counts
+# manageable for local Docker execution (target: ~15K–50K variants/chrom → ~2K–5K markers).
+echo "Random variant sampling: keeping ${VARIANT_SAMPLE_FRACTION} fraction (seed ${VARIANT_SAMPLE_SEED})..."
+SAMPLED_VCF=$(mktemp "${SCRIPT_DIR}/test_ce_sampled_XXXXXX.vcf.gz")
+bcftools view "$TEMP_VCF" | \
+    awk -v rate="${VARIANT_SAMPLE_FRACTION}" -v seed="${VARIANT_SAMPLE_SEED}" \
+        'BEGIN{srand(seed)} /^#/{print; next} rand() < rate' | \
+    bcftools view -Oz -o "$SAMPLED_VCF" -
+rm -f "$TEMP_VCF"
+TEMP_VCF="$SAMPLED_VCF"
 
 # --- Clean contig headers ---
 # Strip ##contig lines for chromosomes not in the subset (III, IV, X)
@@ -154,9 +173,11 @@ echo ""
 
 # --- Update test_strains_three_species.txt ---
 THREE_SPECIES_FILE="${SCRIPT_DIR}/test_strains_three_species.txt"
+FINAL_STRAIN_COUNT=$(bcftools query -l "$OUTPUT_VCF" | wc -l | tr -d ' ')
+POPB_SPLIT_COUNT=$(( FINAL_STRAIN_COUNT - POP_SPLIT_COUNT ))
 STRAINS_CSV=$(bcftools query -l "$OUTPUT_VCF" | tr '\n' ',' | sed 's/,$//')
 POPA_CSV=$(bcftools query -l "$OUTPUT_VCF" | head -${POP_SPLIT_COUNT} | tr '\n' ',' | sed 's/,$//')
-POPB_CSV=$(bcftools query -l "$OUTPUT_VCF" | tail -${POP_SPLIT_COUNT} | tr '\n' ',' | sed 's/,$//')
+POPB_CSV=$(bcftools query -l "$OUTPUT_VCF" | tail -${POPB_SPLIT_COUNT} | tr '\n' ',' | sed 's/,$//')
 
 {
     printf "group\tspecies\tvcf\tms_maf\tms_ld\tstrains\n"
