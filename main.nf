@@ -466,17 +466,9 @@ workflow {
         }
         .set { ch_trait }
 
-    // Write trait metadata + causal variants + phenotype + causal genotypes to DB
-    DB_MIGRATION_WRITE_TRAIT_DATA(
-        ch_trait.write_params,
-        ch_trait.write_pheno,
-        ch_trait.write_par,
-        db_output_dir,
-        ch_trait.causal_geno,
-        ch_trait.cv_maf,
-        Channel.value(cv_ld)
-    )
-    ch_versions = ch_versions.mix(DB_MIGRATION_WRITE_TRAIT_DATA.out.versions)
+    // WRITE_TRAIT_DATA is gated below (after ch_marker_barrier) because
+    // write_trait_data.R reads marker_set_metadata.parquet to resolve the
+    // marker set ID. Without the gate it races WRITE_MARKER_SET.
 
     // Update plink data by heritability
     PLINK_UPDATE_BY_H2(
@@ -605,7 +597,28 @@ workflow {
             true
         }
 
-    // Gate params behind the barrier using .combine()
+    // Gate WRITE_TRAIT_DATA behind ch_marker_barrier.
+    // write_trait_data.R calls read_marker_set_metadata() — requires the marker
+    // set metadata to be fully written before any trait write starts.
+    // Pattern mirrors ch_db_params below: combine strips the barrier sentinel.
+    ch_gated_trait_params = ch_trait.write_params
+        .combine(ch_marker_barrier)
+        .map { group, maf, nqtl, effect, rep, h2, _barrier ->
+            tuple(group, maf, nqtl, effect, rep, h2)
+        }
+
+    DB_MIGRATION_WRITE_TRAIT_DATA(
+        ch_gated_trait_params,
+        ch_trait.write_pheno,
+        ch_trait.write_par,
+        db_output_dir,
+        ch_trait.causal_geno,
+        ch_trait.cv_maf,
+        Channel.value(cv_ld)
+    )
+    ch_versions = ch_versions.mix(DB_MIGRATION_WRITE_TRAIT_DATA.out.versions)
+
+    // Gate GWA params behind the barrier using .combine()
     //
     // .combine() with a 1-element channel preserves emission order and
     // cardinality: N params × 1 barrier = N elements in original order.
