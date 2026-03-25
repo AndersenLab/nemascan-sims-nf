@@ -35,10 +35,14 @@ process GCTA_MAKE_GRM {
             --out TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \\
             --thread-num 1  # pinned: BLAS reduction order must be deterministic
 
+    # REML estimates Vp for check_vp.py's upscaling decision (Vp < 1e-6 → ×1000).
+    # With small or highly-inbred samples the information matrix can be singular;
+    # fall back to Vp=1.0 (no upscaling) so check_vp.py can proceed safely.
     gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \\
             --pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen \\
             --reml --out check_vp \\
-            --thread-num 1  # pinned: BLAS reduction order must be deterministic
+            --thread-num 1 \\
+        || printf 'Source\\tVariance\\tSE\\nVp\\t1.0\\tNA\\n' > check_vp.hsq
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
