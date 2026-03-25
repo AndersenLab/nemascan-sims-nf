@@ -25,28 +25,35 @@ process GCTA_PERFORM_GWA {
     def args = task.ext.args ?: ''
     """
     if [[ ${mode} == "inbred" ]]; then
-        GRM_OPTION='--grm-sparse'
         COMMAND='--fastGWA-mlm-exact'
         GWA_THREADS=1  # pinned: BLAS reduction order must be deterministic
-    else
-        GRM_OPTION="--grm"
-        COMMAND="--mlma-loco"
-        GWA_THREADS=${task.cpus}  # mlma-loco: per-chromosome refits are independent; thread-count is configurable (see rockfish.config)
-    fi
 
-    gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \\
-        --make-bK-sparse ${sparse_cut} \\
-        --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \\
-        --thread-num 1  # pinned: BLAS reduction order must be deterministic
+        # Inbred: create sparse GRM approximation (supported by fastGWA-mlm-exact)
+        gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \\
+            --make-bK-sparse ${sparse_cut} \\
+            --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \\
+            --thread-num 1
+
+        GRM_OPTION='--grm-sparse'
+        GRM_PREFIX=${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode}
+    else
+        COMMAND="--mlma-loco"
+        GWA_THREADS=${task.cpus}  # mlma-loco: per-chromosome refits are independent
+
+        # LOCO: must use the full (non-sparse) GRM — --mlma-loco decomposes per-chromosome
+        # covariance from the full GRM; a sparse approximation causes REML divergence.
+        GRM_OPTION="--grm"
+        GRM_PREFIX=TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}
+    fi
 
     if [[ ${type} == "pca" ]]; then
 
         gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \\
             --pca 1 \\
-            --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \\
+            --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_pca \\
             --thread-num 1  # pinned: BLAS reduction order must be deterministic
 
-        COVAR="--qcovar ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode}.eigenvec"
+        COVAR="--qcovar ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_pca.eigenvec"
     else
         COVAR=""
     fi
@@ -55,7 +62,7 @@ process GCTA_PERFORM_GWA {
 
     gcta64 \${COMMAND} \\
         --bfile TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group} \\
-        \${GRM_OPTION} ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \\
+        \${GRM_OPTION} \${GRM_PREFIX} \\
         \${COVAR} \\
         --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_lmm-exact_${mode}_${type} \\
         --pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno \\
