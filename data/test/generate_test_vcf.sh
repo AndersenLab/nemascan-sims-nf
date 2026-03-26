@@ -78,7 +78,7 @@ echo "Subsetting ${STRAIN_COUNT} strains to chromosomes ${CHROMOSOMES}..."
 # Use -S (file) instead of -s (inline) to avoid shell argument length issues
 # --min-ac 1 removes monomorphic sites (alleles private to excluded strains)
 echo "Running bcftools view (this may take 5-10 minutes for a 7.8 GB source)..."
-TEMP_VCF=$(mktemp "${SCRIPT_DIR}/test_XXXXXX")
+TEMP_VCF=$(mktemp)
 bcftools view \
     -S "$STRAIN_LIST_FILE" \
     -t "$CHROMOSOMES" \

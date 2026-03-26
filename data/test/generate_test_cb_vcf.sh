@@ -99,7 +99,7 @@ echo "Subsetting ${STRAIN_COUNT} strains (popA=${POP_SPLIT_COUNT}, popB=$(( STRA
 
 # --- Subset VCF ---
 echo "Running bcftools view (this may take several minutes for a large source VCF)..."
-TEMP_VCF=$(mktemp "${SCRIPT_DIR}/test_cb_XXXXXX.vcf.gz")
+TEMP_VCF=$(mktemp)
 bcftools view \
     -S "$STRAIN_LIST_FILE" \
     -t "$CHROMOSOMES" \
@@ -111,7 +111,7 @@ bcftools view \
 # Randomly retain VARIANT_SAMPLE_FRACTION of variants to keep PLINK marker counts
 # manageable for local Docker execution (target: ~15K–50K variants/chrom → ~2K–5K markers).
 echo "Random variant sampling: keeping ${VARIANT_SAMPLE_FRACTION} fraction (seed ${VARIANT_SAMPLE_SEED})..."
-SAMPLED_VCF=$(mktemp "${SCRIPT_DIR}/test_cb_sampled_XXXXXX.vcf.gz")
+SAMPLED_VCF=$(mktemp)
 bcftools view "$TEMP_VCF" | \
     awk -v rate="${VARIANT_SAMPLE_FRACTION}" -v seed="${VARIANT_SAMPLE_SEED}" \
         'BEGIN{srand(seed)} /^#/{print; next} rand() < rate' | \
