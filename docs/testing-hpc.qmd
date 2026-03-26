@@ -72,30 +72,67 @@ process resources from `conf/rockfish.config`:
 | `r_get_gcta_intervals` (bigmem) | 1 | — | 4 h × attempt | 5 |
 
 
-## Generating the Test VCF on Rockfish
+## Generating Test VCFs on Rockfish
 
-Before collecting integration test data you need a local copy of the test VCF.
-Run the generation script inside the bcftools Singularity container — this avoids
-`BASH_ENV`/module-system issues that prevent `bcftools` from being visible in bash
-subprocesses on Rockfish.
+All test VCF generation scripts must run inside the bcftools Singularity container —
+this avoids `BASH_ENV`/module-system issues that prevent `bcftools` from being visible
+in bash subprocesses on Rockfish. `--bind /vast/eande106` makes the source VCF paths
+accessible inside the container; `--bind "$PWD"` ensures the project directory is
+writable so generated files land on the host filesystem.
 
 ```bash
-FULL_VCF=/vast/eande106/data/c_elegans/WI/variation/20250625/vcf/WI.20250625.hard-filter.isotype.vcf.gz
-
-singularity exec \
-  --bind /vast/eande106 \
-  --bind "$PWD" \
-  /vast/eande106/singularity/quay.io-biocontainers-bcftools-1.16--hfe4b78e_1.img \
-  bash data/test/generate_test_vcf.sh "$FULL_VCF"
+SIMG=/vast/eande106/singularity/quay.io-biocontainers-bcftools-1.16--hfe4b78e_1.img
 ```
 
-`--bind /vast/eande106` makes the source VCF path accessible inside the container.
-The current working directory is bound automatically by Singularity, so the script
-and its output (`data/test/`) are read/written on the host filesystem as normal.
+### Single-species profiles (`test`, `test_variable`, `test_cv_pool`)
 
-`data/test/test_ce.vcf.gz` is the VCF target (gitignored). The script creates it and
-updates the dated symlink `test_ce.20250625.vcf.gz`, making it valid on a fresh clone.
-See `data/test/release_ids.sh` for the currently pinned CE release date.
+Only the C. elegans VCF is needed. `generate_test_vcf.sh` subsets the full CE VCF to
+200 strains and chromosomes I, II, V and rewrites `data/test/test_strains.txt`:
+
+```bash
+singularity exec --bind /vast/eande106 --bind "$PWD" $SIMG \
+  bash data/test/generate_test_vcf.sh \
+  /vast/eande106/data/c_elegans/WI/variation/20250625/vcf/WI.20250625.hard-filter.isotype.vcf.gz
+```
+
+Output: `data/test/test_ce.vcf.gz` (gitignored) and dated symlink
+`test_ce.20250625.vcf.gz`. See `data/test/release_ids.sh` for the currently pinned
+CE release date.
+
+### Three-species profile (`test_three_species`)
+
+The `test_three_species` profile requires a separate test VCF for each species.
+Use the per-species scripts — they apply random variant sampling (15% of variants, for
+manageable local PLINK marker counts) and update `data/test/test_strains_three_species.txt`:
+
+```bash
+# C. elegans
+singularity exec --bind /vast/eande106 --bind "$PWD" $SIMG \
+  bash data/test/generate_test_ce_vcf.sh \
+  /vast/eande106/data/c_elegans/WI/variation/20250625/vcf/WI.20250625.hard-filter.isotype.vcf.gz
+
+# C. briggsae
+singularity exec --bind /vast/eande106 --bind "$PWD" $SIMG \
+  bash data/test/generate_test_cb_vcf.sh \
+  /vast/eande106/data/c_briggsae/WI/variation/20250626/vcf/WI.20250626.hard-filter.isotype.vcf.gz
+
+# C. tropicalis
+singularity exec --bind /vast/eande106 --bind "$PWD" $SIMG \
+  bash data/test/generate_test_ct_vcf.sh \
+  /vast/eande106/data/c_tropicalis/WI/variation/20250627/vcf/WI.20250627.hard-filter.isotype.vcf.gz
+```
+
+After all three complete, commit the dated symlinks and the updated strainfile:
+
+```bash
+git add data/test/test_ce.20250625.vcf.gz data/test/test_ce.20250625.vcf.gz.tbi
+git add data/test/test_cb.20250626.vcf.gz data/test/test_cb.20250626.vcf.gz.tbi
+git add data/test/test_ct.20250627.vcf.gz data/test/test_ct.20250627.vcf.gz.tbi
+git add data/test/test_strains_three_species.txt
+git commit -m "Update three-species test VCFs"
+```
+
+See `data/test/release_ids.sh` for the currently pinned release dates.
 
 
 ## Generating HPC Strainfiles
