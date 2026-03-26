@@ -43,7 +43,7 @@ library(glue)
   causal_genotypes_pattern = "{trait_id}_causal_geno.parquet",
   phenotypes_pattern       = "{trait_id}_phenotype.parquet",
   metadata_file          = "mappings_metadata.parquet",
-  marker_set_metadata_file = "marker_set_metadata.parquet",
+  marker_set_metadata_dir  = "marker_set_metadata",
   compression            = "snappy"
 )
 
@@ -1178,11 +1178,30 @@ read_causal_genotypes <- function(trait_id, base_dir) {
 
 #' Get path to marker set metadata file
 #'
+#' Get per-population marker set metadata file path
+#'
+#' Returns the path to an individual population's metadata Parquet file.
+#' Each DB_MIGRATION_WRITE_MARKER_SET task writes its own file, eliminating
+#' the concurrent read-modify-write race on a shared file.
+#'
+#' @param population Population identifier
+#' @param maf MAF threshold
 #' @param base_dir Database root directory
-#' @return Path to marker set metadata Parquet file
-get_marker_set_metadata_path <- function(base_dir = "data/db") {
+#' @return Path to per-population metadata Parquet file
+get_per_population_metadata_path <- function(population, maf, base_dir = "data/db") {
   config <- .make_db_config(base_dir)
-  file.path(config$base_dir, config$marker_set_metadata_file)
+  metadata_dir <- file.path(config$base_dir, config$marker_set_metadata_dir)
+  file.path(metadata_dir, paste0(population, "_", maf, "_metadata.parquet"))
+}
+
+
+#' Get the marker set metadata directory path
+#'
+#' @param base_dir Database root directory
+#' @return Path to the per-population metadata directory
+get_marker_set_metadata_dir <- function(base_dir = "data/db") {
+  config <- .make_db_config(base_dir)
+  file.path(config$base_dir, config$marker_set_metadata_dir)
 }
 
 
@@ -1208,7 +1227,16 @@ write_marker_set_metadata <- function(population, maf, species, vcf_release_id, 
                                        strain_list,
                                        base_dir = "data/db") {
   config <- .make_db_config(base_dir)
-  metadata_path <- get_marker_set_metadata_path(base_dir)
+
+  # Per-population metadata file — each task writes its own file,
+  # eliminating the concurrent read-modify-write race condition that
+  # caused lost population records on HPC (SLURM) with multiple
+  # DB_MIGRATION_WRITE_MARKER_SET tasks running in parallel.
+  metadata_path <- get_per_population_metadata_path(population, maf, base_dir)
+  metadata_dir <- dirname(metadata_path)
+  if (!dir.exists(metadata_dir)) {
+    dir.create(metadata_dir, recursive = TRUE)
+  }
 
   new_record <- data.frame(
     marker_set_id          = as.character(marker_set_id),
@@ -1228,17 +1256,8 @@ write_marker_set_metadata <- function(population, maf, species, vcf_release_id, 
     stringsAsFactors       = FALSE
   )
 
-  if (file.exists(metadata_path)) {
-    existing <- as.data.frame(arrow::read_parquet(metadata_path))
-    # Dedup by marker_set_id — the canonical identity for a marker set
-    existing_filtered <- existing[existing$marker_set_id != marker_set_id, , drop = FALSE]
-    result <- dplyr::bind_rows(existing_filtered, new_record)
-  } else {
-    result <- new_record
-  }
-
-  arrow::write_parquet(result, metadata_path, compression = config$compression)
-  log_msg(glue::glue("Updated marker set metadata: {population}_{maf}"))
+  arrow::write_parquet(new_record, metadata_path, compression = config$compression)
+  log_msg(glue::glue("Wrote marker set metadata: {population}_{maf}"))
 
   invisible(metadata_path)
 }
@@ -1251,18 +1270,12 @@ write_marker_set_metadata <- function(population, maf, species, vcf_release_id, 
 #' @param base_dir Database root directory
 #' @return Named list with marker set metadata, or NULL if not found
 read_marker_set_metadata <- function(population, maf, base_dir = "data/db") {
-  metadata_path <- get_marker_set_metadata_path(base_dir)
-
-  if (!file.exists(metadata_path)) {
+  per_pop_path <- get_per_population_metadata_path(population, maf, base_dir)
+  if (!file.exists(per_pop_path)) {
     return(NULL)
   }
 
-  metadata <- as.data.frame(arrow::read_parquet(metadata_path))
-  record <- metadata[
-    metadata$population == population &
-    sprintf("%.10f", metadata$maf) == sprintf("%.10f", maf),
-  ]
-
+  record <- as.data.frame(arrow::read_parquet(per_pop_path))
   if (nrow(record) == 0) {
     return(NULL)
   }
@@ -1276,9 +1289,8 @@ read_marker_set_metadata <- function(population, maf, base_dir = "data/db") {
 #' @param base_dir Database root directory
 #' @return Dataframe with all marker set metadata
 get_all_marker_set_metadata <- function(base_dir = "data/db") {
-  metadata_path <- get_marker_set_metadata_path(base_dir)
-
-  if (!file.exists(metadata_path)) {
+  metadata_dir <- get_marker_set_metadata_dir(base_dir)
+  if (!dir.exists(metadata_dir)) {
     return(data.frame(
       population = character(),
       maf = numeric(),
@@ -1289,7 +1301,20 @@ get_all_marker_set_metadata <- function(base_dir = "data/db") {
     ))
   }
 
-  as.data.frame(arrow::read_parquet(metadata_path))
+  files <- list.files(metadata_dir, pattern = "_metadata\\.parquet$", full.names = TRUE)
+  if (length(files) == 0) {
+    return(data.frame(
+      population = character(),
+      maf = numeric(),
+      n_markers = integer(),
+      n_independent_tests = numeric(),
+      eigen_source_file = character(),
+      created_at = as.POSIXct(character())
+    ))
+  }
+
+  records <- lapply(files, function(f) as.data.frame(arrow::read_parquet(f)))
+  dplyr::bind_rows(records)
 }
 
 

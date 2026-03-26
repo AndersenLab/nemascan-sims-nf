@@ -6,7 +6,7 @@
 # Dependencies: Requires database.R to be sourced first for:
 #   - .make_db_config(), .db_constants
 #   - get_db_connection(), get_threshold_params()
-#   - read_marker_set(), get_marker_set_metadata_path()
+#   - read_marker_set(), get_marker_set_metadata_dir()
 #   - get_all_marker_set_metadata(), list_marker_sets()
 #   - log_msg() from utils.R
 
@@ -75,12 +75,14 @@ open_mapping_db <- function(base_dir = "data/db", read_only = TRUE) {
     "))
   }
 
-  # Register marker set metadata view
-  marker_set_metadata_file <- get_marker_set_metadata_path(base_dir)
-  if (file.exists(marker_set_metadata_file)) {
+  # Register marker set metadata view (per-population files)
+  ms_metadata_dir <- get_marker_set_metadata_dir(base_dir)
+  ms_metadata_glob <- file.path(ms_metadata_dir, "*_metadata.parquet")
+  ms_metadata_files <- Sys.glob(ms_metadata_glob)
+  if (length(ms_metadata_files) > 0) {
     DBI::dbExecute(con, glue::glue("
       CREATE VIEW marker_set_metadata AS
-      SELECT * FROM read_parquet('{marker_set_metadata_file}')
+      SELECT * FROM read_parquet('{ms_metadata_glob}', union_by_name = true)
     "))
   }
 
@@ -656,10 +658,11 @@ db_stats <- function(base_dir = "data/db") {
     all_files <- c(all_files, metadata_file)
   }
 
-  # Include marker set metadata file in size calculation
-  marker_set_metadata_file <- get_marker_set_metadata_path(base_dir)
-  if (file.exists(marker_set_metadata_file)) {
-    all_files <- c(all_files, marker_set_metadata_file)
+  # Include marker set metadata files in size calculation
+  ms_metadata_dir <- get_marker_set_metadata_dir(base_dir)
+  if (dir.exists(ms_metadata_dir)) {
+    ms_meta_files <- list.files(ms_metadata_dir, pattern = "_metadata\\.parquet$", full.names = TRUE)
+    all_files <- c(all_files, ms_meta_files)
   }
 
   total_bytes <- sum(file.info(all_files)$size, na.rm = TRUE)

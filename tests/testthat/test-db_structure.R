@@ -88,14 +88,17 @@ test_that("mapping partitions exist in Hive-style structure", {
 test_that("metadata files exist", {
   skip_if_no_db()
   expect_true(file.exists(file.path(db_dir, "mappings_metadata.parquet")))
-  expect_true(file.exists(file.path(db_dir, "marker_set_metadata.parquet")))
+  ms_meta_dir <- get_marker_set_metadata_dir(db_dir)
+  expect_true(dir.exists(ms_meta_dir), label = "marker_set_metadata/ directory exists")
+  ms_meta_files <- list.files(ms_meta_dir, pattern = "_metadata\\.parquet$")
+  expect_gt(length(ms_meta_files), 0, label = "at least one per-population metadata file")
 })
 
 # ── Marker Set Metadata ─────────────────────────────────────────────────────
 
-test_that("marker_set_metadata.parquet has required columns and valid data", {
+test_that("marker_set_metadata has required columns and valid data", {
   skip_if_no_db()
-  ms_meta <- arrow::read_parquet(file.path(db_dir, "marker_set_metadata.parquet"))
+  ms_meta <- get_all_marker_set_metadata(db_dir)
 
   # Required columns
   expected_cols <- c(
@@ -125,7 +128,7 @@ test_that("marker_set_metadata.parquet has required columns and valid data", {
 
 test_that("marker_set_metadata contains strainfile_hash and strain_list", {
   skip_if_no_db()
-  ms_meta <- arrow::read_parquet(file.path(db_dir, "marker_set_metadata.parquet"))
+  ms_meta <- get_all_marker_set_metadata(db_dir)
 
   expect_true("strainfile_hash" %in% names(ms_meta),
     label = "strainfile_hash column present"
@@ -524,7 +527,7 @@ test_that("all expected populations appear in mappings_metadata and are queryabl
 test_that("inbred GWA marker count equals marker set size", {
   skip_if_no_db()
   meta <- get_metadata(db_dir)
-  ms_meta_all <- arrow::read_parquet(file.path(db_dir, "marker_set_metadata.parquet"))
+  ms_meta_all <- get_all_marker_set_metadata(db_dir)
 
   inbred_rows <- meta[meta$algorithm == "inbred", ]
   if (nrow(inbred_rows) == 0) skip("no inbred mappings found")
@@ -550,7 +553,7 @@ test_that("inbred GWA marker count equals marker set size", {
 test_that("loco GWA marker count equals marker set size", {
   skip_if_no_db()
   meta <- get_metadata(db_dir)
-  ms_meta_all <- arrow::read_parquet(file.path(db_dir, "marker_set_metadata.parquet"))
+  ms_meta_all <- get_all_marker_set_metadata(db_dir)
 
   loco_rows <- meta[meta$algorithm == "loco", ]
   if (nrow(loco_rows) == 0) skip("no loco mappings found")
