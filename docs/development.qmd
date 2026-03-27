@@ -163,6 +163,31 @@ See [Local Integration Testing](testing-integration.qmd) for the full
 environment variable reference and test inventory.
 
 
+## Cleaning Up Nextflow Run Artifacts
+
+After running the pipeline locally, Nextflow leaves behind several directories
+and log files that are git-ignored but consume disk space:
+
+| Path | Contents |
+|------|----------|
+| `.nextflow/` | Nextflow cache (task hashes, metadata) |
+| `.nextflow.log*` | Run logs (`.nextflow.log`, `.nextflow.log.1`, …) |
+| `work/` | Task working directories (can be very large) |
+| `pipeline_info/` or `pipeline-info/` | Execution reports and timelines |
+| `Analysis_Results-*` | Date-stamped output directories |
+
+To remove them:
+
+```bash
+rm -rf .nextflow .nextflow.log* work pipeline_info pipeline-info Analysis_Results-*
+```
+
+::: {.callout-tip}
+If you plan to resume a run with `nextflow run … -resume`, keep `work/` and
+`.nextflow/` intact — Nextflow uses them to skip completed tasks.
+:::
+
+
 ## Project Structure
 
 ```

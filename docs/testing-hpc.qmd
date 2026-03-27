@@ -7,6 +7,14 @@ format:
     embed-resources: true
 ---
 
+::: {.callout-tip}
+## Run tracking template
+
+Copy `templates/hpc_integration_test.qmd` into your working notes to track each
+test run. It provides all the commands below in execution order with output
+placeholders and a completion checklist.
+:::
+
 The `rockfish` profile targets the Johns Hopkins Rockfish cluster. These steps
 cover environment setup, running the pipeline end-to-end, collecting integration
 test data, and syncing results back to your local machine for test execution.
@@ -23,7 +31,7 @@ flowchart TD
     RUN["nextflow run -profile test_hpc,rockfish --legacy_assess"]:::step
     WAIT(["SLURM jobs complete"]):::data
     COLLECT["collect_test_data.sh --profile test_hpc --collect-only"]:::step
-    RSYNC["rsync integration_data/ to local Mac"]:::step
+    RSYNC["rsync integration_data/ to local machine"]:::step
     TEST["Rscript tests/run_tests.R with TEST_DB_DIR set"]:::step
     DONE(["All tests pass"]):::data
 
@@ -74,9 +82,7 @@ process resources from `conf/rockfish.config`:
 
 ## Generating Test VCFs on Rockfish
 
-All test VCF generation scripts must run inside the bcftools Singularity container —
-this avoids `BASH_ENV`/module-system issues that prevent `bcftools` from being visible
-in bash subprocesses on Rockfish. `--bind /vast/eande106` makes the source VCF paths
+All test VCF generation scripts must run inside the bcftools Singularity container. `--bind /vast/eande106` makes the source VCF paths
 accessible inside the container; `--bind "$PWD"` ensures the project directory is
 writable so generated files land on the host filesystem.
 
@@ -122,16 +128,6 @@ singularity exec --bind /vast/eande106 --bind "$PWD" $SIMG \
   /vast/eande106/data/c_tropicalis/WI/variation/20250627/vcf/WI.20250627.hard-filter.isotype.vcf.gz
 ```
 
-After all three complete, commit the dated symlinks and the updated strainfile:
-
-```bash
-git add data/test/test_ce.20250625.vcf.gz data/test/test_ce.20250625.vcf.gz.tbi
-git add data/test/test_cb.20250626.vcf.gz data/test/test_cb.20250626.vcf.gz.tbi
-git add data/test/test_ct.20250627.vcf.gz data/test/test_ct.20250627.vcf.gz.tbi
-git add data/test/test_strains_three_species.txt
-git commit -m "Update three-species test VCFs"
-```
-
 See `data/test/release_ids.sh` for the currently pinned release dates.
 
 
@@ -161,13 +157,6 @@ singularity exec --bind /vast/eande106 --bind "$PWD" $SIMG \
   /vast/eande106/data/c_tropicalis/WI/variation/20250627/vcf/WI.20250627.hard-filter.isotype.vcf.gz
 ```
 
-After generating, commit the updated strainfiles so other developers and CI can use them:
-
-```bash
-git add data/test/hpc_strains.txt data/test/hpc_strains_three_species.txt
-git commit -m "Update HPC strainfiles from Rockfish VCFs"
-```
-
 See `data/test/release_ids.sh` for the currently pinned CaeNDR release dates.
 
 
@@ -194,48 +183,80 @@ profiles (see [Generating HPC Strainfiles](#generating-hpc-strainfiles) above).
 
 ## Collecting Integration Test Data on Rockfish
 
-Run the pipeline on the cluster, then use `--collect-only` on the login node
-to gather outputs without re-running:
+Run the pipeline on the cluster for each profile, then use `--collect-only` on the login node
+to gather outputs without re-running. Each profile stores outputs in
+`tests/integration_data/<profile>/` so multiple profiles can be collected independently.
+
+**Prerequisite:** Generate the test VCFs before running any local test profile on Rockfish
+(see [Generating Test VCFs on Rockfish](#generating-test-vcfs-on-rockfish)).
+
+### Run commands
+
+Each profile uses `--output_dir` to write to a profile-named directory. This prevents
+same-day runs from overwriting each other and ensures `collect_test_data.sh --collect-only`
+picks up the correct output for each profile.
 
 ```bash
-# 1. Run the integration test pipeline (replace <yourname> with your Rockfish username)
+# Fixed architecture (equivalent to local `test` profile)
 nextflow run main.nf \
   -profile test,rockfish \
   --legacy_assess \
+  --output_dir Analysis_Results-test \
   -work-dir /scratch4/eande106/<yourname>/nf-work-test
 
-# 2. After all SLURM jobs complete, collect outputs:
-bash tests/collect_test_data.sh --collect-only
+# Variable architecture grid (equivalent to local `test_variable` profile)
+nextflow run main.nf \
+  -profile test_variable,rockfish \
+  --legacy_assess \
+  --output_dir Analysis_Results-test_variable \
+  -work-dir /scratch4/eande106/<yourname>/nf-work-test-variable
+
+# Three-species — requires all three test VCFs (see Generating Test VCFs above)
+nextflow run main.nf \
+  -profile test_three_species,rockfish \
+  --legacy_assess \
+  --output_dir Analysis_Results-test_three_species \
+  -work-dir /scratch4/eande106/<yourname>/nf-work-test-three-species
+
+# CV pool — omit --legacy_assess (incompatible with non-marker causal variants)
+nextflow run main.nf \
+  -profile test_cv_pool,rockfish \
+  --output_dir Analysis_Results-test_cv_pool \
+  -work-dir /scratch4/eande106/<yourname>/nf-work-test-cv-pool
 ```
 
-Substitute any profile from the table above. For `test_variable` and `test_three_species`,
-change `nf-work-test` to a distinct work-dir name to avoid mixing intermediate files.
-
+- `--output_dir` gives each profile a stable, named output directory. Without it, the default
+  `Analysis_Results-{date}` collides when multiple profiles are run on the same day.
 - `-work-dir` redirects intermediate files to `/scratch4/` (high-capacity scratch); without
   it Nextflow defaults to `./work/` on the login node's local disk, which is too small for
   a full pipeline run.
-- Replace `<yourname>` with your Rockfish username (e.g. `ryanmckeown`).
+- Replace `<yourname>` with your Rockfish username (e.g. `Ryan`).
 - `--legacy_assess` is required to generate the legacy assessment file used by the
-  cross-validation tests. Omit it for `test_cv_pool` and `test_hpc_cv_pool`.
+  cross-validation tests. Omit it for `test_cv_pool`.
 
-**Sync data to your local Mac** using `rsync` from your local terminal (not
+### Collecting outputs
+
+After each run completes, collect outputs on the login node:
+
+```bash
+bash tests/collect_test_data.sh --profile test --collect-only
+bash tests/collect_test_data.sh --profile test_variable --collect-only
+bash tests/collect_test_data.sh --profile test_three_species --collect-only
+bash tests/collect_test_data.sh --profile test_cv_pool --collect-only
+```
+
+**Sync data to your local machine** using `rsync` from your local terminal (not
 from Rockfish). `<rockfish-host>` is whatever SSH alias or hostname you use
 to connect — check `~/.ssh/config` for a `Host` entry. If you have an alias
 like `Host rockfish`, use `rockfish`; otherwise use the full form
 `<yourname>@login.rockfish.jhu.edu`.
 
 ```bash
-# Run from your local Mac — replace <rockfish-host> and <yourname>
-
-# Required: integration test outputs (db/, TSV assessments)
+# Run from your local machine — syncs db/, assessment TSVs, and cross-validation
+# files (work/) for all collected profiles in a single command
 rsync -av --delete \
   <rockfish-host>:/vast/eande106/<yourname>/nemascan-sims-nf/tests/integration_data/ \
   tests/integration_data/
-
-# Optional but needed for test-cross_validation.R (raw GWA files)
-rsync -av --delete \
-  <rockfish-host>:/scratch4/eande106/<yourname>/nf-work-test/ \
-  tests/.nf-work/
 ```
 
 The `--delete` flag keeps the local directory in exact sync with Rockfish
@@ -243,20 +264,64 @@ The `--delete` flag keeps the local directory in exact sync with Rockfish
 `/` on both paths syncs the *contents* of the directory rather than the
 directory itself.
 
-Then run the integration tests locally:
+### Running integration tests locally
+
+#### `test` profile (fixed architecture, 1 population, 4 mappings)
 
 ```bash
 TEST_DB_DIR=tests/integration_data/test/db \
-TEST_WORK_DIR=tests/.nf-work \
+TEST_WORK_DIR=tests/integration_data/test/work \
 TEST_LEGACY_ASSESSMENT=tests/integration_data/test/simulation_assessment_results.tsv \
 TEST_DB_ASSESSMENT=tests/integration_data/test/db_simulation_assessment_results.tsv \
 Rscript tests/run_tests.R
 ```
 
-Note: `TEST_WORK_DIR` points to the Nextflow work directory. If you skip the
-optional work-dir sync, `test-cross_validation.R` (which reads raw GWA files
-from the work directory) will skip automatically — all other integration and
-cross-validation tests can still run.
+#### `test_variable` profile (variable architecture, 1 population)
+
+```bash
+TEST_DB_DIR=tests/integration_data/test_variable/db \
+TEST_WORK_DIR=tests/integration_data/test_variable/work \
+TEST_EXPECTED_MAPPINGS=256 \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test_variable/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test_variable/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+#### `test_three_species` profile (3 species, 9 populations, 36 mappings)
+
+```bash
+TEST_DB_DIR=tests/integration_data/test_three_species/db \
+TEST_WORK_DIR=tests/integration_data/test_three_species/work \
+TEST_EXPECTED_MAPPINGS=36 \
+TEST_EXPECTED_MARKER_SETS=9 \
+TEST_EXPECTED_POPULATIONS="ce.test.200strains,ce.test.200strains.popA,ce.test.200strains.popB,cb.test.200strains,cb.test.200strains.popA,cb.test.200strains.popB,ct.test.200strains,ct.test.200strains.popA,ct.test.200strains.popB" \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test_three_species/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test_three_species/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+#### `test_cv_pool` profile (cv pool, no legacy assessment)
+
+```bash
+TEST_DB_DIR=tests/integration_data/test_cv_pool/db \
+TEST_WORK_DIR=tests/integration_data/test_cv_pool/work \
+TEST_DB_ASSESSMENT=tests/integration_data/test_cv_pool/db_simulation_assessment_results.tsv \
+TEST_CV_POOL=true \
+Rscript tests/run_tests.R
+```
+
+::: {.callout-note}
+## Environment variables
+
+- `TEST_WORK_DIR` points to a directory containing cross-validation files (`.fastGWA`,
+  `.mlma`, `*_total_independent_tests.txt`). The `collect_test_data.sh` script extracts
+  only these files from the full Nextflow work directory into a per-profile `work/`
+  subdirectory. If unset, `test-cross_validation.R` skips automatically.
+- `TEST_EXPECTED_MAPPINGS` defaults to 4. Override for multi-parameter profiles.
+- `TEST_EXPECTED_MARKER_SETS` defaults to 1. Override for multi-population profiles.
+- `TEST_EXPECTED_POPULATIONS` is required for multi-population assertions (three-species).
+  When unset, multi-population tests skip.
+:::
 
 
 ## Stub Runs on Rockfish
@@ -275,62 +340,127 @@ nextflow run main.nf \
 ## Running HPC Integration Test Profiles
 
 Four HPC profiles mirror the local test profiles but use full CaeNDR VCFs on the Rockfish
-filesystem. Each combines with `rockfish` and optionally `--legacy_assess`. The work directory
-should be on `/scratch4/` to avoid filling the login node's local disk.
+filesystem. Each combines with `rockfish` and optionally `--legacy_assess`. Use `--output_dir`
+to give each profile a named output directory — this prevents same-day runs from overwriting
+each other and ensures `collect_test_data.sh --collect-only` finds the correct output.
 
 ```bash
 # Fixed architecture (equivalent to local `test` profile)
 nextflow run main.nf \
   -profile test_hpc,rockfish \
   --legacy_assess \
+  --output_dir Analysis_Results-test_hpc \
   -work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc
 
 # Variable architecture grid (equivalent to local `test_variable` profile)
 nextflow run main.nf \
   -profile test_hpc_variable,rockfish \
   --legacy_assess \
+  --output_dir Analysis_Results-test_hpc_variable \
   -work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc-variable
 
 # Three-species (requires hpc_strains_three_species.txt to be populated)
 nextflow run main.nf \
   -profile test_hpc_three_species,rockfish \
   --legacy_assess \
+  --output_dir Analysis_Results-test_hpc_three_species \
   -work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc-three-species
 
 # CV pool — omit --legacy_assess (incompatible with non-marker causal variants)
 nextflow run main.nf \
   -profile test_hpc_cv_pool,rockfish \
+  --output_dir Analysis_Results-test_hpc_cv_pool \
   -work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc-cv-pool
 ```
 
-After each run completes, collect outputs on the login node:
+### Collecting HPC outputs
+
+After each run completes, collect outputs on the login node. Pass `--work-dir` to also
+collect the cross-validation files (`.fastGWA`, `.mlma`, EIGEN files) — only these specific
+files are extracted from the work directory, not the full contents (which can be 100+ GB).
 
 ```bash
-bash tests/collect_test_data.sh --profile test_hpc --collect-only
-# Replace test_hpc with the profile name you ran
+bash tests/collect_test_data.sh --profile test_hpc --collect-only \
+  --work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc
+
+bash tests/collect_test_data.sh --profile test_hpc_variable --collect-only \
+  --work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc-variable
+
+bash tests/collect_test_data.sh --profile test_hpc_three_species --collect-only \
+  --work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc-three-species
+
+bash tests/collect_test_data.sh --profile test_hpc_cv_pool --collect-only \
+  --work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc-cv-pool
 ```
 
-Sync to your local Mac and run integration tests:
+The collect script looks for `Analysis_Results-<profile>/` first, then falls back to
+the most recent `Analysis_Results-*` directory. Cross-validation files are stored in
+`tests/integration_data/<profile>/work/` alongside `db/` and assessment TSVs.
+
+### Syncing to local machine
+
+Run from your local terminal (not Rockfish). A single rsync syncs everything — db/,
+assessment TSVs, and cross-validation work files — for all collected profiles:
 
 ```bash
-# Sync (run from local Mac)
 rsync -av --delete \
   <rockfish-host>:/vast/eande106/<yourname>/nemascan-sims-nf/tests/integration_data/ \
   tests/integration_data/
+```
 
-# Run tests — adjust profile name as needed
+### Running HPC integration tests locally
+
+HPC profiles use population name `ce.hpc` (not `ce.test.200strains`), so `TEST_POPULATION`
+must be set for all HPC test invocations.
+
+#### `test_hpc` profile (fixed architecture, 1 population, 4 mappings)
+
+```bash
 TEST_DB_DIR=tests/integration_data/test_hpc/db \
-TEST_WORK_DIR=tests/.nf-work \
+TEST_WORK_DIR=tests/integration_data/test_hpc/work \
+TEST_POPULATION=ce.hpc \
 TEST_LEGACY_ASSESSMENT=tests/integration_data/test_hpc/simulation_assessment_results.tsv \
 TEST_DB_ASSESSMENT=tests/integration_data/test_hpc/db_simulation_assessment_results.tsv \
 Rscript tests/run_tests.R
 ```
 
-For `test_hpc_cv_pool`, omit `TEST_LEGACY_ASSESSMENT` and add `TEST_CV_POOL=true`:
+#### `test_hpc_variable` profile (variable architecture, 1 population, 260 mappings)
+
+```bash
+TEST_DB_DIR=tests/integration_data/test_hpc_variable/db \
+TEST_WORK_DIR=tests/integration_data/test_hpc_variable/work \
+TEST_POPULATION=ce.hpc \
+TEST_EXPECTED_MAPPINGS=260 \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test_hpc_variable/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test_hpc_variable/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+#### `test_hpc_three_species` profile (9 populations, 36 mappings)
+
+```bash
+TEST_DB_DIR=tests/integration_data/test_hpc_three_species/db \
+TEST_WORK_DIR=tests/integration_data/test_hpc_three_species/work \
+TEST_POPULATION=ce.hpc \
+TEST_EXPECTED_MAPPINGS=36 \
+TEST_EXPECTED_MARKER_SETS=9 \
+TEST_EXPECTED_POPULATIONS="ce.hpc,ce.hpc.popA,ce.hpc.popB,cb.hpc,cb.hpc.popA,cb.hpc.popB,ct.hpc,ct.hpc.popA,ct.hpc.popB" \
+TEST_DB_ASSESSMENT=tests/integration_data/test_hpc_three_species/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+If the three-species profile was run with `--legacy_assess`, also add:
+
+```
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test_hpc_three_species/simulation_assessment_results.tsv \
+```
+
+#### `test_hpc_cv_pool` profile (cv pool, no legacy assessment)
 
 ```bash
 TEST_DB_DIR=tests/integration_data/test_hpc_cv_pool/db \
-TEST_WORK_DIR=tests/.nf-work \
+TEST_WORK_DIR=tests/integration_data/test_hpc_cv_pool/work \
+TEST_POPULATION=ce.hpc \
 TEST_DB_ASSESSMENT=tests/integration_data/test_hpc_cv_pool/db_simulation_assessment_results.tsv \
 TEST_CV_POOL=true \
 Rscript tests/run_tests.R
@@ -340,4 +470,40 @@ Rscript tests/run_tests.R
 ## After collecting HPC data
 Run the full integration test suite locally:
 [Local Integration Testing](testing-integration.qmd)
+:::
+
+
+## Cleaning Up Work Directories
+
+After collecting integration test data and syncing to your local machine, remove the
+Nextflow work directories from scratch to free space on `/scratch4/`.
+
+Run these commands **on Rockfish** (not your local machine). Replace `<yourname>` with
+your Rockfish username.
+
+### Local test profiles
+
+```bash
+rm -rf /scratch4/eande106/<yourname>/nf-work-test
+rm -rf /scratch4/eande106/<yourname>/nf-work-test-variable
+rm -rf /scratch4/eande106/<yourname>/nf-work-test-three-species
+rm -rf /scratch4/eande106/<yourname>/nf-work-test-cv-pool
+```
+
+### HPC profiles
+
+```bash
+rm -rf /scratch4/eande106/<yourname>/nf-work-test-hpc
+rm -rf /scratch4/eande106/<yourname>/nf-work-test-hpc-variable
+rm -rf /scratch4/eande106/<yourname>/nf-work-test-hpc-three-species
+rm -rf /scratch4/eande106/<yourname>/nf-work-test-hpc-cv-pool
+```
+
+::: {.callout-warning}
+## Verify data is synced before deleting
+
+Confirm your local `tests/integration_data/` is up to date and integration tests pass
+before removing work directories. The cross-validation test (`test-cross_validation.R`)
+reads raw GWA files from the work directory — once deleted, that test will skip
+automatically.
 :::

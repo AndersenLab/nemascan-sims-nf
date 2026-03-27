@@ -166,21 +166,6 @@ Each script:
 4. Writes the three species rows directly into `test_strains_three_species.txt`, replacing
    any existing rows for that species while preserving rows for other species
 
-After running all three scripts, commit the six dated symlinks and the updated strainfile:
-
-```bash
-git add data/test/test_ce.YYYYMMDD.vcf.gz data/test/test_ce.YYYYMMDD.vcf.gz.tbi
-git add data/test/test_cb.YYYYMMDD.vcf.gz data/test/test_cb.YYYYMMDD.vcf.gz.tbi
-git add data/test/test_ct.YYYYMMDD.vcf.gz data/test/test_ct.YYYYMMDD.vcf.gz.tbi
-git add data/test/test_strains_three_species.txt
-```
-
-Also update the release IDs in `data/test/release_ids.sh` to match the new dates and commit it:
-
-```bash
-git add data/test/release_ids.sh
-```
-
 ### Running the three-species test
 
 Once VCF files are generated and the strainfile is populated:

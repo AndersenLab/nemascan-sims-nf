@@ -74,7 +74,7 @@ Verifies the Parquet database written by `DB_MIGRATION_*` modules. Requires `TES
 | Directory structure | `markers/`, `mappings/`, `traits/`, `traits/causal_variants/`, `traits/phenotypes/` all exist |
 | Marker set files | Parquet files exist; filenames derived from metadata hash lookup |
 | Hive partitions | `population=` / `mapping_id=` directories exist with `data.parquet` files |
-| Metadata files | `mappings_metadata.parquet` and `marker_set_metadata.parquet` present |
+| Metadata files | `mappings_metadata.parquet` present; `marker_set_metadata/` directory with per-population `*_metadata.parquet` files |
 | Marker set metadata | Required columns; `strainfile_hash` is 64-char SHA-256; `strain_list` non-empty |
 | Marker set schema | Correct 6-column schema; FK columns absent from data files |
 | Mappings metadata | Core columns present; algorithm values `"inbred"`/`"loco"`; both PCA flags present; mapping IDs are 20-char hex |
@@ -154,7 +154,7 @@ the legacy path is incompatible (non-marker causal variants are invisible to it)
 | `TEST_DB_ASSESSMENT` | Path to `db_simulation_assessment_results.tsv` (DB path) | `test-assessment_cross_validation.R`, `test-cv_pool.R` |
 | `TEST_POPULATION` | Expected population name for single-population assertions | `test-db_structure.R` (default: `ce.test.200strains`) |
 | `TEST_EXPECTED_MAPPINGS` | Expected `nrow(mappings_metadata)` | `test-db_structure.R` (default: `4`) |
-| `TEST_EXPECTED_MARKER_SETS` | Expected `nrow(marker_set_metadata)` | `test-db_structure.R` (default: `1`) |
+| `TEST_EXPECTED_MARKER_SETS` | Expected number of per-population metadata files | `test-db_structure.R` (default: `1`) |
 | `TEST_EXPECTED_POPULATIONS` | Comma-separated list of all expected population names | `test-db_structure.R` (enables multi-population assertions) |
 | `TEST_CV_POOL` | Set to `true` to activate cv_pool-specific assertions | `test-cv_pool.R` |
 

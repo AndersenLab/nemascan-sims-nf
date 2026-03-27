@@ -202,7 +202,7 @@ marker set was written.
 | Input | `TO_SIMS.bim` | PLINK binary marker information file |
 | Input | `*_total_independent_tests.txt` | EIGEN independent tests count |
 | Output | `{base_dir}/markers/marker_sets/{marker_set_id}_markers.parquet` | Marker set Parquet file |
-| Output | `{base_dir}/marker_set_metadata.parquet` | Marker set metadata |
+| Output | `{base_dir}/marker_set_metadata/{population}_{maf}_metadata.parquet` | Per-population marker set metadata |
 
 
 ### 2. DB_MIGRATION_WRITE_GENOTYPE_MATRIX
@@ -421,7 +421,8 @@ The Parquet database uses a Hive partitioning scheme:
  │   └── phenotypes/
  │       └── {trait_id}_phenotype.parquet        ◄── pre-upscaled phenotype values
  ├── mappings_metadata.parquet
- └── marker_set_metadata.parquet
+ └── marker_set_metadata/
+     └── {population}_{maf}_metadata.parquet
 ```
 
 At query time, DuckDB reads the partitioned Parquet files directly via the
