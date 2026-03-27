@@ -31,7 +31,7 @@ nextflow run main.nf -profile rockfish --strainfile strains.tsv --vcf 20231213
 
 ### Testing
 ```bash
-# Run R unit + integration tests (from project root)
+# Run integration tests (from project root; most tests skip without env vars)
 Rscript tests/run_tests.R
 
 # With integration test data (after running collect_test_data.sh)
@@ -81,7 +81,7 @@ The pipeline creates a cartesian product over: strain sets × MAF thresholds × 
   `assessment.R` is **not** loaded by `setup.R` — it's sourced directly by `db_migration/assess_sims` and the legacy `Assess_Sims.R` scripts.
 - `conf/` — Execution profiles: `rockfish.config` (SLURM/Singularity), `docker.config`
 - `data/test/` — Test VCF (~825MB, 13 strains, chr I/II/V), parameter files, strain lists
-- `tests/` — R/testthat test suite with fixtures and integration data
+- `tests/` — R/testthat integration test suite (`tests/testthat/`) and integration data
 
 ### Module Resources Pattern
 
@@ -150,7 +150,7 @@ The `docs/` directory is a Quarto website published to GitHub Pages. One `.qmd` 
 - GCTA phenotype simulation can produce very small variance; `check_vp.py` upscales by 1000× if Vp < 1e-6.
 - Log10P values are computed at query time via `safe_log10p()` in `R/analysis.R`, never stored in the Parquet database.
 - `PYTHON_CHECK_VP` is defined in `modules/python/check_vp.nf` (flat file, not in a subdirectory like other modules).
-- The test suite has two tiers: **unit tests** use static fixtures in `tests/fixtures/` and need no env vars; **integration tests** skip automatically when `TEST_DB_DIR` etc. are not set.
+- The test suite is **integration-only**: `tests/testthat/` contains three integration test files (`test-db_structure.R`, `test-cross_validation.R`, `test-assessment_cross_validation.R`) that require real pipeline output via `TEST_DB_DIR` / `TEST_WORK_DIR` / `TEST_LEGACY_ASSESSMENT` / `TEST_DB_ASSESSMENT` env vars. All tests skip automatically when these are not set. Static-fixture unit tests were removed in favor of integration coverage with real data.
 - **Phase 5 — Trait IDs and Mapping IDs:**
   - `generate_trait_id(group, maf, nqtl, effect, rep, h2)` → `MD5(paste(...))[1:12]` — 12-char hex string, stable across `-resume`, identifies all trait data files
   - `generate_mapping_id(trait_id, mode, type)` → `MD5(paste(...))[1:12]` — identifies a specific mapping run; used as Hive partition key in `mappings/population={pop}/mapping_id={id}/`

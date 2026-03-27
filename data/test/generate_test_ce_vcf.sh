@@ -27,12 +27,13 @@
 #   data/test/test_ce.YYYYMMDD.vcf.gz    (dated symlink → test_ce.vcf.gz)
 #   data/test/test_ce.YYYYMMDD.vcf.gz.tbi (dated symlink → test_ce.vcf.gz.tbi)
 #
-# On completion the script prints the assembled strainfile rows (small and large)
-# ready to paste into data/test/test_strains_three_species.txt.
+# On completion the script writes the three C. elegans rows directly into
+# data/test/test_strains_three_species.txt, replacing any existing ce.* rows.
+# Rows for other species (cb.*, ct.*) are preserved unchanged.
 #
-# Note: This script outputs to test_ce.vcf.gz (CE-prefixed). The existing
-# test.vcf.gz and its test.YYYYMMDD.vcf.gz symlink are kept intact for the
-# legacy `test` and `test_variable` Nextflow profiles.
+# Note: This script outputs to test_ce.vcf.gz. generate_test_vcf.sh is a
+# convenience wrapper that reads strains from the source VCF header and also
+# outputs to test_ce.vcf.gz with a dated symlink, and rewrites test_strains.txt.
 
 set -euo pipefail
 
@@ -40,7 +41,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUTPUT_VCF="${SCRIPT_DIR}/test_ce.vcf.gz"
 CHROMOSOMES="I,II,V"
 DEFAULT_STRAIN_COUNT=200
-POP_SPLIT_COUNT=100   # strains per popA / popB (must be <= DEFAULT_STRAIN_COUNT / 2)
+# POP_SPLIT_COUNT is calculated dynamically from actual strain count (see below)
+
+# Fraction of variants to randomly retain. Values < 1.0 reduce PLINK marker counts,
+# keeping EIGEN matrices small enough for local Docker execution.
+# Set VARIANT_SAMPLE_FRACTION=1.0 to disable sampling (production use).
+VARIANT_SAMPLE_FRACTION="${VARIANT_SAMPLE_FRACTION:-0.15}"
+VARIANT_SAMPLE_SEED="${VARIANT_SAMPLE_SEED:-42}"  # RNG seed for reproducibility
 
 # --- Parse arguments ---
 if [[ $# -lt 1 ]]; then
@@ -92,17 +99,30 @@ else
 fi
 
 STRAIN_COUNT=$(wc -l < "$STRAIN_LIST_FILE" | tr -d ' ')
-echo "Subsetting ${STRAIN_COUNT} strains to chromosomes ${CHROMOSOMES}..."
+POP_SPLIT_COUNT=$(( (STRAIN_COUNT + 1) / 2 ))
+echo "Subsetting ${STRAIN_COUNT} strains (popA=${POP_SPLIT_COUNT}, popB=$(( STRAIN_COUNT - POP_SPLIT_COUNT ))) to chromosomes ${CHROMOSOMES}..."
 
 # --- Subset VCF ---
 echo "Running bcftools view (this may take several minutes for a large source VCF)..."
-TEMP_VCF=$(mktemp "${SCRIPT_DIR}/test_ce_XXXXXX.vcf.gz")
+TEMP_VCF=$(mktemp)
 bcftools view \
     -S "$STRAIN_LIST_FILE" \
     -t "$CHROMOSOMES" \
     --min-ac 1 \
     -Oz -o "$TEMP_VCF" \
     "$SOURCE_VCF"
+
+# --- Random variant sampling ---
+# Randomly retain VARIANT_SAMPLE_FRACTION of variants to keep PLINK marker counts
+# manageable for local Docker execution (target: ~15K–50K variants/chrom → ~2K–5K markers).
+echo "Random variant sampling: keeping ${VARIANT_SAMPLE_FRACTION} fraction (seed ${VARIANT_SAMPLE_SEED})..."
+SAMPLED_VCF=$(mktemp)
+bcftools view "$TEMP_VCF" | \
+    awk -v rate="${VARIANT_SAMPLE_FRACTION}" -v seed="${VARIANT_SAMPLE_SEED}" \
+        'BEGIN{srand(seed)} /^#/{print; next} rand() < rate' | \
+    bcftools view -Oz -o "$SAMPLED_VCF" -
+rm -f "$TEMP_VCF"
+TEMP_VCF="$SAMPLED_VCF"
 
 # --- Clean contig headers ---
 # Strip ##contig lines for chromosomes not in the subset (III, IV, X)
@@ -151,21 +171,33 @@ echo "  Variants:   $VARIANT_COUNT"
 echo "  Contigs:    $(echo $CONTIGS | tr '\n' ' ')"
 echo ""
 
-# --- Print assembled strainfile rows ---
+# --- Update test_strains_three_species.txt ---
+THREE_SPECIES_FILE="${SCRIPT_DIR}/test_strains_three_species.txt"
+FINAL_STRAIN_COUNT=$(bcftools query -l "$OUTPUT_VCF" | wc -l | tr -d ' ')
+POPB_SPLIT_COUNT=$(( FINAL_STRAIN_COUNT - POP_SPLIT_COUNT ))
 STRAINS_CSV=$(bcftools query -l "$OUTPUT_VCF" | tr '\n' ',' | sed 's/,$//')
 POPA_CSV=$(bcftools query -l "$OUTPUT_VCF" | head -${POP_SPLIT_COUNT} | tr '\n' ',' | sed 's/,$//')
-POPB_CSV=$(bcftools query -l "$OUTPUT_VCF" | tail -${POP_SPLIT_COUNT} | tr '\n' ',' | sed 's/,$//')
+POPB_CSV=$(bcftools query -l "$OUTPUT_VCF" | tail -${POPB_SPLIT_COUNT} | tr '\n' ',' | sed 's/,$//')
 
-echo "=== Strainfile rows (paste into test_strains_three_species.txt) ==="
-printf "ce.test\tc_elegans\tdata/test/test_ce.%s.vcf.gz\t0.05\t0.8\t%s\n" \
-    "$DATE" "$STRAINS_CSV"
-printf "ce.test.popA\tc_elegans\tdata/test/test_ce.%s.vcf.gz\t0.05\t0.8\t%s\n" \
-    "$DATE" "$POPA_CSV"
-printf "ce.test.popB\tc_elegans\tdata/test/test_ce.%s.vcf.gz\t0.05\t0.8\t%s\n" \
-    "$DATE" "$POPB_CSV"
-echo ""
+{
+    printf "group\tspecies\tvcf\tms_maf\tms_ld\tstrains\n"
+    # Preserve non-ce rows from existing strainfile
+    if [[ -f "$THREE_SPECIES_FILE" ]]; then
+        awk -F'\t' 'NR>1 && $1 !~ /^ce\./' "$THREE_SPECIES_FILE"
+    fi
+    printf "ce.test\tc_elegans\tdata/test/test_ce.%s.vcf.gz\t0.05\t0.8\t%s\n" \
+        "$DATE" "$STRAINS_CSV"
+    printf "ce.test.popA\tc_elegans\tdata/test/test_ce.%s.vcf.gz\t0.05\t0.8\t%s\n" \
+        "$DATE" "$POPA_CSV"
+    printf "ce.test.popB\tc_elegans\tdata/test/test_ce.%s.vcf.gz\t0.05\t0.8\t%s\n" \
+        "$DATE" "$POPB_CSV"
+} > "${THREE_SPECIES_FILE}.tmp"
+mv "${THREE_SPECIES_FILE}.tmp" "$THREE_SPECIES_FILE"
+echo "Updated $THREE_SPECIES_FILE (ce.test, ce.test.popA, ce.test.popB)"
+
 echo "Remember to:"
 echo "  1. git add data/test/test_ce.${DATE}.vcf.gz data/test/test_ce.${DATE}.vcf.gz.tbi"
-echo "  2. Paste the strainfile rows above into data/test/test_strains_three_species.txt"
+echo "  2. git add data/test/test_strains_three_species.txt"
+echo "  3. Update CE_VCF_RELEASE in data/test/release_ids.sh to ${DATE}"
 echo ""
 echo "Done."

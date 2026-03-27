@@ -1,0 +1,1 @@
+group	species	vcf	ms_maf	ms_ld	strains

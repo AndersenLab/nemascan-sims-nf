@@ -13,6 +13,87 @@ not use version tags; entries are organized by development phase and date.
 
 ## [Unreleased] — March 2026
 
+### Added
+- **Multi-profile integration testing support** (`fix/merge-unit-with-integration`, 2026-03-23):
+  Extended the integration test framework to cover four testing profiles beyond the
+  default `test` baseline.
+  - `tests/collect_test_data.sh` now accepts `--profile <name>`, `--no-legacy`, and
+    `--clean` flags; artifacts are stored in `tests/integration_data/<profile>/`
+    subdirectories so each profile's outputs can be tested independently
+  - `test-db_structure.R` gains `TEST_EXPECTED_MARKER_SETS` and
+    `TEST_EXPECTED_POPULATIONS` env var guards; the inbred/loco marker count
+    invariants now loop over all populations (not just `[1,]`) to cover
+    multi-population and multi-species runs
+  - `test-cross_validation.R`: per-population LOCO < INBRED marker count loop
+  - `test-assessment_cross_validation.R` gains per-population concordance breakdown
+    and chromosome-naming consistency check (multi-species guard)
+  - `test-cv_pool.R` (new, 7 tests): cv_pool-specific assertions — causal genotypes
+    directory and schema, non-marker FN row presence and `significant=NA` pattern,
+    `Simulated.QTL.VarExp` for non-marker positions via per-trait causal genotypes,
+    non-marker causal QTLs absent from markers DB view, standalone Power/FDR check
+- **HPC integration testing documentation** (`fix/merge-unit-with-integration`, 2026-03-27):
+  `docs/testing-hpc.qmd` now provides exact per-profile test invocation commands for
+  all 8 profiles (4 local + 4 HPC) with the correct environment variables
+  (`TEST_POPULATION`, `TEST_EXPECTED_MAPPINGS`, `TEST_EXPECTED_MARKER_SETS`,
+  `TEST_EXPECTED_POPULATIONS`). All pipeline run commands use `--output_dir
+  Analysis_Results-<profile>` to prevent same-day output collisions. Per-profile
+  work directory rsync commands added for cross-validation testing.
+
+### Fixed
+- **Concurrent write race in marker set metadata on HPC** (`fix/merge-unit-with-integration`, 2026-03-26):
+  `write_marker_set_metadata()` previously appended to a single shared
+  `marker_set_metadata.parquet` file using a read-modify-write pattern. When
+  multiple `DB_MIGRATION_WRITE_MARKER_SET` SLURM jobs ran in parallel (e.g., 9
+  jobs for the three-species HPC test profile), concurrent writes caused lost
+  updates — population records were silently overwritten. Downstream processes
+  (`WRITE_GWA_TO_DB`, `WRITE_TRAIT_DATA`) then failed with "Marker set metadata
+  not found". The fix replaces the single shared file with per-population
+  metadata files (`marker_set_metadata/{population}_{maf}_metadata.parquet`),
+  eliminating the shared mutable resource entirely.
+
+- **`designate_qtl()` correctly classifies all non-marker causal variants**
+  (`fix/merge-unit-with-integration`, 2026-03-27): when `cv_maf < ms_maf`, causal
+  variants absent from GWA output receive `significant=NA`. Previously `case_when`
+  produced `designation=NA` for these rows. The fix handles both cases:
+  - `Detected=TRUE, significant=NA` (non-marker variant inside a detected QTL
+    interval) → `Detected.CV` — correctly localized despite no direct GWA test
+  - `Detected=FALSE, significant=NA` (non-marker variant not in any interval)
+    → `Missed.CV` — contributes to the Power denominator as a false negative
+
+- **`collect_test_data.sh` prevents nested `db/db/` on re-collection**
+  (`fix/merge-unit-with-integration`, 2026-03-27): `cp -R` into an existing
+  destination created a nested copy. The script now removes the stale `db/`
+  directory before copying. Additionally, the script now uses `--output_dir
+  Analysis_Results-<profile>` when running the pipeline and looks for the
+  profile-named output directory first when collecting, preventing cross-profile
+  contamination when multiple profiles are run on the same day.
+
+- **Selective cross-validation file collection from work directory**
+  (`fix/merge-unit-with-integration`, 2026-03-27): `collect_test_data.sh` gains
+  `--work-dir <path>` flag that extracts only the files needed by
+  `test-cross_validation.R` (`.fastGWA`, `.mlma`, `*_total_independent_tests.txt`)
+  into a per-profile `work/` subdirectory. This replaces syncing the full Nextflow
+  work directory (100+ GB on HPC) — the collected cross-validation files are
+  typically < 5% of that. Each profile now has its own `work/` directory alongside
+  `db/` and assessment TSVs, eliminating the shared `tests/.nf-work/` bottleneck.
+
+### Changed
+- **Integration tests are now the sole evaluation framework** (`fix/merge-unit-with-integration`, 2026-03-23):
+  Static-fixture unit tests (`test-*.R` in `tests/testthat/` except the three integration
+  files) removed. The integration framework was extended to cover the behaviors they
+  tested — now evaluated against real pipeline output rather than synthetic fixtures.
+  - `test-db_structure.R` gains 7 new tests: `traits/` subdirectory existence,
+    genotype matrix Arrow schema, trait metadata schema (`sim_seed int32`), phenotype
+    schema (no-NA check), causal variants schema (`QTL` in `CHROM:POS` format),
+    inbred `n_markers == marker_set_metadata$n_markers`, and loco
+    `n_markers < marker_set_metadata$n_markers` (issue111 regression guard; 27 tests total)
+  - `test-assessment_cross_validation.R` gains 3 new tests: DB assessment column
+    completeness (35 columns from `format_assessment_tsv()`), `calculate_simrep_performance()`
+    on real data, `designate_qtl()` valid-category assertion (10 tests total)
+  - `test-cross_validation.R` gains 3 new tests: `read_raw_gwa_file()` normalized column
+    schema for both `.fastGWA` and `.mlma`, `query_by_mapping_id()` full coverage, loco
+    < inbred marker count invariant (8 tests total)
+
 ### Fixed
 - **Eigen calculation uses full decomposition (Li & Ji 2005)** (`fix-eigen-calculation`, 2026-03-20):
   Replaced the `RSpectra::eigs_sym()` partial-decomposition while-loop in
@@ -79,7 +160,7 @@ not use version tags; entries are organized by development phase and date.
   - Marker set ID upgraded to v=2: SHA-256 now encodes `population`, `maf`, `species`,
     `vcf_release_id`, and `ms_ld`. CV parameters (`cv_maf`, `cv_ld`) are intentionally
     excluded from the hash.
-  - `marker_set_metadata.parquet` gains three new columns: `species` (utf8),
+  - Marker set metadata gains three new columns: `species` (utf8),
     `vcf_release_id` (utf8), `ms_ld` (float64).
   - DB write scripts (`write_marker_set.R`, `write_genotype_matrix.R`, `write_gwa_to_db.R`)
     and their Nextflow modules updated to accept and pass `--species`, `--vcf_release_id`,
@@ -106,7 +187,7 @@ not use version tags; entries are organized by development phase and date.
 
 ### Added
 - **Strainfile provenance in marker set metadata** (`fix/strain-file-not-hashed`, 2026-03-05):
-  `marker_set_metadata.parquet` now records two new columns for reproducibility auditing:
+  Marker set metadata now records two new columns for reproducibility auditing:
   - `strainfile_hash` (`utf8`) — SHA-256 hex digest of the complete strainfile, computed
     once at pipeline submission time (same value for all population groups in a run).
   - `strain_list` (`utf8`) — Comma-separated list of strain names used for the specific
@@ -148,7 +229,7 @@ MD5 hex IDs, making all IDs stable across `-resume` runs.
 - `generate_mapping_id(trait_id, mode, type)` — MD5 hash used as the Hive
   partition key under `mappings/population={pop}/mapping_id={id}/`.
 - `generate_marker_set_id(population, maf, species, vcf_release_id, ms_ld)` — SHA-256 hash (v=2) written to
-  `marker_set_metadata.parquet` and used in the marker-set file names.
+  per-population marker set metadata and used in the marker-set file names.
 - Unit tests for all three hash functions in `test-hash_generation.R`, with
   golden-value assertions to catch silent hash drift.
 
@@ -264,8 +345,8 @@ storage, and DuckDB query layer.
 
 #### Added
 - `DB_MIGRATION_WRITE_MARKER_SET` module — writes `{pop}_{maf}_markers.parquet`
-  and `marker_set_metadata.parquet`; emits `val true` on `done` to gate
-  downstream GWA writes.
+  and per-population metadata under `marker_set_metadata/`; emits `val true`
+  on `done` to gate downstream GWA writes.
 - `DB_MIGRATION_WRITE_GWA_TO_DB` module — Hive-partitioned GWA Parquet files
   under `mappings/population={pop}/mapping_id={id}/`; gated behind a
   `.collect()` barrier ensuring marker schemas exist first.

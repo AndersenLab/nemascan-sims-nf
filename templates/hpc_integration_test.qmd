@@ -1,0 +1,409 @@
+---
+title: "HPC Integration Test Run"
+date: today
+params:
+  branch: ""
+  commit: ""
+  rockfish_user: "<yourname>"
+  rockfish_host: "<rockfish-host>"
+  project_dir: "/vast/eande106/<yourname>/nemascan-sims-nf"
+  scratch_dir: "/scratch4/eande106/<yourname>"
+format: gfm
+engine: knitr
+---
+
+# HPC Integration Test Run
+
+**Date:** `r Sys.Date()`
+**Branch:** `r params$branch`
+**Commit:** `r params$commit`
+
+---
+
+## Checklist
+
+<!-- Check off each step as you complete it. -->
+
+- [ ] Environment setup on Rockfish
+- [ ] Generate test VCFs (if needed)
+- [ ] Generate HPC strainfiles (if needed)
+- [ ] Run test_hpc profile
+- [ ] Run test_hpc_variable profile
+- [ ] Run test_hpc_three_species profile
+- [ ] Run test_hpc_cv_pool profile
+- [ ] Collect outputs for all profiles
+- [ ] Sync to local machine
+- [ ] Run local integration tests (test_hpc)
+- [ ] Run local integration tests (test_hpc_variable)
+- [ ] Run local integration tests (test_hpc_three_species)
+- [ ] Run local integration tests (test_hpc_cv_pool)
+- [ ] Clean up scratch work directories
+
+---
+
+## Phase 1: Environment Setup (Rockfish login node)
+
+<!-- Run these on a Rockfish login node before any other steps. -->
+
+```{bash}
+#| eval: false
+conda activate /data/eande106/software/conda_envs/nf24_env
+export NXF_SINGULARITY_CACHEDIR=/vast/eande106/singularity
+```
+
+Verify Nextflow version is 24.10.x:
+
+```{bash}
+#| eval: false
+nextflow -version
+```
+
+Output:
+```
+```
+
+---
+
+## Phase 2: Generate Test Input Data (Rockfish interactive node)
+
+<!-- These steps require an interactive session with bcftools via Singularity.
+     Only needed when VCF release dates change or strainfiles need updating.
+     Skip if data/test/ files are already up to date on the current branch. -->
+
+### Start interactive session
+
+```{bash}
+#| eval: false
+interact -n 1 -c 1 -a eande106 -m 64G -p <queue-name> -t <minutes>
+```
+
+### Set bcftools container path
+
+```{bash}
+#| eval: false
+SIMG=/vast/eande106/singularity/quay.io-biocontainers-bcftools-1.16--hfe4b78e_1.img
+```
+
+### Generate test VCFs
+
+<!-- Only needed for local test profiles run on Rockfish (test, test_variable, etc.).
+     HPC profiles use full CaeNDR VCFs directly from /vast/eande106. -->
+
+#### C. elegans VCF (single-species profiles)
+
+```{bash}
+#| eval: false
+singularity exec --bind /vast/eande106 --bind "$PWD" $SIMG \
+  bash data/test/generate_test_vcf.sh \
+  /vast/eande106/data/c_elegans/WI/variation/20250625/vcf/WI.20250625.hard-filter.isotype.vcf.gz
+```
+
+#### Three-species VCFs
+
+```{bash}
+#| eval: false
+# C. elegans
+singularity exec --bind /vast/eande106 --bind "$PWD" $SIMG \
+  bash data/test/generate_test_ce_vcf.sh \
+  /vast/eande106/data/c_elegans/WI/variation/20250625/vcf/WI.20250625.hard-filter.isotype.vcf.gz
+
+# C. briggsae
+singularity exec --bind /vast/eande106 --bind "$PWD" $SIMG \
+  bash data/test/generate_test_cb_vcf.sh \
+  /vast/eande106/data/c_briggsae/WI/variation/20250626/vcf/WI.20250626.hard-filter.isotype.vcf.gz
+
+# C. tropicalis
+singularity exec --bind /vast/eande106 --bind "$PWD" $SIMG \
+  bash data/test/generate_test_ct_vcf.sh \
+  /vast/eande106/data/c_tropicalis/WI/variation/20250627/vcf/WI.20250627.hard-filter.isotype.vcf.gz
+```
+
+### Generate HPC strainfiles
+
+<!-- Required before running test_hpc* profiles. The strainfile embeds absolute
+     Rockfish VCF paths so the pipeline reads from /vast/eande106 directly. -->
+
+#### Single-species strainfile (test_hpc, test_hpc_variable, test_hpc_cv_pool)
+
+```{bash}
+#| eval: false
+singularity exec --bind /vast/eande106 --bind "$PWD" $SIMG \
+  bash data/test/generate_hpc_strainfile.sh \
+  /vast/eande106/data/c_elegans/WI/variation/20250625/vcf/WI.20250625.hard-filter.isotype.vcf.gz
+```
+
+#### Three-species strainfile (test_hpc_three_species)
+
+```{bash}
+#| eval: false
+singularity exec --bind /vast/eande106 --bind "$PWD" $SIMG \
+  bash data/test/generate_hpc_strainfile.sh \
+  /vast/eande106/data/c_elegans/WI/variation/20250625/vcf/WI.20250625.hard-filter.isotype.vcf.gz \
+  /vast/eande106/data/c_briggsae/WI/variation/20250626/vcf/WI.20250626.hard-filter.isotype.vcf.gz \
+  /vast/eande106/data/c_tropicalis/WI/variation/20250627/vcf/WI.20250627.hard-filter.isotype.vcf.gz
+```
+
+---
+
+## Phase 3: Run HPC Pipeline Profiles (Rockfish login node)
+
+<!-- Each profile submits SLURM jobs and writes to a named output directory.
+     --output_dir prevents same-day collisions between profiles.
+     -work-dir must be on /scratch4/ (login node local disk is too small).
+
+     Ensure the conda env and NXF_SINGULARITY_CACHEDIR are set (Phase 1)
+     before running these commands. -->
+
+### test_hpc (fixed architecture, 1 population)
+
+```{bash}
+#| eval: false
+nextflow run main.nf \
+  -profile test_hpc,rockfish \
+  --legacy_assess \
+  --output_dir Analysis_Results-test_hpc \
+  -work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc
+```
+
+Output:
+```
+Completed at:
+Duration    :
+CPU hours   :
+Succeeded   :
+```
+
+### test_hpc_variable (variable architecture, 1 population)
+
+<!-- This is the largest profile: 8 nQTL x 4 h2 x 2 reps = 64 traits x 4 modes = 256+ mappings.
+     Expect ~30-45 min and ~7 CPU hours. -->
+
+```{bash}
+#| eval: false
+nextflow run main.nf \
+  -profile test_hpc_variable,rockfish \
+  --legacy_assess \
+  --output_dir Analysis_Results-test_hpc_variable \
+  -work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc-variable
+```
+
+Output:
+```
+Completed at:
+Duration    :
+CPU hours   :
+Succeeded   :
+```
+
+### test_hpc_three_species (3 species, 9 populations)
+
+<!-- Requires hpc_strains_three_species.txt to be populated (Phase 2). -->
+
+```{bash}
+#| eval: false
+nextflow run main.nf \
+  -profile test_hpc_three_species,rockfish \
+  --legacy_assess \
+  --output_dir Analysis_Results-test_hpc_three_species \
+  -work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc-three-species
+```
+
+Output:
+```
+Completed at:
+Duration    :
+CPU hours   :
+Succeeded   :
+```
+
+### test_hpc_cv_pool (cv pool, no legacy assessment)
+
+<!-- Omit --legacy_assess: the legacy path is incompatible with non-marker causal
+     variants produced when cv_maf (0.01) < ms_maf (0.05). -->
+
+```{bash}
+#| eval: false
+nextflow run main.nf \
+  -profile test_hpc_cv_pool,rockfish \
+  --output_dir Analysis_Results-test_hpc_cv_pool \
+  -work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc-cv-pool
+```
+
+Output:
+```
+Completed at:
+Duration    :
+CPU hours   :
+Succeeded   :
+```
+
+---
+
+## Phase 4: Collect Outputs (Rockfish login node)
+
+<!-- Run on a login node after all SLURM jobs complete.
+     --work-dir extracts only the cross-validation files (.fastGWA, .mlma, EIGEN)
+     from the scratch work directory — NOT the full contents (which can be 100+ GB).
+     Collected files go to tests/integration_data/<profile>/. -->
+
+```{bash}
+#| eval: false
+bash tests/collect_test_data.sh --profile test_hpc --collect-only \
+  --work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc
+
+bash tests/collect_test_data.sh --profile test_hpc_variable --collect-only \
+  --work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc-variable
+
+bash tests/collect_test_data.sh --profile test_hpc_three_species --collect-only \
+  --work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc-three-species
+
+bash tests/collect_test_data.sh --profile test_hpc_cv_pool --collect-only \
+  --work-dir /scratch4/eande106/<yourname>/nf-work-test-hpc-cv-pool
+```
+
+Verify collected data:
+
+```{bash}
+#| eval: false
+ls -la tests/integration_data/test_hpc/
+ls -la tests/integration_data/test_hpc_variable/
+ls -la tests/integration_data/test_hpc_three_species/
+ls -la tests/integration_data/test_hpc_cv_pool/
+```
+
+Output:
+```
+```
+
+---
+
+## Phase 5: Sync to Local Machine
+
+<!-- Run from your LOCAL terminal (not Rockfish).
+     A single rsync syncs everything: db/, assessment TSVs, and cross-validation
+     work files for all collected profiles. -->
+
+```{bash}
+#| eval: false
+rsync -av --delete \
+  <rockfish-host>:<project-dir>/tests/integration_data/ \
+  tests/integration_data/
+```
+
+Verify local data:
+
+```{bash}
+#| eval: false
+ls tests/integration_data/
+```
+
+Output:
+```
+```
+
+---
+
+## Phase 6: Run Integration Tests Locally
+
+<!-- Run from the project root on your local machine.
+     Each profile requires specific environment variables.
+     TEST_POPULATION=ce.hpc is required for all HPC profiles (default is ce.test.200strains). -->
+
+### test_hpc (4 mappings)
+
+```{bash}
+#| eval: false
+TEST_DB_DIR=tests/integration_data/test_hpc/db \
+TEST_WORK_DIR=tests/integration_data/test_hpc/work \
+TEST_POPULATION=ce.hpc \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test_hpc/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test_hpc/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+Result: <!-- PASS / FAIL -->
+```
+```
+
+### test_hpc_variable (260 mappings)
+
+<!-- TEST_EXPECTED_MAPPINGS overrides the default of 4. The variable grid produces
+     8 nQTL x 4 h2 x 2 reps = 64 traits x 4 modes. Actual count may differ
+     slightly from theoretical 256 (e.g., REML retries). -->
+
+```{bash}
+#| eval: false
+TEST_DB_DIR=tests/integration_data/test_hpc_variable/db \
+TEST_WORK_DIR=tests/integration_data/test_hpc_variable/work \
+TEST_POPULATION=ce.hpc \
+TEST_EXPECTED_MAPPINGS=260 \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test_hpc_variable/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test_hpc_variable/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+Result: <!-- PASS / FAIL -->
+```
+```
+
+### test_hpc_three_species (36 mappings, 9 populations)
+
+<!-- TEST_EXPECTED_POPULATIONS lists all 9 population names (3 species x 3 groups).
+     If --legacy_assess was used, add TEST_LEGACY_ASSESSMENT. -->
+
+```{bash}
+#| eval: false
+TEST_DB_DIR=tests/integration_data/test_hpc_three_species/db \
+TEST_WORK_DIR=tests/integration_data/test_hpc_three_species/work \
+TEST_POPULATION=ce.hpc \
+TEST_EXPECTED_MAPPINGS=36 \
+TEST_EXPECTED_MARKER_SETS=9 \
+TEST_EXPECTED_POPULATIONS="ce.hpc,ce.hpc.popA,ce.hpc.popB,cb.hpc,cb.hpc.popA,cb.hpc.popB,ct.hpc,ct.hpc.popA,ct.hpc.popB" \
+TEST_DB_ASSESSMENT=tests/integration_data/test_hpc_three_species/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+Result: <!-- PASS / FAIL -->
+```
+```
+
+### test_hpc_cv_pool (4 mappings, cv_pool)
+
+<!-- No TEST_LEGACY_ASSESSMENT — cv_pool is incompatible with legacy assessment.
+     TEST_CV_POOL=true activates the cv_pool-specific test assertions. -->
+
+```{bash}
+#| eval: false
+TEST_DB_DIR=tests/integration_data/test_hpc_cv_pool/db \
+TEST_WORK_DIR=tests/integration_data/test_hpc_cv_pool/work \
+TEST_POPULATION=ce.hpc \
+TEST_DB_ASSESSMENT=tests/integration_data/test_hpc_cv_pool/db_simulation_assessment_results.tsv \
+TEST_CV_POOL=true \
+Rscript tests/run_tests.R
+```
+
+Result: <!-- PASS / FAIL -->
+```
+```
+
+---
+
+## Phase 7: Clean Up Scratch (Rockfish)
+
+<!-- Only after verifying that local integration tests pass and data is synced.
+     The cross-validation files were already extracted by collect_test_data.sh,
+     so deleting the work directories does not lose any test-relevant data. -->
+
+```{bash}
+#| eval: false
+rm -rf /scratch4/eande106/<yourname>/nf-work-test-hpc
+rm -rf /scratch4/eande106/<yourname>/nf-work-test-hpc-variable
+rm -rf /scratch4/eande106/<yourname>/nf-work-test-hpc-three-species
+rm -rf /scratch4/eande106/<yourname>/nf-work-test-hpc-cv-pool
+```
+
+---
+
+## Notes
+
+<!-- Record any issues, unexpected behavior, or deviations from the standard workflow. -->
