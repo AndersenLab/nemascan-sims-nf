@@ -69,15 +69,37 @@ random access, avoiding a multi-GB download.
 
 **Prerequisites:** `bcftools >= 1.16`, `tabix` (htslib).
 
+### Symlink reference
+
+Each generate script writes a `test_{sp}.vcf.gz` target and a dated symlink extracted
+from the source VCF filename. Strainfiles reference the dated names. The table below
+shows what each profile currently expects (canonical dates are in `data/test/release_ids.sh`):
+
+| Profile(s) | Dated symlink | Target | Generate script |
+|------------|--------------|--------|-----------------|
+| `test`, `test_variable`, `test_cv_pool` | `test_ce.20250625.vcf.gz` | `test_ce.vcf.gz` | `generate_test_vcf.sh` |
+| `test_three_species` | `test_ce.20250625.vcf.gz` | `test_ce.vcf.gz` | `generate_test_ce_vcf.sh` |
+| `test_three_species` | `test_cb.20250626.vcf.gz` | `test_cb.vcf.gz` | `generate_test_cb_vcf.sh` |
+| `test_three_species` | `test_ct.20250627.vcf.gz` | `test_ct.vcf.gz` | `generate_test_ct_vcf.sh` |
+
+The dated symlinks are tracked in git; the target files are gitignored. Running a generate
+script populates the target. `tests/collect_test_data.sh` performs a pre-flight check
+before the pipeline starts and exits immediately with an actionable error if any required
+target is missing.
+
 ### C. elegans test VCF (`test` / `test_variable` profiles)
 
 ```bash
-bash data/test/generate_test_vcf.sh /path/to/WI.20220216.hard-filter.isotype.vcf.gz
+bash data/test/generate_test_vcf.sh /path/to/WI.YYYYMMDD.hard-filter.isotype.vcf.gz
 ```
 
-Produces `data/test/test.vcf.gz` (chromosomes I/II/V) and its tabix index.
-The script reads the strains column from the 6-column `test_strains.txt` strainfile.
-This VCF is used by the `test` and `test_variable` Nextflow profiles.
+Produces `data/test/test_ce.vcf.gz` (chromosomes I/II/V), its tabix index, and a
+dated symlink `test_ce.YYYYMMDD.vcf.gz → test_ce.vcf.gz` where the date is extracted
+from the source VCF filename. The script reads the strains column from the 6-column
+`test_strains.txt` strainfile. This VCF is shared by the `test`, `test_variable`, and
+`test_cv_pool` Nextflow profiles, and uses the same CE release as `test_three_species`.
+
+See `data/test/release_ids.sh` for the currently pinned CE release date.
 
 > **Note (awk fix):** This script was updated alongside the S03 strainfile format
 > change — the strains column is now extracted with `awk -F'\t' 'NR>1 {print $6}'`
@@ -141,16 +163,8 @@ Each script:
 2. Subsets to chromosomes I, II, V and the first 200 strains by default (pass a custom
    strain-list file as a second argument to change the selection)
 3. Creates dated symlinks: `test_ce.YYYYMMDD.vcf.gz → test_ce.vcf.gz` (and `.tbi`)
-4. Prints the assembled small (100-strain) and large (200-strain) strainfile rows
-
-After running all three scripts, commit the six dated symlinks and the strainfile:
-
-```bash
-git add data/test/test_ce.YYYYMMDD.vcf.gz data/test/test_ce.YYYYMMDD.vcf.gz.tbi
-git add data/test/test_cb.YYYYMMDD.vcf.gz data/test/test_cb.YYYYMMDD.vcf.gz.tbi
-git add data/test/test_ct.YYYYMMDD.vcf.gz data/test/test_ct.YYYYMMDD.vcf.gz.tbi
-git add data/test/test_strains_three_species.txt
-```
+4. Writes the three species rows directly into `test_strains_three_species.txt`, replacing
+   any existing rows for that species while preserving rows for other species
 
 ### Running the three-species test
 
@@ -166,6 +180,32 @@ six groups:
 ```bash
 nextflow run . -profile test_three_species -stub-run
 ```
+
+### Working in a git worktree
+
+When developing in a git worktree the VCF targets are absent (gitignored, not copied from
+the main checkout). If the main repository already has the generated VCFs you can create
+absolute-path symlinks rather than re-running the generate scripts:
+
+```bash
+MAIN="/path/to/nemascan-sims-nf/data/test"   # main repo with real VCF files
+WT="/path/to/your-worktree/data/test"         # this worktree
+
+# Single-species profiles (test, test_variable, test_cv_pool) — CE VCF only
+ln -s "$MAIN/test_ce.vcf.gz"     "$WT/test_ce.vcf.gz"
+ln -s "$MAIN/test_ce.vcf.gz.tbi" "$WT/test_ce.vcf.gz.tbi"
+
+# Three-species profile (test_three_species) — run for each species needed
+for spec in ce cb ct; do
+  ln -s "$MAIN/test_${spec}.vcf.gz"     "$WT/test_${spec}.vcf.gz"
+  ln -s "$MAIN/test_${spec}.vcf.gz.tbi" "$WT/test_${spec}.vcf.gz.tbi"
+done
+```
+
+Because the targets are gitignored, these symlinks will not appear in `git status` and
+cannot be accidentally committed. The existing dated symlinks (e.g.
+`test_ce.20250625.vcf.gz → test_ce.vcf.gz`) already tracked in git then resolve through the
+new absolute-path link to the real file.
 
 ::: {.callout-tip}
 ## Next steps

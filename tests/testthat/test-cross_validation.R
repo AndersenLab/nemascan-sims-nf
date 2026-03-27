@@ -241,6 +241,123 @@ test_that("EIGEN threshold from DB matches pipeline EIGEN value", {
   }
 })
 
+# ── GWA File Column Assertions ───────────────────────────────────────────────
+
+test_that("read_raw_gwa_file() returns normalized columns for inbred and loco formats", {
+  skip_if_no_cross_validation()
+
+  gwa_files <- find_gwa_files(work_dir)
+  if (length(gwa_files) == 0) skip("no raw GWA files found")
+
+  fastgwa_files <- gwa_files[grepl("\\.fastGWA$", gwa_files)]
+  mlma_files    <- gwa_files[grepl("\\.mlma$", gwa_files)]
+
+  # Normalized column set that read_raw_gwa_file() must produce for both formats
+  expected_cols <- c("marker", "CHROM", "POS", "A1", "A2", "AF1", "BETA", "SE", "P")
+
+  tested <- 0L
+
+  if (length(fastgwa_files) > 0) {
+    raw <- tryCatch(
+      read_raw_gwa_file(fastgwa_files[1], verbose = FALSE),
+      error = function(e) NULL
+    )
+    if (!is.null(raw)) {
+      missing <- setdiff(expected_cols, names(raw))
+      expect_equal(length(missing), 0,
+        label = paste("fastGWA missing normalized cols:", paste(missing, collapse = ", "))
+      )
+      expect_type(raw$P, "double")
+      expect_gt(nrow(raw), 0, label = "fastGWA file is non-empty")
+      tested <- tested + 1L
+    }
+  }
+
+  if (length(mlma_files) > 0) {
+    raw <- tryCatch(
+      read_raw_gwa_file(mlma_files[1], verbose = FALSE),
+      error = function(e) NULL
+    )
+    if (!is.null(raw)) {
+      missing <- setdiff(expected_cols, names(raw))
+      expect_equal(length(missing), 0,
+        label = paste("mlma missing normalized cols:", paste(missing, collapse = ", "))
+      )
+      expect_type(raw$P, "double")
+      expect_gt(nrow(raw), 0, label = "mlma file is non-empty")
+      tested <- tested + 1L
+    }
+  }
+
+  expect_gt(tested, 0L, label = "at least one GWA format was tested")
+})
+
+# ── Full Mapping Coverage ─────────────────────────────────────────────────────
+
+test_that("query_by_mapping_id() returns non-empty result for every mapping_id in metadata", {
+  skip_if_no_cross_validation()
+
+  meta <- get_metadata(db_dir)
+  expect_gt(nrow(meta), 0, label = "metadata has at least one mapping")
+
+  for (mid in meta$mapping_id) {
+    db_df <- tryCatch(
+      suppressWarnings(query_by_mapping_id(mid, db_dir)),
+      error = function(e) NULL
+    )
+    expect_false(is.null(db_df),
+      label = paste("mapping queryable without error:", mid)
+    )
+    if (!is.null(db_df)) {
+      expect_gt(nrow(db_df), 0,
+        label = paste("non-empty mapping result:", mid)
+      )
+    }
+  }
+})
+
+# ── Loco/Inbred Marker Count Invariant ───────────────────────────────────────
+
+test_that("loco and inbred GWA have equal marker counts for same marker set", {
+  skip_if_no_cross_validation()
+
+  meta <- get_metadata(db_dir)
+  if (!all(c("inbred", "loco") %in% unique(meta$algorithm))) {
+    skip("both inbred and loco mappings required for this test")
+  }
+
+  # Check all unique populations — not just [1,].
+  # After the LOCO marker count fix, both inbred and loco store n_markers equal
+  # to the full LD-pruned marker set size in mappings metadata. The BF threshold
+  # denominator in analyze_qtl.R uses nrow(mapping_data) at runtime regardless of
+  # this stored value.
+  populations <- unique(meta$population)
+  any_checked <- FALSE
+
+  for (pop in populations) {
+    inbred_pop <- meta[meta$algorithm == "inbred" & meta$population == pop, ]
+    loco_pop   <- meta[meta$algorithm == "loco"   & meta$population == pop, ]
+    if (nrow(inbred_pop) == 0 || nrow(loco_pop) == 0) next
+
+    # Use the first MAF available for this population
+    maf_val <- inbred_pop$maf[1]
+    inbred_row <- inbred_pop[inbred_pop$maf == maf_val, ][1, ]
+    loco_row   <- loco_pop[loco_pop$maf == maf_val, ][1, ]
+    if (is.na(loco_row$n_markers)) next
+
+    expect_equal(
+      loco_row$n_markers, inbred_row$n_markers,
+      label = sprintf(
+        "loco n_markers (%d) == inbred n_markers (%d) for population=%s maf=%s",
+        loco_row$n_markers, inbred_row$n_markers, pop, maf_val
+      )
+    )
+    any_checked <- TRUE
+  }
+
+  if (!any_checked) skip("no matching inbred+loco population pairs found")
+})
+
 # ── Marker Count Consistency ─────────────────────────────────────────────────
 
 test_that("marker counts in metadata match actual partition row counts", {

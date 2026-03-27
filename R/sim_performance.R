@@ -19,10 +19,16 @@ library(tidyr)
 #' Classify each QTL row into detection outcome categories
 #'
 #' Adds a `designation` column with one of four values:
-#'   - Detected.CV: Simulated=TRUE, Detected=TRUE, significant=TRUE (true positive)
-#'   - Missed.CV: Simulated=TRUE, Detected=FALSE, significant=FALSE (false negative)
+#'   - Detected.CV: Simulated=TRUE, Detected=TRUE, significant=TRUE or NA (true positive)
+#'   - Missed.CV: Simulated=TRUE, Detected=FALSE, significant=FALSE or NA (false negative)
 #'   - CV.Not.Significant.In.Interval: Simulated=TRUE, Detected=TRUE, significant=FALSE
 #'   - False.Discovery: Simulated=FALSE, Detected=TRUE, significant=TRUE (false positive)
+#'
+#' significant=NA rows arise when a causal variant is absent from GWA output entirely
+#' (e.g., when cv_maf < ms_maf produces non-marker causal variants). When Detected=TRUE,
+#' the variant fell inside a detected QTL interval — it was correctly localized despite
+#' having no direct GWA test, so it counts as Detected.CV (true positive). When
+#' Detected=FALSE, it counts as Missed.CV (false negative for Power calculation).
 #'
 #' Auto-detects `significant` (Phase 4 schema) vs `aboveBF` (legacy schema) column.
 #' The significance column is coerced to logical for consistent case_when evaluation.
@@ -51,8 +57,12 @@ designate_qtl <- function(df) {
   df %>%
     dplyr::mutate(
       designation = dplyr::case_when(
-        .sim == TRUE  & .det == TRUE  & .sig == TRUE  ~ "Detected.CV",
-        .sim == TRUE  & .det == FALSE & .sig == FALSE ~ "Missed.CV",
+        # significant=NA with Detected=TRUE: non-marker variant inside a detected interval
+        # (correctly localized despite no direct GWA test → true positive)
+        .sim == TRUE  & .det == TRUE  & (.sig == TRUE | is.na(.sig))  ~ "Detected.CV",
+        # significant=NA with Detected=FALSE: non-marker variant not in any detected interval
+        # (structurally undetectable → false negative for Power denominator)
+        .sim == TRUE  & .det == FALSE & (.sig == FALSE | is.na(.sig)) ~ "Missed.CV",
         .sim == TRUE  & .det == TRUE  & .sig == FALSE ~ "CV.Not.Significant.In.Interval",
         .sim == FALSE & .det == TRUE  & .sig == TRUE  ~ "False.Discovery"
       )

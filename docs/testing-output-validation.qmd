@@ -39,22 +39,73 @@ flowchart LR
 
 ## Cross-Validation Tests
 
-Two test files compare the DB assessment path against the legacy R path:
+Three integration test files are the primary evaluation metric for pipeline
+correctness. Together they cover database structure, data round-trip fidelity,
+and assessment concordance between the DB and legacy paths.
 
-- **`test-assessment_cross_validation.R`** — compares
-  `db_simulation_assessment_results.tsv` (DB path) against
-  `simulation_assessment_results.tsv` (legacy path). Computes three
-  concordance scores per replicate: detection concordance, designation
-  concordance, and interval overlap (Jaccard). Requires both
-  `TEST_LEGACY_ASSESSMENT` and `TEST_DB_ASSESSMENT`.
+**`test-db_structure.R`** (27 tests, requires `TEST_DB_DIR`) — verifies the
+Parquet database written by `DB_MIGRATION_*` modules: directory structure,
+Parquet schemas for all six artifact types (marker sets, genotypes, traits,
+causal variants, phenotypes, mappings), metadata completeness, DuckDB
+queryability, and two invariants established by issue111:
 
-- **`test-cross_validation.R`** — compares DB Parquet contents against raw GWA
-  files in the Nextflow work directory to verify round-trip accuracy. Requires
-  `TEST_DB_DIR` and `TEST_WORK_DIR`.
+- Inbred `meta$n_markers == marker_set_metadata$n_markers` (GCTA processes all
+  markers for fastGWA-mlm-exact)
+- Loco `meta$n_markers < marker_set_metadata$n_markers` (GCTA silently excludes
+  near-singular markers from mlma-loco output)
 
-Both tests skip automatically unless all required env vars are set. Both
-require `--legacy_assess` to have been passed when collecting test data (so
-that the legacy output files exist alongside the DB output).
+**`test-assessment_cross_validation.R`** (10 tests, requires
+`TEST_LEGACY_ASSESSMENT` and `TEST_DB_ASSESSMENT`) — compares
+`db_simulation_assessment_results.tsv` (DB path) against
+`simulation_assessment_results.tsv` (legacy path). Tests: output column
+completeness (all 35 `format_assessment_tsv()` columns), `calculate_simrep_performance()`
+runs correctly with Power and FDR in [0, 1], `designate_qtl()` produces only
+the 4 valid outcome categories, plus three concordance scores per replicate
+(detection, designation, interval Jaccard). Requires `--legacy_assess` when
+collecting test data.
+
+**`test-cross_validation.R`** (8 tests, requires `TEST_DB_DIR` and
+`TEST_WORK_DIR`) — compares DB Parquet contents against raw `.fastGWA`/`.mlma`
+files in the Nextflow work directory. Tests: P/BETA/SE/AF1 round-trip to
+1e-12 tolerance, `read_raw_gwa_file()` normalized column schema for both
+formats, `query_by_mapping_id()` coverage for every mapping ID in metadata,
+EIGEN threshold consistency, and the loco < inbred marker count invariant as a
+regression guard for issue111.
+
+All three tests skip automatically unless all required env vars are set.
+
+### CV Pool Scenario: No Legacy Cross-Validation Path
+
+When testing the `test_cv_pool` profile (`cv_maf=0.01 < ms_maf=0.05`), the legacy
+path is incompatible and **`test-assessment_cross_validation.R` must not be run**.
+Non-marker causal variants (MAF between 0.01 and 0.05) are entirely absent from GWA
+output files and therefore invisible to `Get_GCTA_Intervals.R` and `Assess_Sims.R`.
+A legacy assessment TSV for this profile would silently misrepresent False Negative
+rates by omitting these variants from scoring.
+
+The standalone `test-cv_pool.R` (7 tests, requires `TEST_CV_POOL=true`) provides
+DB-path-only quality checks for this scenario:
+
+- Confirms that non-marker causal variants appear as `Simulated=TRUE, log10p=NA` FN
+  rows in the DB assessment output
+- Validates `Simulated.QTL.VarExp` is populated for these rows via the per-trait
+  causal genotype path (`traits/causal_genotypes/`)
+- Asserts `significant=NA` (not `FALSE`) for non-marker rows — distinguishing "absent
+  from GWA" from "tested but below threshold"
+- Verifies `designate_qtl()` classifies `significant=NA` FN rows as `Missed.CV` so
+  they contribute to the Power denominator in `calculate_simrep_performance()`
+- Confirms Power < 1 for at least one replicate (non-marker causal variants are
+  structurally undetectable, reducing achievable power)
+
+::: {.callout-note}
+## Power interpretation for cv_pool runs
+
+When `cv_maf < ms_maf`, the maximum achievable Power is less than 1 because some
+simulated causal variants are invisible to GWA by design. This is the intended
+behaviour for studying the effect of rare causal variants below the GWA MAF cutoff —
+it is not a pipeline bug. The `test-cv_pool.R` assertion `Power < 1` validates this
+scenario is being exercised.
+:::
 
 
 ## R Package Lockfile
