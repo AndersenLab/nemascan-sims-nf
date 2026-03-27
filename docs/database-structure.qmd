@@ -41,7 +41,8 @@ time via DuckDB. The database contains five data domains:
  │   └── phenotypes/
  │       └── {trait_id}_phenotype.parquet        ◄── pre-upscaled phenotype values
  ├── mappings_metadata.parquet                   ◄── mapping summary table
- └── marker_set_metadata.parquet                 ◄── EIGEN + marker counts + strainfile provenance
+ └── marker_set_metadata/                        ◄── per-population metadata directory
+     └── {population}_{maf}_metadata.parquet     ◄── EIGEN + marker counts + strainfile provenance
 ```
 
 All Parquet files use Snappy compression. Schemas are defined as Arrow schema
@@ -91,7 +92,12 @@ Within a marker set, `marker` (equivalently `CHROM` + `POS`) is unique.
 
 ### Marker Set Metadata Schema
 
-**File:** `{base_dir}/marker_set_metadata.parquet`
+**Directory:** `{base_dir}/marker_set_metadata/`
+**File pattern:** `{population}_{maf}_metadata.parquet` (one file per population/MAF pair)
+
+Each `DB_MIGRATION_WRITE_MARKER_SET` task writes its own isolated file,
+eliminating the concurrent write race condition that occurred when multiple
+tasks appended to a single shared Parquet file on HPC (SLURM).
 
 | Column | Arrow Type | Description |
 |--------|-----------|-------------|
@@ -524,7 +530,7 @@ views:
 | `markers` | `markers/marker_sets/*_markers.parquet` | All marker set files (excludes genotype files) |
 | `mappings` | `mappings/**/*.parquet` (Hive) | All mapping partitions |
 | `metadata` | `mappings_metadata.parquet` | Mapping summary table |
-| `marker_set_metadata` | `marker_set_metadata.parquet` | EIGEN values and marker counts |
+| `marker_set_metadata` | `marker_set_metadata/*_metadata.parquet` (glob) | EIGEN values and marker counts |
 
 
 ### Key Query Functions

@@ -184,7 +184,7 @@ test_that("non-marker causal variants appear in causal_variants/ but not in mark
 
 # ── designate_qtl() Correctness with significant=NA ──────────────────────────
 
-test_that("designate_qtl() classifies non-marker FN rows as Missed.CV", {
+test_that("designate_qtl() classifies non-marker rows correctly by Detected status", {
   skip_if_no_cv_pool_assessment()
 
   db_assess     <- read_cv_pool_assessment(db_assessment_path)
@@ -192,11 +192,28 @@ test_that("designate_qtl() classifies non-marker FN rows as Missed.CV", {
   if (nrow(fn_non_marker) == 0) skip("no non-marker FN rows found")
 
   designated <- designate_qtl(fn_non_marker)
-  # Non-marker FN rows: Simulated=TRUE, Detected=FALSE, significant=NA.
-  # After the designate_qtl() fix, these must be classified as Missed.CV so they
-  # contribute to the Power denominator in calculate_simrep_performance().
-  expect_true(all(designated$designation == "Missed.CV"),
-    label = "non-marker FN rows (significant=NA) are classified as Missed.CV"
+
+  # Non-marker causal variants have significant=NA (absent from GWA output).
+  # Their designation depends on whether they fall inside a detected QTL interval:
+  #   Detected=TRUE  → Detected.CV (correctly localized despite no direct GWA test)
+  #   Detected=FALSE → Missed.CV (structurally undetectable, contributes to Power denominator)
+  detected_rows <- designated[designated$Detected == "TRUE", ]
+  missed_rows   <- designated[designated$Detected == "FALSE", ]
+
+  if (nrow(detected_rows) > 0) {
+    expect_true(all(detected_rows$designation == "Detected.CV"),
+      label = "non-marker rows inside detected intervals are classified as Detected.CV"
+    )
+  }
+  if (nrow(missed_rows) > 0) {
+    expect_true(all(missed_rows$designation == "Missed.CV"),
+      label = "non-marker rows outside detected intervals are classified as Missed.CV"
+    )
+  }
+
+  # Every non-marker row must get a designation (no NA designations)
+  expect_true(all(!is.na(designated$designation)),
+    label = "all non-marker rows receive a designation (no unhandled cases)"
   )
 })
 
