@@ -101,7 +101,7 @@ workflow {
     if (params.strainfile == null){
         strainfile = "${workflow.projectDir}/data/test_strains.txt"
     } else {
-        strainfile = params.strainfile
+        strainfile = file(params.strainfile).toAbsolutePath().toString()
     }
     if (params.mito_name == null){
         mito_name = "MtDNA"
