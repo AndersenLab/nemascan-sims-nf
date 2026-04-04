@@ -5,7 +5,7 @@ process DB_MIGRATION_WRITE_MARKER_SET {
 
     input:
     tuple val(group), val(maf), path(bim_file), path(n_indep_tests),
-          val(species), val(vcf_release_id), val(ms_ld), val(strains), path(strainfile_path)
+          val(species), val(vcf_release_id), val(ms_ld), val(strains), val(strainfile_path)
     val base_dir
 
     output:
