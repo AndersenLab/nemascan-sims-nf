@@ -1,0 +1,101 @@
+# Bug Report
+
+2026-04-07
+
+# Bug Report: GCTA_PERFORM_GWA process failure during –fastGWA-mlm-exact mapping command due to Vp below 1e-5
+
+**Date:** 2026-04-07 **Nextflow version:** **Executor:** local
+
+------------------------------------------------------------------------
+
+## Description
+
+`GCTA_PERFORM_GWA` process failure during the `--fastGWA-mlm-exact`
+mapping command. Error thrown due to Vp below 1e-5
+
+Trait: `nqtl=1 rep=43 h2=0.4 maf=0.05 effect=gamma pop=ct.full` (n=509).
+
+The pipeline guard (`PYTHON_CHECK_VP` / `bin/check_vp.py:98`) upscales
+low-Vp phenotypes ×1000 when `Vp < 1e-6`. GCTA’s internal limit is
+`Vp < 1e-5`. The **10× gap** means phenotypes with `Vp ∈ [1e-6, 1e-5)`
+pass the guard but still fail GCTA.
+
+<!-- What went wrong? Be specific about which step or process failed. -->
+
+## Command Used
+
+``` bash
+nextflow run main.nf   -profile rockfish   --strainfile data/sims_ce-cb-ct_nqtl1-50_h2grid_50reps/strains_three_species.tsv   --nqtl data/sims_ce-cb-ct_nqtl1-50_h2grid_50reps/nqtl.csv   --h2 data/sims_ce-cb-ct_nqtl1-50_h2grid_50reps/h2.csv   --effect data/sims_ce-cb-ct_nqtl1-50_h2grid_50reps/effect_sizes.csv   --reps 50   --cv_maf 0.05   --cv_ld 0.8   --output_dir Sims_ce-cb-ct_nqtl1-50_h2grid_50reps   -work-dir /scratch4/eande106/Ryan/nf-work-sims-ce-cb-ct
+```
+
+## Error Output
+
+      Options: 
+       
+      --fastGWA-mlm-exact 
+      --bfile TO_SIMS_1_43_0.4_0.05_gamma_ct.full 
+      --grm-sparse 1_43_0.4_0.05_gamma_ct.full_sparse_grm_inbred 
+      --qcovar 1_43_0.4_0.05_gamma_ct.full_pca.eigenvec 
+      --out 1_43_0.4_0.05_gamma_ct.full_lmm-exact_inbred_pca 
+      --pheno 1_43_0.4_0.05_gamma_ct.full_sims.pheno 
+      --extract plink_snplist.txt 
+      --thread-num 1 
+      
+      The program will be running with up to 1 threads.
+      Reading PLINK FAM file from [TO_SIMS_1_43_0.4_0.05_gamma_ct.full.fam]...
+      509 individuals to be included from FAM file.
+      Reading phenotype data from [1_43_0.4_0.05_gamma_ct.full_sims.pheno]...
+      509 overlapping individuals with non-missing data to be included from the phenotype file.
+      509 individuals to be included. 0 males, 0 females, 509 unknown.
+      Reading PLINK BIM file from [TO_SIMS_1_43_0.4_0.05_gamma_ct.full.bim]...
+      12478 SNPs to be included from BIM file(s).
+      Get 12478 SNPs from list [plink_snplist.txt].
+      After extracting SNP, 12478 SNPs remain.
+      Reading quantitative covariates from [1_43_0.4_0.05_gamma_ct.full_pca.eigenvec].
+      1 covariates of 509 samples to be included.
+      509 overlapping individuals with non-missing data to be included from the covariate file(s
+    ).
+      Reading the sparse GRM file from [1_43_0.4_0.05_gamma_ct.full_sparse_grm_inbred]...
+      After matching all the files, 509 individuals to be included in the analysis.
+      Error: the Vp is below 1e-5. Please check: 1. Is there a scaling issue with the phenotype?
+     1. Can the covariates explain all the Vp (e.g., phenotype is included as a covariate by acc
+    ident)? 3. If it is a binary trait, is the prevalence very low?
+      An error occurs, please check the options or data
+
+## Additional Context
+
+### REML Vp from `GVTA_MAKE_GRM`
+
+``` bash
+cat check_vp.hsq
+```
+
+Output:
+
+    $ cat check_vp.hsq
+    Source  Variance        SE
+    V(G)    0.000002        0.000000
+    V(e)    0.000001        0.000000
+    Vp      0.000003        0.000000
+    V(G)/Vp 0.598871        0.058122
+    logL    3166.309
+    logL0   3081.100
+    LRT     170.418
+    df      1
+    Pval    0.0000e+00
+    n       509
+
+The Vp is `3e-6` (SE = 0.000000), which is below GCTA’s `1e-5` limit but
+above the guard’s `1e-6` threshold, confirming H1 as a strong
+possibility.
+
+## Fix
+
+Increase the guard’s upscaling threshold to `1e-4` to ensure all
+phenotypes that would fail GCTA are upscaled, while still allowing very
+low-Vp traits to be identified and upscaled as needed.
+
+------------------------------------------------------------------------
+
+*Generated with the Quarto GitHub Issue Framework. Submit via
+`gh issue create --title "<title>" --label "bug" --body-file <this_file>.md`*
