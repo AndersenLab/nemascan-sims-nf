@@ -95,14 +95,14 @@ if __name__ == "__main__":
 
         output_lines_for_temp_file = []
 
-        if float(vp) < 0.000001:
+        if float(vp) < 0.0001:
             print(
-                "Vp is less than 0.000001. Increasing phenotype variance and writing to new_phenos.temp."
+                "Vp is less than 0.0001. Increasing phenotype variance and writing to new_phenos.temp."
             )
             output_lines_for_temp_file = increase_pheno_var(phenos_file)
         else:
             print(
-                "Vp is greater than or equal to 0.000001. Writing original phenotypes to new_phenos.temp."
+                "Vp is greater than or equal to 0.0001. Writing original phenotypes to new_phenos.temp."
             )
             output_lines_for_temp_file = read_original_phenos(phenos_file)
 
