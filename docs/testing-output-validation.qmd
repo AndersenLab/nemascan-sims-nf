@@ -208,7 +208,7 @@ are:
 | Operation | How threading introduces non-determinism |
 |-----------|------------------------------------------|
 | `--make-grm[-inbred]` | Each GRM entry is a sum of allele products over all markers. MKL threads split the marker axis; partial sums are reduced in thread-completion order, which varies run to run. |
-| `--reml` | REML is an iterative EM algorithm driven by matrix-vector products on the GRM. Non-deterministic accumulation in each MV product shifts the convergence path, producing different Vp estimates and affecting the `check_vp.py` upscaling decision at borderline values. |
+| `--reml` | REML is an iterative EM algorithm driven by matrix-vector products on the GRM. Non-deterministic accumulation in each MV product shifts the convergence path, producing different Vp estimates and affecting the `GCTA_MAKE_GRM` iterative REML scaling decision at borderline values. |
 | `--pca 1` | Power-iteration eigenvector computation applies repeated MV products. Accumulated rounding differences rotate the eigenvector slightly each run, changing the PC1 covariate value passed to the LMM. |
 | `--fastGWA-mlm-exact` | The exact LMM solve applies a sparse Cholesky factorization. Thread-parallel factorization produces different fill-in and accumulated roundoff, shifting BETA, SE, and P-values for markers near the significance boundary. |
 | `--mlma-loco` | Same Cholesky-based LMM, applied once per chromosome. Individual chromosome solves are independent, so parallelism across chromosomes is safe — only within-solve threading (controlled by `--thread-num`) introduces non-determinism. |

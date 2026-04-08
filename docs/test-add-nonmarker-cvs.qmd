@@ -357,7 +357,6 @@ LOCAL_GET_CONTIG_INFO (ce.test.200strains)                           ✔
 PLINK_RECODE_CV_VCF (ce.test.200strains_0.05)                        ✔  ← new
 PLINK_RECODE_MS_VCF (ce.test.200strains_0.05)                        ✔  ← new alias
 PLINK_UPDATE_BY_H2 (5 1 0.8 gamma ce.test.200strains_0.05)           ✔
-PYTHON_CHECK_VP × 2            (inbred, loco)                        ✔
 PYTHON_SIMULATE_EFFECTS_GLOBAL (5 1 gammace.test.200strains_0.05)    ✔
 R_FIND_GENOTYPE_MATRIX_EIGEN × 6 (chromosomes 1–6)                  ✔
 
