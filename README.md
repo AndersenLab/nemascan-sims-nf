@@ -75,7 +75,7 @@ The trait simulation phase selects causal variants, simulates quantitative pheno
 
 ## GWAS Mappings
 
-The GWAS mapping phase constructs genetic relatedness matrices, verifies phenotypic variance, and performs association mapping under four mode/type conditions (`inbred`/`loco` x `pca`/`nopca`) through three processes: `GCTA_MAKE_GRM`, `PYTHON_CHECK_VP`, and `GCTA_PERFORM_GWA`. See the [GWAS Mapping](docs/gwas-mapping.qmd) documentation for detailed process descriptions, commands, and parameter references.
+The GWAS mapping phase constructs genetic relatedness matrices, verifies phenotypic variance, and performs association mapping under four mode/type conditions (`inbred`/`loco` x `pca`/`nopca`) through two processes: `GCTA_MAKE_GRM` and `GCTA_PERFORM_GWA`. Variance checking is integrated into `GCTA_MAKE_GRM` via an iterative REML loop. See the [GWAS Mapping](docs/gwas-mapping.qmd) documentation for detailed process descriptions, commands, and parameter references.
 
 ### QTL Detection & Assessment
 

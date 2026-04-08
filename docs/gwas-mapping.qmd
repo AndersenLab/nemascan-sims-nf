@@ -27,8 +27,6 @@ flowchart TD
     GRM_I["GCTA_MAKE_GRM (inbred)"]:::proc
     GRM_L["GCTA_MAKE_GRM (loco)"]:::proc
 
-    VP["PYTHON_CHECK_VP"]:::proc
-
     M1["inbred x pca (--qcovar PC1)"]:::mode
     M2["inbred x nopca"]:::mode
     M3["loco x pca (--qcovar PC1)"]:::mode
@@ -40,8 +38,7 @@ flowchart TD
     OUT2([".mlma loco results"]):::io
 
     PLINK --> GRM_I & GRM_L
-    GRM_I & GRM_L --> VP
-    VP --> GWA
+    GRM_I & GRM_L --> GWA
     M1 & M2 & M3 & M4 --> GWA
     GWA --> OUT1 & OUT2
 ```
@@ -119,45 +116,47 @@ Because `main.nf` defines `ch_mode` with both `["inbred", "fastGWA"]` and
 `["loco", "mlma"]`, each simulation replicate produces two GRMs &mdash; one
 inbred and one standard.
 
-### Step 2: REML variance estimation
+### Step 2: Iterative REML variance estimation and scaling
+
+After constructing the GRM, `GCTA_MAKE_GRM` runs an iterative loop that
+estimates phenotypic variance (Vp) via REML and scales phenotypes ×1000 per
+round until `Vp >= 1e-4` (max 4 rounds). This prevents near-zero variance from
+causing numerical failures in `GCTA_PERFORM_GWA`.
 
 ```bash
-gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \
-        --pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen \
-        --reml --out check_vp \
-        --thread-num 1
+VP_THRESHOLD="0.0001"
+VP_MAX_ROUNDS=4
+cp -L "${PHEN_INPUT}" working_pheno.txt
+
+for vp_round in $(seq 1 ${VP_MAX_ROUNDS}); do
+    gcta64 --grm ${GRM_PREFIX} \
+           --pheno working_pheno.txt \
+           --reml --out check_vp \
+           --thread-num 1
+
+    VP_VALUE=$(awk -F'\t' '$1 == "Vp" {print $2}' check_vp.hsq)
+
+    if [ VP_VALUE >= VP_THRESHOLD ]; then break; fi
+    if [ vp_round == VP_MAX_ROUNDS ]; then break; fi
+
+    # Scale phenotype values ×1000
+    awk '{printf "%s %s %.10g\n", $1, $2, $3 * 1000}' working_pheno.txt > scaled_pheno.tmp
+    mv scaled_pheno.tmp working_pheno.txt
+done
+
+cp working_pheno.txt *_sims.pheno
 ```
 
-This estimates the phenotypic variance (Vp) from the simulated phenotype data
-using restricted maximum likelihood (REML). See
-[GCTA GREML analysis documentation](https://yanglab.westlake.edu.cn/software/gcta/#GREMLanalysis).
+See [GCTA GREML analysis documentation](https://yanglab.westlake.edu.cn/software/gcta/#GREMLanalysis).
 
 | Flag | Purpose |
 |------|---------|
 | `--grm` | Input GRM prefix from step 1 |
-| `--pheno` | Simulated phenotype file |
+| `--pheno` | Simulated phenotype file (updated each round) |
 | `--reml` | Perform REML analysis to estimate variance components |
 
-### Example `check_vp.hsq` output
-
-From test data (`data/test_data/.../GCTA_MAKE_GRM/check_vp.hsq`):
-
-```
-Source	Variance	SE
-V(G)	46.564277	40.308593
-V(e)	158.873235	39.887704
-Vp	205.437512	30.661982
-V(G)/Vp	0.226659	0.185504
-logL	-301.643
-logL0	-302.603
-LRT	1.920
-df	1
-Pval	8.2935e-02
-n	96
-```
-
-The key value is **Vp** (total phenotypic variance), which is checked in the
-next process.
+If REML fails (e.g., singular information matrix with small/inbred samples),
+the loop falls back to `Vp=1.0` (no scaling).
 
 ### Inputs / Outputs
 
@@ -167,75 +166,12 @@ next process.
 | Input | `*_sims.phen` + `*_sims.par` | Phenotype and parameter files from Phase 2 |
 | Input | `mode` (val) | `"inbred"` or `"loco"` |
 | Output | `*_gcta_grm_${mode}.grm.bin/.grm.N.bin/.grm.id` | GRM binary files |
-| Output | `check_vp.hsq` | REML variance component estimates |
-| Output | PLINK files + phenotype files | Passed through for downstream use |
-
-
-## 2. PYTHON_CHECK_VP
-
-**Source:** `modules/python/check_vp.nf`
-
-Inspects the estimated phenotypic variance (Vp) from the `check_vp.hsq` file
-produced by GCTA REML. This step ensures that simulated phenotypes exhibit
-sufficient variance, preventing near-zero variance from causing numerical
-issues in the association mapping step.
-
-**Command:**
-
-```bash
-python3 check_vp.py --check_vp ${hsq_in} --simulated_phenos tmp.pheno
-mv new_phenos.temp ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno
-```
-
-### Script: `bin/check_vp.py`
-
-| Function | Description |
-|----------|-------------|
-| `get_vp()` | Reads the `check_vp.hsq` file and extracts the Vp value from the row where Source == "Vp" |
-| `increase_pheno_var()` | Multiplies all phenotype values (column 3) by 1000 |
-| `read_original_phenos()` | Reads the phenotype file unchanged |
-| `write_phenos_to_temp()` | Writes output to `new_phenos.temp` |
-
-### Variance check logic
-
-1. Parse `check_vp.hsq` to extract the `Vp` value
-2. If `Vp < 0.000001`: multiply all phenotype values by 1000 to increase
-   variance
-3. If `Vp >= 0.000001`: retain original phenotype values without modification
-4. Write output to `new_phenos.temp`, then rename to the final
-   `*_sims.pheno` filename
-
-If the `.hsq` file is missing or Vp cannot be parsed, the script falls back to
-using the original phenotype values.
-
-### Example `.pheno` output
-
-From test data (`data/test_data/.../PYTHON_CHECK_VP/5_1_0.2_0.05_gamma_ce.96.allout15_irrepressible.grosbeak_sims.pheno`):
-
-```
-MY2713 MY2713 -6.04369
-JU323 JU323 11.1615
-XZ1734 XZ1734 4.15316
-QG4080 QG4080 9.589
-```
-
-In this case Vp was well above the threshold, so phenotype values are
-unchanged from the GCTA simulation output.
-
-### Inputs / Outputs
-
-| Direction | File | Description |
-|-----------|------|-------------|
-| Input | `tmp.pheno` | Phenotype file (staged from `*_sims.phen`) |
-| Input | `check_vp.hsq` | REML variance estimates from `GCTA_MAKE_GRM` |
-| Input | `*_sims.par` | Simulation parameter file (passed through) |
-| Input | `bin/check_vp.py` | Python script |
-| Output | `*_sims.pheno` | Variance-checked phenotype file |
+| Output | `*_sims.pheno` | Variance-checked phenotype file (may be scaled) |
 | Output | `*_sims.par` | Simulation parameter file (passed through) |
-| Output | GRM + PLINK files | Passed through for downstream use |
+| Output | PLINK files | Passed through for downstream use |
 
 
-## 3. GCTA_PERFORM_GWA
+## 2. GCTA_PERFORM_GWA
 
 **Source:** `modules/gcta/perform_gwa/main.nf`
 
@@ -442,7 +378,7 @@ CHR	SNP	POS	A1	A2	N	AF1	BETA	SE	P
 |-----------|------|-------------|
 | Input | `*_gcta_grm_${mode}.grm.bin/.grm.N.bin/.grm.id` | GRM files from `GCTA_MAKE_GRM` |
 | Input | `TO_SIMS_*.bed/.bim/.fam` | Phenotype-annotated PLINK binary fileset |
-| Input | `*_sims.pheno` + `*_sims.par` | Variance-checked phenotype and parameter files from `PYTHON_CHECK_VP` |
+| Input | `*_sims.pheno` + `*_sims.par` | Variance-checked phenotype and parameter files from `GCTA_MAKE_GRM` |
 | Input | `sparse_cut` (val) | Sparse GRM threshold (default: 0.05) |
 | Input | `mode` (val) | `"inbred"` or `"loco"` |
 | Input | `type` (val) | `"pca"` or `"nopca"` |

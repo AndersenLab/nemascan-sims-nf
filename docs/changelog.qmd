@@ -278,7 +278,7 @@ variance-explained estimation and richer downstream queries.
   uses `.merge()` to align `GCTA_SIMULATE_PHENOTYPES` output channels by emission
   order.
 - Phenotype stored in `phenotypes/` is the pre-upscaling GCTA `.phen` output
-  (before `check_vp.py`), making the ANOVA SS ratio for offline variance-explained
+  (before `GCTA_MAKE_GRM` iterative REML scaling), making the ANOVA SS ratio for offline variance-explained
   scale-invariant.
 - Unit tests in `test-genotype_storage.R` and `test-trait_storage.R`.
 - Test fixture: `tests/fixtures/test_genotype_matrix.tsv` (5 markers × 3 strains)
