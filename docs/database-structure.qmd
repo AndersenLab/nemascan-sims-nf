@@ -485,10 +485,11 @@ Causal variant records are loaded from the GCTA `.par` file via
 ::: {.callout-important}
 **Pre-upscaled values.** The stored phenotype is the direct output of
 `GCTA_SIMULATE_PHENOTYPES`, captured *before* `PLINK_UPDATE_BY_H2` →
-`PYTHON_CHECK_VP`. The `check_vp.py` script may multiply values by 1000× when
-Vp < 1e-6, so phenotype values stored here *may differ* from the values used
-in the actual GWAS mapping. For future variance-explained estimation this is
-immaterial: the ANOVA SS ratio (SS~between~ / SS~total~) is scale-invariant.
+`GCTA_MAKE_GRM`. The iterative REML loop in `GCTA_MAKE_GRM` may multiply
+values by 1000^N× when Vp < 1e-4, so phenotype values stored here *may differ*
+from the values used in the actual GWAS mapping. For future variance-explained
+estimation this is immaterial: the ANOVA SS ratio (SS~between~ / SS~total~) is
+scale-invariant.
 :::
 
 **Source:** `R/database.R::phenotype_schema()`,

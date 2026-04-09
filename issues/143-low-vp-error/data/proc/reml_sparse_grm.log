@@ -1,0 +1,23 @@
+*******************************************************************
+* Genome-wide Complex Trait Analysis (GCTA)
+* version v1.94.1 Linux
+* Built at Nov 15 2022 21:14:25, by GCC 8.5
+* (C) 2010-present, Yang Lab, Westlake University
+* Please report bugs to Jian Yang <jian.yang@westlake.edu.cn>
+*******************************************************************
+Analysis started at 15:39:52 UTC on Wed Apr 08 2026.
+Hostname: d4ececccaab9
+
+Accepted options:
+--grm /work/sparse_grm
+--pheno /data/pheno.txt
+--reml
+--out /out/reml_sparse_grm
+--thread-num 1
+
+Note: This is a multi-thread program. You could specify the number of threads by the --thread-num option to speed up the computation if there are multiple processors in your machine.
+
+Reading IDs of the GRM from [/work/sparse_grm.grm.id].
+550 IDs are read from [/work/sparse_grm.grm.id].
+Error: cannot open the file [/work/sparse_grm.grm.bin] to read.
+An error occurs, please check the options or data

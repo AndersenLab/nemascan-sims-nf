@@ -1031,9 +1031,9 @@ phenotype_exists <- function(trait_id, base_dir) {
 #'
 #' IMPORTANT: Stores the pre-upscaled phenotype values from GCTA_SIMULATE_PHENOTYPES,
 #' captured BEFORE the pipeline flow continues through PLINK_UPDATE_BY_H2 ->
-#' PYTHON_CHECK_VP (which may multiply values by 1000x when Vp < 1e-6) ->
+#' GCTA_MAKE_GRM (which may iteratively scale values by 1000x per round when Vp < 1e-4) ->
 #' GCTA_PERFORM_GWA. The stored values may differ from the values used in
-#' the actual GWAS mapping by a factor of 1000x.
+#' the actual GWAS mapping by a factor of 1000^Nx.
 #'
 #' Rationale: For future variance explained estimation, the ANOVA SS ratio
 #' (SS_between / SS_total) is scale-invariant — the ratio is identical whether
@@ -1070,7 +1070,7 @@ write_phenotype_data <- function(pheno_file, trait_id, base_dir,
 #'
 #' Returns pre-upscaled phenotype values from GCTA simulation. These may differ
 #' from the values used in GWAS mapping if variance upscaling was applied by
-#' check_vp.py. The ANOVA SS ratio (SS_between / SS_total) is scale-invariant,
+#' GCTA_MAKE_GRM iterative REML scaling. The ANOVA SS ratio (SS_between / SS_total) is scale-invariant,
 #' so these values are appropriate for variance explained estimation.
 #'
 #' @param trait_id Deterministic 12-character hex hash
