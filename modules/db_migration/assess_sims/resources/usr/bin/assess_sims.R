@@ -199,8 +199,12 @@ causal_variants <- dplyr::left_join(causal_variants, var_exp_df, by = "QTL")
 # interval.var.exp stays NA_real_ by design — GCTA's LMM-adjusted r² at the peak marker
 # cannot be recovered from the DB (raw per-marker GWA r² was not stored in Phase 5).
 
-# Step 3: Query mapping data for causal marker scores + peak info
-mapping_data <- query_for_threshold_analysis(mapping_id, opt$base_dir)
+# Step 3: Query mapping data for causal marker scores + peak info.
+# Uses query_mapping_direct() rather than query_for_threshold_analysis() so each
+# task opens only its own partition file — avoids the union_by_name schema scan
+# in open_mapping_db() that caused FD exhaustion at production scale. See
+# issues/new-db-qtl-analysis-too-many-files/rca.md.
+mapping_data <- query_mapping_direct(mapping_id, params$population, ms_meta, opt$base_dir)
 if (nrow(mapping_data) == 0) {
   stop(paste("No data found in database for mapping_id:", mapping_id))
 }
