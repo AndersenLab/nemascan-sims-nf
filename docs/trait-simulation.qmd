@@ -29,7 +29,6 @@ flowchart TD
 
     PY["PYTHON_SIMULATE_EFFECTS_GLOBAL"]:::proc
     GCTA["GCTA_SIMULATE_PHENOTYPES"]:::proc
-    CHK["PYTHON_CHECK_VP"]:::proc
     WTD["DB_MIGRATION_WRITE_TRAIT_DATA"]:::db
     PLINK["PLINK_UPDATE_BY_H2"]:::proc
     P3(["Phase 3: GWAS Mapping"]):::io
@@ -38,9 +37,8 @@ flowchart TD
     PARAMS --> PY
     PY --> GCTA
     MS --> GCTA
-    GCTA --> CHK
-    CHK --> WTD
-    CHK --> PLINK
+    GCTA --> WTD
+    GCTA --> PLINK
     PLINK --> P3
 ```
 
@@ -226,7 +224,7 @@ The `.phen` and `.par` outputs are captured by the DB path before the mode-cross
 (`GCTA_MAKE_GRM`). `DB_MIGRATION_WRITE_TRAIT_DATA` stores trait metadata, causal
 variants, and pre-upscaled phenotype values in the database for future offline
 variance-explained estimation. The phenotype values passed to `PLINK_UPDATE_BY_H2`
-and ultimately to GWAS mapping may differ (upscaled by `check_vp.py`), but the
+and ultimately to GWAS mapping may differ (upscaled by `GCTA_MAKE_GRM` iterative REML scaling), but the
 ANOVA SS ratio used for offline estimation is scale-invariant.
 
 **Trait ID generation:** Each simulated trait is assigned a deterministic

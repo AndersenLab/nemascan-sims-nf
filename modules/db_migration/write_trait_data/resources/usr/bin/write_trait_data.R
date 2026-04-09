@@ -7,7 +7,7 @@
 # parameters; this script computes the hash in R only.
 #
 # The phenotype stored is the pre-upscaled value from GCTA_SIMULATE_PHENOTYPES
-# (before check_vp.py). This is intentional — ANOVA SS ratio is scale-invariant.
+# (before GCTA_MAKE_GRM iterative REML scaling). This is intentional — ANOVA SS ratio is scale-invariant.
 
 suppressPackageStartupMessages({
   library(optparse)
