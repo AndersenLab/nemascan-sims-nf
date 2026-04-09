@@ -19,7 +19,6 @@ include { R_ASSESS_SIMS                   } from './modules/r/assess_sims/main'
 include { GCTA_SIMULATE_PHENOTYPES        } from './modules/gcta/simulate_phenotypes/main'
 include { GCTA_MAKE_GRM                   } from './modules/gcta/make_grm/main'
 include { GCTA_PERFORM_GWA                } from './modules/gcta/perform_gwa/main'
-include { PYTHON_CHECK_VP               } from './modules/python/check_vp.nf'
 
 // Database migration modules
 include { DB_MIGRATION_WRITE_MARKER_SET       } from './modules/db_migration/write_marker_set/main'
@@ -101,7 +100,7 @@ workflow {
     if (params.strainfile == null){
         strainfile = "${workflow.projectDir}/data/test_strains.txt"
     } else {
-        strainfile = params.strainfile
+        strainfile = file(params.strainfile).toAbsolutePath().toString()
     }
     if (params.mito_name == null){
         mito_name = "MtDNA"
@@ -407,6 +406,25 @@ workflow {
         )
     ch_versions = ch_versions.mix(GCTA_SIMULATE_PHENOTYPES.out.versions)
 
+    // Fork GCTA_SIMULATE_PHENOTYPES outputs for two consumers:
+    //   1. .merge() chain → ch_trait (DB trait data writes)
+    //   2. PLINK_UPDATE_BY_H2 (downstream GWA pipeline)
+    // Without explicit .tap{}, implicit broadcast shares mutable ArrayList
+    // references between consumers. Under high concurrency with SLURM job
+    // arrays + Singularity, BashWrapperBuilder.createContainerBuilder can
+    // race with the merge chain thread -> ConcurrentModificationException.
+    GCTA_SIMULATE_PHENOTYPES.out.params
+        .tap { ch_gcta_params_for_trait }
+        .set { ch_gcta_params_for_plink }
+
+    GCTA_SIMULATE_PHENOTYPES.out.pheno
+        .tap { ch_gcta_pheno_for_trait }
+        .set { ch_gcta_pheno_for_plink }
+
+    GCTA_SIMULATE_PHENOTYPES.out.plink
+        .tap { ch_gcta_plink_for_trait }
+        .set { ch_gcta_plink_for_plink }
+
     // Resolve db_output to absolute path so SLURM tasks write to the correct
     // shared filesystem location, not relative to their work directory.
     // Default: {outputDir}/db (computed from workflow.outputDir when params.db_output is null)
@@ -436,7 +454,7 @@ workflow {
     // Do NOT insert .filter(), .map(), .branch(), or any reordering operator
     // between GCTA_SIMULATE_PHENOTYPES.out.* and this .merge() chain — doing
     // so will silently misalign phenotype/causal files with metadata.
-    // Runtime validation in write_trait_data.R catches misalignment (see M4).
+    // Runtime validation in write_trait_data.R catches misalignment.
     // .combine(by:0) and .join(by:[0..5]) are key-based (order-preserving) and
     // therefore safe per the CLAUDE.md merge ordering constraint.
     //
@@ -448,10 +466,10 @@ workflow {
     //   [20]    geno:     causal_genotypes TSV path (from join)
     //
     // IMPORTANT: If GCTA_SIMULATE_PHENOTYPES output channels change, update
-    // these indices. See "Tuple index verification" in step7-plan.qmd.
-    GCTA_SIMULATE_PHENOTYPES.out.params
-        .merge(GCTA_SIMULATE_PHENOTYPES.out.pheno)
-        .merge(GCTA_SIMULATE_PHENOTYPES.out.plink)
+    // these indices.
+    ch_gcta_params_for_trait
+        .merge(ch_gcta_pheno_for_trait)
+        .merge(ch_gcta_plink_for_trait)
         .combine(ch_cv_maf_keyed_for_trait, by: 0)
         .join(ch_causal_geno_fanned, by: [0, 1, 2, 3, 4, 5])
         .multiMap { it ->
@@ -472,9 +490,9 @@ workflow {
 
     // Update plink data by heritability
     PLINK_UPDATE_BY_H2(
-        GCTA_SIMULATE_PHENOTYPES.out.params,
-        GCTA_SIMULATE_PHENOTYPES.out.plink,
-        GCTA_SIMULATE_PHENOTYPES.out.pheno
+        ch_gcta_params_for_plink,
+        ch_gcta_plink_for_plink,
+        ch_gcta_pheno_for_plink
         )
     ch_versions = ch_versions.mix(PLINK_UPDATE_BY_H2.out.versions)
 
@@ -495,35 +513,16 @@ workflow {
         )
     ch_versions = ch_versions.mix(GCTA_MAKE_GRM.out.versions)
 
-    // Prepare inputs for PYTHON_CHECK_VP to match its 3-input definition
-    // Input 1: meta_tuple (group, maf, nqtl, ...)
-    // Input 2: tuple (tmp_pheno_path, hsq_path, par_path)
-    // Input 3: script_path
-
-    PYTHON_CHECK_VP(
-        GCTA_MAKE_GRM.out.params,                         // Arg 1: Metadata
-        GCTA_MAKE_GRM.out.pheno_hsq_and_par,              // Arg 2: Tuple of (tmp_pheno, hsq, par)
-        GCTA_MAKE_GRM.out.grm,
-        GCTA_MAKE_GRM.out.plink,
-        Channel.fromPath("${workflow.projectDir}/bin/check_vp.py").first() // Arg 3: Script path
-        )
-    ch_versions = ch_versions.mix(PYTHON_CHECK_VP.out.versions)
-
-    // Simulate GWA using output from PYTHON_CHECK_VP
-    ch_type = Channel.of( 
-        "pca", //just PCA for now
+    // Simulate GWA using output from GCTA_MAKE_GRM
+    ch_type = Channel.of(
+        "pca",
         "nopca"
         )
-    
-    // Pheno file for GWA now comes from PYTHON_CHECK_VP.out.pheno
-    // GCTA_PERFORM_GWA expects a tuple: (phen_path, par_path).
-    // PYTHON_CHECK_VP.out.pheno is: tuple (final_pheno_path, par_path)
-    // The rest of the outputs (GRM, plink, and params) are passed through
-    // PYTHON_CHECK_VP to maintain correct ordering of parallel channels
-    ch_gwa_params = PYTHON_CHECK_VP.out.params.combine(ch_type)
-    ch_gwa_grm =    PYTHON_CHECK_VP.out.grm.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
-    ch_gwa_plink =  PYTHON_CHECK_VP.out.plink.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
-    ch_gwa_pheno =  PYTHON_CHECK_VP.out.pheno.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
+
+    ch_gwa_params = GCTA_MAKE_GRM.out.params.combine(ch_type)
+    ch_gwa_grm =    GCTA_MAKE_GRM.out.grm.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
+    ch_gwa_plink =  GCTA_MAKE_GRM.out.plink.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
+    ch_gwa_pheno =  GCTA_MAKE_GRM.out.pheno.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
     
     GCTA_PERFORM_GWA(
         ch_gwa_params,
@@ -533,6 +532,24 @@ workflow {
         params.sparse_cut
         )
     ch_versions = ch_versions.mix(GCTA_PERFORM_GWA.out.versions)
+
+    // Fork GCTA_PERFORM_GWA outputs for multiple consumers:
+    //   .out.params → DB write path, DB analysis path, [legacy intervals path]
+    //   .out.gwa    → DB write path, [legacy intervals path]
+    //   .out.pheno  → DB analysis path, [legacy intervals path]
+    // Same ConcurrentModificationException prevention as GCTA_SIMULATE_PHENOTYPES forks.
+    GCTA_PERFORM_GWA.out.params
+        .tap { ch_gwa_params_for_db }
+        .tap { ch_gwa_params_for_analysis }
+        .set { ch_gwa_params_for_legacy }
+
+    GCTA_PERFORM_GWA.out.gwa
+        .tap { ch_gwa_gwa_for_db }
+        .set { ch_gwa_gwa_for_legacy }
+
+    GCTA_PERFORM_GWA.out.pheno
+        .tap { ch_gwa_pheno_for_analysis }
+        .set { ch_gwa_pheno_for_legacy }
 
     // ── DATABASE WRITE PATH (parallel fork) ──────────────────────────────
     // Writes raw GWA results to a Parquet database alongside the existing
@@ -633,7 +650,7 @@ workflow {
     // The DB write path intercepts GCTA_PERFORM_GWA.out BEFORE the
     // threshold expansion (Channel.of("BF", "EIGEN")). WRITE_GWA_TO_DB
     // runs once per (mode, type) combination, NOT once per threshold.
-    ch_db_params = GCTA_PERFORM_GWA.out.params
+    ch_db_params = ch_gwa_params_for_db
         .combine(ch_marker_barrier)
         .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type, _barrier ->
             tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type)
@@ -662,7 +679,7 @@ workflow {
 
     DB_MIGRATION_WRITE_GWA_TO_DB(
         ch_gwa_db_inputs,
-        GCTA_PERFORM_GWA.out.gwa,
+        ch_gwa_gwa_for_db,
         db_output_dir
     )
     ch_versions = ch_versions.mix(DB_MIGRATION_WRITE_GWA_TO_DB.out.versions)
@@ -688,7 +705,7 @@ workflow {
     // G4: Also extend with cv_maf_effective and cv_ld so analyze_qtl.R and assess_sims.R
     // can reconstruct the v=2 trait_id (which encodes cv pool params).
     ch_db_sthresh = Channel.of("BF", "EIGEN")
-    ch_db_analysis_params = GCTA_PERFORM_GWA.out.params
+    ch_db_analysis_params = ch_gwa_params_for_analysis
         .combine(ch_db_sthresh)
         .combine(ch_db_analysis_barrier)
         .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold, _barrier ->
@@ -700,7 +717,7 @@ workflow {
         }
 
     // Expand pheno (contains .par file) by threshold — same pattern
-    ch_db_analysis_pheno = GCTA_PERFORM_GWA.out.pheno
+    ch_db_analysis_pheno = ch_gwa_pheno_for_analysis
         .map { it -> [it] }
         .combine(ch_db_sthresh)
         .combine(ch_db_analysis_barrier)
@@ -739,11 +756,11 @@ workflow {
     // simulation_assessment_results.tsv alongside the DB output.
     if (params.legacy_assess) {
         ch_intervals_sthresh = Channel.of("BF", "EIGEN")
-        ch_intervals_params = GCTA_PERFORM_GWA.out.params.combine(ch_intervals_sthresh)
+        ch_intervals_params = ch_gwa_params_for_legacy.combine(ch_intervals_sthresh)
         ch_intervals_grm = GCTA_PERFORM_GWA.out.grm.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
         ch_intervals_plink = GCTA_PERFORM_GWA.out.plink.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
-        ch_intervals_pheno = GCTA_PERFORM_GWA.out.pheno.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
-        ch_intervals_gwa = GCTA_PERFORM_GWA.out.gwa.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
+        ch_intervals_pheno = ch_gwa_pheno_for_legacy.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
+        ch_intervals_gwa = ch_gwa_gwa_for_legacy.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
 
         R_GET_GCTA_INTERVALS(
             ch_intervals_params,

@@ -362,10 +362,10 @@ write_trait_data.R --group ${group} --maf ${maf} --nqtl ${nqtl} \
 | Output | `{base_dir}/traits/phenotypes/{trait_id}_phenotype.parquet` | Per-strain phenotype values |
 
 ::: {.callout-note}
-The stored phenotype is pre-upscaled (GCTA output before `PYTHON_CHECK_VP`). Values
-may differ from those used in the actual GWAS mapping by up to 1000× if `check_vp.py`
-applied upscaling. This is intentional — the ANOVA SS ratio for offline
-variance-explained estimation is scale-invariant.
+The stored phenotype is pre-upscaled (GCTA output before `GCTA_MAKE_GRM` iterative
+REML scaling). Values may differ from those used in the actual GWAS mapping by up to
+1000^N× if iterative scaling was applied. This is intentional — the ANOVA SS ratio for
+offline variance-explained estimation is scale-invariant.
 :::
 
 

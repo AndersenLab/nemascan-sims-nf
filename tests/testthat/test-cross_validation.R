@@ -60,6 +60,24 @@ parse_inline_gwa_filename <- function(filename) {
   )
 }
 
+# Helper: look up mapping_id from metadata by filename-parsed parameters.
+# Avoids reconstructing the full hash chain (which requires cv_maf_effective
+# and cv_ld values that are not encoded in the GWA filename).
+lookup_mapping_id <- function(params, meta) {
+  matches <- meta[
+    meta$population == params$population &
+    meta$maf       == params$maf &
+    meta$nqtl      == params$nqtl &
+    meta$rep       == params$rep &
+    meta$h2        == params$h2 &
+    meta$effect    == params$effect &
+    meta$algorithm == params$algorithm &
+    meta$pca       == params$pca,
+  ]
+  if (nrow(matches) != 1) return(NULL)
+  matches$mapping_id[1]
+}
+
 # ── Round-trip Value Accuracy ────────────────────────────────────────────────
 
 test_that("DB mapping P and BETA values match raw GWA source files", {
@@ -70,18 +88,16 @@ test_that("DB mapping P and BETA values match raw GWA source files", {
     skip("No raw GWA files found in TEST_WORK_DIR")
   }
 
+  meta <- get_metadata(db_dir)
+
   # Test at least one file of each type (fastGWA and mlma)
   tested <- 0
   for (gwa_file in gwa_files) {
     params <- parse_inline_gwa_filename(gwa_file)
     if (is.null(params)) next
 
-    ms_meta <- read_marker_set_metadata(params$population, params$maf, db_dir)
-    if (is.null(ms_meta)) next
-    ms_id <- generate_marker_set_id(params$population, params$maf,
-                                    ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld))
-    trait <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2, 0.05, 0.8)
-    mapping_id <- generate_mapping_id(trait$hash, params$algorithm, params$pca)$hash
+    mapping_id <- lookup_mapping_id(params, meta)
+    if (is.null(mapping_id)) next
 
     # Read raw GWA file
     raw_df <- tryCatch(
@@ -136,17 +152,16 @@ test_that("DB SE values match raw GWA source files", {
   gwa_files <- find_gwa_files(work_dir)
   if (length(gwa_files) == 0) skip("No raw GWA files found")
 
+  meta <- get_metadata(db_dir)
+
   # Test one file
   for (gwa_file in gwa_files) {
     params <- parse_inline_gwa_filename(gwa_file)
     if (is.null(params)) next
 
-    ms_meta <- read_marker_set_metadata(params$population, params$maf, db_dir)
-    if (is.null(ms_meta)) next
-    ms_id <- generate_marker_set_id(params$population, params$maf,
-                                    ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld))
-    trait <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2, 0.05, 0.8)
-    mapping_id <- generate_mapping_id(trait$hash, params$algorithm, params$pca)$hash
+    mapping_id <- lookup_mapping_id(params, meta)
+    if (is.null(mapping_id)) next
+
     raw_df <- tryCatch(read_raw_gwa_file(gwa_file, verbose = FALSE),
                        error = function(e) NULL)
     if (is.null(raw_df)) next
@@ -175,16 +190,15 @@ test_that("DB AF1 values match raw GWA source files", {
   gwa_files <- find_gwa_files(work_dir)
   if (length(gwa_files) == 0) skip("No raw GWA files found")
 
+  meta <- get_metadata(db_dir)
+
   for (gwa_file in gwa_files) {
     params <- parse_inline_gwa_filename(gwa_file)
     if (is.null(params)) next
 
-    ms_meta <- read_marker_set_metadata(params$population, params$maf, db_dir)
-    if (is.null(ms_meta)) next
-    ms_id <- generate_marker_set_id(params$population, params$maf,
-                                    ms_meta$species, ms_meta$vcf_release_id, as.numeric(ms_meta$ms_ld))
-    trait <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep, params$h2, 0.05, 0.8)
-    mapping_id <- generate_mapping_id(trait$hash, params$algorithm, params$pca)$hash
+    mapping_id <- lookup_mapping_id(params, meta)
+    if (is.null(mapping_id)) next
+
     raw_df <- tryCatch(read_raw_gwa_file(gwa_file, verbose = FALSE),
                        error = function(e) NULL)
     if (is.null(raw_df)) next
