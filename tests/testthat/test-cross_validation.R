@@ -394,3 +394,90 @@ test_that("marker counts in metadata match actual partition row counts", {
                  label = paste("marker count consistency for", mid))
   }
 })
+
+# ── Direct vs Legacy Mapping Read Parity ─────────────────────────────────────
+#
+# query_mapping_direct() replaces query_for_threshold_analysis() in the
+# analyze_qtl / assess_sims hot paths to avoid the union_by_name FD blow-up
+# (see issues/new-db-qtl-analysis-too-many-files/rca.md). This test asserts
+# the two code paths return content-equivalent dataframes.
+
+test_that("query_mapping_direct() matches query_for_threshold_analysis() schema and content", {
+  skip_if_no_cross_validation()
+
+  meta <- get_metadata(db_dir)
+  skip_if(nrow(meta) == 0, "mappings metadata is empty")
+
+  # Find a mapping_id whose legacy query returns rows (defensively handle
+  # empty partitions — unlikely in a healthy DB but keeps the test robust).
+  checked <- 0L
+  for (i in seq_len(min(nrow(meta), 4L))) {
+    row        <- meta[i, ]
+    mapping_id <- as.character(row$mapping_id)
+    population <- as.character(row$population)
+    maf        <- as.numeric(row$maf)
+
+    ms_meta <- tryCatch(
+      read_marker_set_metadata(population, maf, db_dir),
+      error = function(e) NULL
+    )
+    if (is.null(ms_meta)) next
+
+    legacy_df <- tryCatch(
+      suppressWarnings(query_for_threshold_analysis(mapping_id, db_dir)),
+      error = function(e) NULL
+    )
+    if (is.null(legacy_df) || nrow(legacy_df) == 0) next
+
+    direct_df <- query_mapping_direct(mapping_id, population, ms_meta, db_dir)
+
+    # Schema parity — column names and order must match exactly
+    expect_equal(names(direct_df), names(legacy_df),
+                 label = paste("column names for", mapping_id))
+    expect_equal(nrow(direct_df), nrow(legacy_df),
+                 label = paste("row count for", mapping_id))
+
+    # Content parity (sort both to eliminate any residual ordering drift)
+    legacy_sorted <- legacy_df %>% dplyr::arrange(CHROM, POS, marker)
+    direct_sorted <- direct_df %>% dplyr::arrange(CHROM, POS, marker)
+
+    expect_equal(direct_sorted$marker, legacy_sorted$marker,
+                 label = paste("marker values for", mapping_id))
+    expect_equal(direct_sorted$mapping_id, legacy_sorted$mapping_id,
+                 label = paste("mapping_id values for", mapping_id))
+    expect_equal(direct_sorted$population, legacy_sorted$population,
+                 label = paste("population values for", mapping_id))
+    expect_equal(as.character(direct_sorted$CHROM), as.character(legacy_sorted$CHROM),
+                 label = paste("CHROM values for", mapping_id))
+    expect_equal(as.integer(direct_sorted$POS), as.integer(legacy_sorted$POS),
+                 label = paste("POS values for", mapping_id))
+    expect_equal(direct_sorted$P, legacy_sorted$P,
+                 tolerance = 1e-12,
+                 label = paste("P values for", mapping_id))
+    expect_equal(direct_sorted$BETA, legacy_sorted$BETA,
+                 tolerance = 1e-12,
+                 label = paste("BETA values for", mapping_id))
+    expect_equal(direct_sorted$SE, legacy_sorted$SE,
+                 tolerance = 1e-12,
+                 label = paste("SE values for", mapping_id))
+    expect_equal(direct_sorted$AF1, legacy_sorted$AF1,
+                 tolerance = 1e-12,
+                 label = paste("AF1 values for", mapping_id))
+    expect_equal(as.numeric(direct_sorted$maf), as.numeric(legacy_sorted$maf),
+                 label = paste("maf values for", mapping_id))
+
+    # var.exp is NA_real_ in both paths under the Phase 5 DB (column removed
+    # from mappings schema; legacy path takes the 'NULL AS "var.exp"' fallback
+    # at R/queries.R:318, direct path sets NA_real_ explicitly).
+    expect_true(all(is.na(direct_sorted$`var.exp`)),
+                label = paste("direct var.exp all NA for", mapping_id))
+    expect_true(all(is.na(legacy_sorted$`var.exp`)),
+                label = paste("legacy var.exp all NA for", mapping_id))
+
+    checked <- checked + 1L
+    break  # one successful parity check is enough
+  }
+
+  expect_gt(checked, 0L,
+            label = "at least one mapping was parity-checked across direct and legacy paths")
+})
