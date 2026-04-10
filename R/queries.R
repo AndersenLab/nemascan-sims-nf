@@ -357,6 +357,103 @@ query_for_threshold_analysis <- function(mapping_id, base_dir = "data/db", con =
 }
 
 
+#' Read a single mapping's data by direct partition file read
+#'
+#' Returns the same schema as query_for_threshold_analysis(), but reads
+#' db/mappings/population={pop}/mapping_id={id}/data.parquet directly via
+#' arrow::read_parquet() rather than creating a DuckDB view over the full
+#' partition tree. This avoids the `union_by_name = true` schema scan in
+#' open_mapping_db() that opens every parquet file at CREATE VIEW prepare
+#' time and causes file-descriptor exhaustion under concurrent access.
+#'
+#' Use this in per-task hot paths (analyze_qtl.R, assess_sims.R) where the
+#' task already knows its population and mapping_id. For aggregate/bulk
+#' queries that span multiple mappings, continue to use
+#' query_for_threshold_analysis() or query_bulk_for_threshold_analysis().
+#'
+#' @param mapping_id Mapping ID (20-char hex) identifying the target partition
+#' @param population Population identifier (e.g. "ce.full")
+#' @param ms_meta Named list from read_marker_set_metadata(); must contain
+#'   maf, species, vcf_release_id, ms_ld
+#' @param base_dir Database root directory
+#' @return Dataframe with columns: marker, mapping_id, P, BETA, SE, var.exp,
+#'   CHROM, POS, AF1, population, maf (ordered by CHROM, POS, marker).
+#'   var.exp is always NA_real_ in the Phase 5 DB (removed from mappings schema).
+query_mapping_direct <- function(mapping_id, population, ms_meta, base_dir = "data/db") {
+  # 1. Locate the partition file
+  partition_dir <- get_partition_path(population, mapping_id, base_dir)
+  mapping_file  <- file.path(partition_dir, "data.parquet")
+  if (!file.exists(mapping_file)) {
+    stop(glue::glue("Mapping partition not found: {mapping_file}"))
+  }
+
+  # 2. Read raw mapping rows (5 cols per mappings_schema(): marker, AF1, BETA, SE, P)
+  mapping_rows <- as.data.frame(arrow::read_parquet(mapping_file))
+
+  if (nrow(mapping_rows) == 0) {
+    return(data.frame(
+      marker     = character(),
+      mapping_id = character(),
+      P          = numeric(),
+      BETA       = numeric(),
+      SE         = numeric(),
+      `var.exp`  = numeric(),
+      CHROM      = character(),
+      POS        = integer(),
+      AF1        = numeric(),
+      population = character(),
+      maf        = numeric(),
+      check.names      = FALSE,
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  # 3. Load marker set for CHROM/POS lookup (reuses existing reader)
+  markers <- read_marker_set(
+    population,
+    as.numeric(ms_meta$maf),
+    ms_meta$species,
+    ms_meta$vcf_release_id,
+    as.numeric(ms_meta$ms_ld),
+    base_dir
+  )
+
+  # 4. Join + reshape to match query_for_threshold_analysis() output schema exactly
+  result <- mapping_rows %>%
+    dplyr::left_join(
+      markers %>% dplyr::select(marker, CHROM, POS),
+      by = "marker"
+    ) %>%
+    dplyr::mutate(
+      mapping_id = mapping_id,
+      population = population,
+      maf        = as.numeric(ms_meta$maf),
+      `var.exp`  = NA_real_
+    ) %>%
+    dplyr::select(
+      marker, mapping_id, P, BETA, SE, `var.exp`,
+      CHROM, POS, AF1, population, maf
+    ) %>%
+    dplyr::arrange(CHROM, POS, marker)
+
+  # 5. Preserve the CHROM:POS uniqueness check from query_for_threshold_analysis:343-354
+  if (nrow(result) > 0) {
+    dup_check <- result %>% dplyr::group_by(CHROM, POS) %>% dplyr::filter(dplyr::n() > 1)
+    if (nrow(dup_check) > 0) {
+      n_dups <- nrow(dup_check)
+      example <- paste0(dup_check$CHROM[1], ":", dup_check$POS[1])
+      stop(glue::glue(
+        "CHROM:POS uniqueness violation in mapping {mapping_id}: ",
+        "{n_dups} duplicate rows (e.g. {example}). ",
+        "Check for LOCO deduplication in write_gwa_to_db.R"
+      ))
+    }
+  }
+
+  result
+}
+
+
 #' Bulk query multiple mappings for threshold analysis
 #'
 #' Efficiently queries multiple mappings in a single database call.

@@ -104,8 +104,13 @@ ids        <- build_ids_from_params(sim_params, mode = opt$mode, pca = opt$type 
 mapping_id <- ids$mapping_id$hash
 log_msg(paste("Analyzing mapping:", mapping_id, "with threshold:", opt$threshold))
 
-# Step 1: Query mapping data from database
-mapping_data <- query_for_threshold_analysis(mapping_id, opt$base_dir)
+# Step 1: Query mapping data from database.
+# Uses query_mapping_direct() rather than query_for_threshold_analysis() so each
+# task opens only its own partition file — avoids the union_by_name schema scan
+# in open_mapping_db() that opened every file in db/mappings/** and caused
+# "Too many open files" crashes at production scale. See
+# issues/new-db-qtl-analysis-too-many-files/rca.md.
+mapping_data <- query_mapping_direct(mapping_id, params$population, ms_meta, opt$base_dir)
 
 if (nrow(mapping_data) == 0) {
   stop(paste("No data found in database for mapping_id:", mapping_id))

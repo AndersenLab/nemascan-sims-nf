@@ -13,6 +13,33 @@ not use version tags; entries are organized by development phase and date.
 
 ## [Unreleased] — March 2026
 
+### Fixed
+- **`DB_MIGRATION_ANALYZE_QTL` / `DB_MIGRATION_ASSESS_SIMS` "Too many open files"**
+  (`fix/db-qtl-io-error`, 2026-04-09): A production Rockfish run
+  (`Sims_ce-cb-ct_nqtl1-50_h2grid_50reps`) hit 2,024 task failures with
+  `IO Error: Cannot open file ... Too many open files in system`. Root cause:
+  every `analyze_qtl` / `assess_sims` task called
+  `query_for_threshold_analysis()` which routes through `open_mapping_db()` in
+  `R/queries.R`. That function executes
+  `CREATE VIEW mappings AS SELECT * FROM read_parquet('.../db/mappings/**/data.parquet', union_by_name = true)`,
+  and DuckDB must open **every** parquet file at query-prepare time to
+  compute the unified schema — 16,608 files on the failing run, replicated
+  across ~100 concurrent tasks (cross-contamination was the smoking gun:
+  tasks crashed trying to open unrelated partitions). Each task already
+  knows its own `population` and `mapping_id` at launch time, so the global
+  view is unnecessary. The fix adds `query_mapping_direct(mapping_id,
+  population, ms_meta, base_dir)` in `R/queries.R` that reads
+  `db/mappings/population={pop}/mapping_id={id}/data.parquet` directly via
+  `arrow::read_parquet()`, reuses `read_marker_set()` for the CHROM/POS
+  lookup, and preserves the LOCO CHROM:POS uniqueness check verbatim. The
+  two hot-path call sites (`analyze_qtl.R:108`, `assess_sims.R:203`) now use
+  the direct helper; per-task file opens drop from ≈16,608 to ≤3.
+  `open_mapping_db()` and `query_for_threshold_analysis()` stay intact for
+  bulk/aggregate queries. No DB regeneration, no schema change, no Nextflow
+  changes. A new schema-parity test in `test-cross_validation.R` asserts the
+  direct and legacy paths return equivalent dataframes. Full RCA:
+  `issues/new-db-qtl-analysis-too-many-files/rca.md`.
+
 ### Added
 - **Multi-profile integration testing support** (`fix/merge-unit-with-integration`, 2026-03-23):
   Extended the integration test framework to cover four testing profiles beyond the
