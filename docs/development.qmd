@@ -144,6 +144,7 @@ required environment variables are not set.
 | [Local Integration Testing](testing-integration.qmd) | Integration test inventory, test collection, environment variables |
 | [HPC End-to-End Testing](testing-hpc.qmd) | Rockfish environment, running the pipeline, collecting integration data |
 | [Output Validation](testing-output-validation.qmd) | Cross-validation tests, R package lockfile, thread-count determinism |
+| [Verifying Simulation Outputs](verifying-outputs.qmd) | `bin/verify_db.R` — post-run completeness check of the Parquet DB, expectation vs discovery mode, plot helpers |
 
 Run all tests with:
 
