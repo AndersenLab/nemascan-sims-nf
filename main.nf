@@ -701,32 +701,40 @@ workflow {
     // Barrier: wait for DB to be fully populated before querying
     ch_db_analysis_barrier = DB_MIGRATION_AGGREGATE_METADATA.out.summary
 
-    // Expand GCTA_PERFORM_GWA params by threshold (BF × EIGEN)
+    // Expand GCTA_PERFORM_GWA params × pheno by threshold (BF × EIGEN)
     // G4: Also extend with cv_maf_effective and cv_ld so analyze_qtl.R and assess_sims.R
     // can reconstruct the v=2 trait_id (which encodes cv pool params).
+    //
+    // Merge params + pheno into a single channel BEFORE threshold expansion
+    // so they travel together through all transforms. multiMap at the end
+    // splits into synchronized sub-channels — paired by construction, not
+    // emission-index coincidence. This also prevents the shared-ArrayList
+    // ConcurrentModificationException from the old wrap-unwrap pattern.
     ch_db_sthresh = Channel.of("BF", "EIGEN")
-    ch_db_analysis_params = ch_gwa_params_for_analysis
+    ch_gwa_params_for_analysis
+        .merge(ch_gwa_pheno_for_analysis)
+        // → [group, maf, nqtl, effect, rep, h2, mode, suffix, type, pheno, par]
         .combine(ch_db_sthresh)
         .combine(ch_db_analysis_barrier)
-        .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold, _barrier ->
-            tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold)
+        .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+               pheno, par, threshold, _barrier ->
+            tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+                  pheno, par, threshold)
         }
         .combine(ch_cv_maf_keyed_for_analysis, by: 0)
-        .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold, cv_maf_eff ->
-            tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold, cv_maf_eff, cv_ld)
+        // → [group, maf, ..., pheno, par, threshold, cv_maf_eff]
+        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+                    pheno, par, threshold, cv_maf_eff ->
+            params: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+                          threshold, cv_maf_eff, cv_ld)
+            pheno:  tuple(pheno, par)
         }
-
-    // Expand pheno (contains .par file) by threshold — same pattern
-    ch_db_analysis_pheno = ch_gwa_pheno_for_analysis
-        .map { it -> [it] }
-        .combine(ch_db_sthresh)
-        .combine(ch_db_analysis_barrier)
-        .map { it -> it[0] }
+        .set { ch_db_analysis }
 
     // Step 1: Analyze QTL (pheno is pass-through for Step 2)
     DB_MIGRATION_ANALYZE_QTL(
-        ch_db_analysis_params,
-        ch_db_analysis_pheno,
+        ch_db_analysis.params,
+        ch_db_analysis.pheno,
         db_output_dir,
         params.ci_size,
         params.group_qtl,
@@ -755,19 +763,39 @@ workflow {
     // cross-validation against the DB path. Produces
     // simulation_assessment_results.tsv alongside the DB output.
     if (params.legacy_assess) {
+        // Merge all 5 upstream channels so they travel together through
+        // the threshold expansion. multiMap splits into synchronized
+        // sub-channels — same pattern as the DB analysis path above.
+        // All originate from GCTA_PERFORM_GWA outputs (lock-step emission order).
         ch_intervals_sthresh = Channel.of("BF", "EIGEN")
-        ch_intervals_params = ch_gwa_params_for_legacy.combine(ch_intervals_sthresh)
-        ch_intervals_grm = GCTA_PERFORM_GWA.out.grm.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
-        ch_intervals_plink = GCTA_PERFORM_GWA.out.plink.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
-        ch_intervals_pheno = ch_gwa_pheno_for_legacy.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
-        ch_intervals_gwa = ch_gwa_gwa_for_legacy.map{ it: [it] }.combine(ch_intervals_sthresh).map{ it: it[0] }
+        ch_gwa_params_for_legacy                          // 9 vals
+            .merge(GCTA_PERFORM_GWA.out.grm)              // + 3 paths (grm)
+            .merge(GCTA_PERFORM_GWA.out.plink)            // + 9 paths (plink)
+            .merge(ch_gwa_pheno_for_legacy)               // + 2 paths (pheno)
+            .merge(ch_gwa_gwa_for_legacy)                 // + 1 path  (gwa)
+            // → 24-element tuple
+            .combine(ch_intervals_sthresh)
+            // → 25 elements (+ threshold)
+            .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+                        grm_bin, grm_n, grm_id,
+                        bed, bim, fam, map_f, nosex, ped, log_f, gm, n_indep,
+                        pheno, par,
+                        gwa,
+                        threshold ->
+                params: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold)
+                grm:    tuple(grm_bin, grm_n, grm_id)
+                plink:  tuple(bed, bim, fam, map_f, nosex, ped, log_f, gm, n_indep)
+                pheno:  tuple(pheno, par)
+                gwa:    gwa
+            }
+            .set { ch_intervals }
 
         R_GET_GCTA_INTERVALS(
-            ch_intervals_params,
-            ch_intervals_grm,
-            ch_intervals_plink,
-            ch_intervals_pheno,
-            ch_intervals_gwa,
+            ch_intervals.params,
+            ch_intervals.grm,
+            ch_intervals.plink,
+            ch_intervals.pheno,
+            ch_intervals.gwa,
             Channel.fromPath("${workflow.projectDir}/bin/Get_GCTA_Intervals.R").first(),
             params.group_qtl,
             params.ci_size,
