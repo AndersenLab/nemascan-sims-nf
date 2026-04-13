@@ -69,10 +69,14 @@ flowchart LR
 - [Assessment Cross-Validation](cross-validation.qmd) — How to run and
   interpret the cross-validation analysis comparing DB-path and legacy-path
   assessment outputs.
+- [Verifying Simulation Outputs](verifying-outputs.qmd) — How to check
+  Parquet database completeness after a run using `bin/verify_db.R`.
+  Covers expectation vs discovery mode, non-failing semantics, plot helpers,
+  and embedding verification in production Quarto reports.
 - [Development Guide](development.qmd) — Contributing guide covering documentation
   authoring, GitHub Pages publishing, and project structure. Includes links to the
-  setup page and four testing workflow pages (local end-to-end, integration, HPC,
-  and output validation).
+  setup page and testing workflow pages (local end-to-end, integration, HPC,
+  output validation, and output verification).
 - [Setup](setup.qmd) — Local and HPC environment prerequisites: Nextflow version
   pinning, Docker, R packages, Python, bcftools, and Rockfish conda/Singularity
   configuration.

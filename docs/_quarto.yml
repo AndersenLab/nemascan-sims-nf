@@ -33,6 +33,11 @@ website:
             href: testing-hpc.qmd
           - text: "Output Validation"
             href: testing-output-validation.qmd
+          - text: "Verifying Simulation Outputs"
+            href: verifying-outputs.qmd
+          - text: "---"
+          - text: "Transfer & Archival"
+            href: transfer-and-archival.qmd
           - text: "---"
           - text: "Changelog"
             href: changelog.qmd

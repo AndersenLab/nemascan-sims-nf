@@ -44,7 +44,7 @@ flowchart TD
 |------|-------|------|-------------|------------|
 | **Integration** | `test-db_structure.R`, `test-cross_validation.R`, `test-assessment_cross_validation.R` | **Primary** — evaluate pipeline correctness with real output | `TEST_DB_DIR`, `TEST_WORK_DIR`, `TEST_LEGACY_ASSESSMENT`, `TEST_DB_ASSESSMENT` | Env vars unset |
 | **CV Pool** | `test-cv_pool.R` | **Scenario-specific** — validate non-marker causal variant handling | `TEST_DB_DIR`, `TEST_DB_ASSESSMENT`, `TEST_CV_POOL=true` | `TEST_CV_POOL` not set |
-| Unit | all other `test-*.R` | Supporting — pin pure-computation correctness | Static fixtures only; no pipeline run needed | — |
+| Unit | `test-verify_db.R` and other `test-*.R` | Supporting — pin pure-computation correctness with tempdir fixtures | Static fixtures only; no pipeline run needed | — |
 | Python unit | `tests/pytest/test_create_causal_vars.py` | Supporting — validate Python scripts | `pytest`, `numpy`, `pandas` in Python env | `pytest` not installed |
 
 Run all tiers with a single command; integration tests skip automatically when
@@ -53,6 +53,16 @@ their environment variables are absent:
 ```bash
 Rscript tests/run_tests.R
 ```
+
+::: {.callout-note}
+## `test-verify_db.R` (8 tests)
+The unit tier contains one test file dedicated to `bin/verify_db.R`, the
+post-run database completeness checker. It builds a tempdir fixture DB from
+the real `database.R` hash helpers and exercises `verify_db()` in both
+expectation and discovery modes, plus all four plot helpers. It runs without
+any environment variables and without a pipeline invocation. See
+[Verifying Simulation Outputs](verifying-outputs.qmd) for the script itself.
+:::
 
 
 ## Integration Tests

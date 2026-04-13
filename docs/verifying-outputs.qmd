@@ -1,0 +1,325 @@
+---
+title: "Verifying Simulation Outputs"
+subtitle: "Using bin/verify_db.R to check Parquet database completeness after a run"
+date: last-modified
+format:
+  html:
+    embed-resources: true
+---
+
+After a pipeline run completes, `bin/verify_db.R` performs a structured
+completeness check on the Parquet database under `{outputDir}/db/`. It answers
+a single question — *"does the database contain everything the architecture
+asked for?"* — and never errors out. It is safe to embed in a Quarto report
+chunk alongside the pipeline execution step.
+
+```{mermaid}
+%%{init: {'themeVariables': {'fontSize': '16px'}}}%%
+flowchart LR
+    classDef data fill:#f5f5f5,stroke:#999,color:#333
+    classDef tool fill:#4e9af1,stroke:#2c6fad,color:#fff
+    classDef ok fill:#48b96e,stroke:#2d8150,color:#fff
+    classDef bad fill:#e07b3a,stroke:#a3572a,color:#fff
+
+    DB(["{outputDir}/db/"]):::data
+    ARGS(["strainfile + nqtl/h2/effect/reps/cv_*"]):::data
+    VD["verify_db()"]:::tool
+    R["result list<br/>(summary, deltas, errors)"]:::data
+    P["plot_* helpers"]:::tool
+
+    C(["status: complete"]):::ok
+    I(["status: incomplete"]):::bad
+    E(["status: error"]):::bad
+    D(["status: discovery"]):::ok
+
+    DB --> VD
+    ARGS --> VD
+    VD --> R
+    R --> P
+    R --> C & I & E & D
+```
+
+## Two Modes
+
+**Expectation mode** — you pass the full architecture (`strainfile`, `nqtl`,
+`h2`, `effect`, `reps`, `cv_maf`, `cv_ld`). `verify_db()` enumerates every
+expected trait and mapping ID using `generate_trait_id()` and
+`generate_mapping_id()`, queries the DB for what is actually present, and
+reports per-cell deltas and any missing IDs. Final `status` is one of
+`"complete"`, `"incomplete"`, or `"error"`.
+
+**Discovery mode** — no architecture args are passed. The grid is derived from
+`mappings_metadata.parquet` and only observed distributions are reported. Use
+this when you inherit a database and want to know what is inside it. Final
+`status` is `"discovery"`.
+
+If only *some* architecture args are passed, `verify_db()` fails closed —
+it emits a warning, skips per-ID enumeration for the missing dimensions, and
+still returns a result (rather than guessing).
+
+## Non-Failing Semantics
+
+`verify_db()` is designed to be safe inside a Quarto report chunk that runs
+unconditionally at the end of a long pipeline invocation. Every internal step
+is wrapped so that any error or warning is recorded in `result$errors` rather
+than thrown. If the DB does not exist, is partially written, or contains
+corrupted Parquet files, the function still returns a result list — the
+`status` field indicates `"error"` and the `errors` tibble explains why. Plot
+helpers follow the same rule: a failed plot returns a `ggplot` whose title
+describes the failure, so `print()` calls never break a rendered document.
+
+## Interactive Usage
+
+From an R session or a `.qmd` chunk:
+
+```{r}
+#| eval: false
+source("bin/verify_db.R")
+
+result <- verify_db(
+  base_dir   = "Sims_ce-cb-ct_nqtl1-50_h2grid_50reps/db",
+  strainfile = "data/sims_ce-cb-ct_nqtl1-50_h2grid_50reps/strains_three_species.tsv",
+  nqtl       = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 25, 50),
+  h2         = c(0.2, 0.4, 0.6, 0.8),
+  effect     = "gamma",
+  reps       = 25,
+  cv_maf     = 0.05,
+  cv_ld      = 0.8
+)
+
+.vdb_print_summary(result)    # human-readable summary to stdout
+print(plot_n_mappings_by_param(result))
+print(plot_n_traits_by_param(result))
+print(plot_completeness_heatmap(result))
+print(plot_marker_set_coverage(result))
+```
+
+The same call in discovery mode simply omits the architecture arguments:
+
+```{r}
+#| eval: false
+source("bin/verify_db.R")
+result <- verify_db(base_dir = "Sims_ce-cb-ct_nqtl1-50_h2grid_50reps/db")
+```
+
+## CLI Usage
+
+`bin/verify_db.R` is also a standalone script. It returns exit code `0` on
+`complete` or `discovery`, `1` on `incomplete`, and `2` on `error`:
+
+```bash
+Rscript bin/verify_db.R \
+  --base_dir Sims_ce-cb-ct_nqtl1-50_h2grid_50reps/db \
+  --strainfile data/sims_ce-cb-ct_nqtl1-50_h2grid_50reps/strains_three_species.tsv \
+  --nqtl 1,2,3,4,5,6,7,8,9,10,25,50 \
+  --h2 0.2,0.4,0.6,0.8 \
+  --effect gamma \
+  --reps 25 \
+  --cv_maf 0.05 \
+  --cv_ld 0.8
+```
+
+| Flag | Description |
+|------|-------------|
+| `--base_dir` | Path to the `{outputDir}/db/` directory (required) |
+| `--strainfile` | Strainfile TSV (triggers expectation mode) |
+| `--nqtl`, `--h2`, `--effect` | Comma-separated values matching the run parameters |
+| `--reps`, `--cv_maf`, `--cv_ld` | Scalar architecture parameters |
+| `--max_enumeration_rows` | Safety guard on the expected-grid row count (default 500,000) |
+| `--quiet` | Suppress the printed summary |
+
+Discovery mode: omit every flag except `--base_dir`.
+
+When run in expectation mode, the script prints a human-readable summary to stdout and exits with code `0` if the DB is complete, `1` if incomplete, and `2` if an error was encountered. The output should look something like this:
+
+```
+2026-04-13 15:17:47 [INFO] Opened database with 3 marker sets, 14400 mapping partitions
+verify_db: Sims_ce-cb-ct_nqtl1-50_h2grid_50reps/db
+mode: expectation   status: complete
+
+  component                      expected   observed    missing        pct
+  marker_sets_markers                   3          3          0     100.0%
+  marker_sets_genotypes                 3          3          0     100.0%
+  marker_set_metadata                   3          3          0     100.0%
+  traits_metadata_files              3600       3600          0     100.0%
+  causal_variants_files              3600       3600          0     100.0%
+  phenotypes_files                   3600       3600          0     100.0%
+  causal_genotypes_files             3600       3600          0     100.0%
+  mapping_data_files                14400      14400          0     100.0%
+  mapping_meta_files                14400      14400          0     100.0%
+  mappings_metadata_rows            14400      14400          0     100.0%
+
+errors: 0   warnings: 0
+```
+
+### HPC CLI Usage
+
+On HPC clusters, the intended usage is to call `bin/verify_db.R` from a interactive node with a singularity container. 
+
+Start an interactive session:
+
+```bash
+interact -n 1 -c 1 -a eande106 -m 64G -p parallel -t 30
+```
+
+Export the singularity cache dir to avoid recreating the container:
+
+```bash
+export NXF_SINGULARITY_CACHEDIR=/vast/eande106/singularity
+```
+
+Load the singularity module
+
+```bash
+module load singularity
+```
+
+Set the singularity image path. Nextflow caches images under
+`$NXF_SINGULARITY_CACHEDIR` with a mangled filename — verify the exact name
+with `ls $NXF_SINGULARITY_CACHEDIR | grep migrate-sims` before setting:
+
+```bash
+SIMG=$NXF_SINGULARITY_CACHEDIR/andersenlab-migrate-sims-20260202.img
+```
+
+Start an interactive shell inside the container, binding **every** filesystem
+root the script needs to reach — the repo, the DB output, and the strainfile.
+If your repo lives in `/home/$USER/...`, add `--bind /home/$USER` (the default
+singularity binds are not enough on Rockfish):
+
+```bash
+singularity shell \
+  --bind /vast/eande106 \
+  --bind /scratch4/eande106 \
+  --bind /home/$USER \
+  --pwd $PWD \
+  $SIMG
+```
+
+Then from inside the container, `cd` to the repo and export
+`NEMASCAN_R_LIB` so `bin/verify_db.R` can locate the shared R library. The
+script's autodetection (walking up from its own path to find `../R`) can
+fail inside the container when the working directory is not the project
+root, so setting it explicitly is the most reliable path:
+
+```bash
+cd /path/to/nemascan-sims-nf
+export NEMASCAN_R_LIB=$(pwd)/R
+Rscript bin/verify_db.R --base_dir /path/to/run/db ...
+```
+
+## Result Structure
+
+`verify_db()` returns a list with the following slots. Each slot is safe to
+access even when the DB is missing or corrupted — missing data is represented
+as `NULL` or a zero-row tibble, not a hard error.
+
+| Slot | Type | Content |
+|------|------|---------|
+| `status` | character | `"complete"`, `"incomplete"`, `"discovery"`, or `"error"` |
+| `mode` | character | `"expectation"` or `"discovery"` |
+| `base_dir` | character | The path checked |
+| `run_at` | POSIXct | Timestamp of the verification run |
+| `expected_params` | list | Architecture arguments as received |
+| `observed_mappings` | tibble | One row per `(population, nqtl, h2, effect, algorithm, pca)` cell with observed counts |
+| `observed_traits` | tibble | One row per unique trait ID present in metadata |
+| `mappings_delta` | tibble | Expected vs observed per cell (expectation mode only) |
+| `traits_delta` | tibble | Expected vs observed trait counts (expectation mode only) |
+| `missing_traits` | tibble | Specific trait IDs expected but not found |
+| `missing_mappings` | tibble | Specific mapping IDs expected but not found |
+| `summary` | tibble | 10-row file-count summary (see below) |
+| `marker_set_coverage` | tibble | Per-population marker set metadata completeness |
+| `errors` | tibble | `level` / `step` / `message` for every recorded error or warning |
+
+The `summary` tibble aggregates file counts for the 10 artifacts on disk:
+`marker_sets_markers`, `marker_sets_genotypes`, `marker_set_metadata`,
+`traits_metadata_files`, `causal_variants_files`, `phenotypes_files`,
+`causal_genotypes_files`, `mapping_data_files`, `mapping_meta_files`, and
+`mappings_metadata_rows`. Each row has `expected`, `observed`, `missing`, and
+`pct_complete` columns — so a quick glance at `result$summary` reveals the
+component that is lagging.
+
+## Plot Helpers
+
+Four plot functions accept a `verify_db()` result and return a `ggplot`
+object. All four use `facet_grid(algorithm + pca ~ population)` to cover the
+full cartesian parameter grid at once:
+
+| Function | Purpose |
+|---------|---------|
+| `plot_n_mappings_by_param(result)` | Bar chart of observed mappings per `nqtl × h2`, faceted by population and mapping mode |
+| `plot_n_traits_by_param(result)` | Same layout for distinct trait counts |
+| `plot_completeness_heatmap(result)` | Heatmap of `pct_complete` per architecture cell (expectation mode only) |
+| `plot_marker_set_coverage(result)` | Bar chart of marker set metadata file counts per population |
+
+Every helper runs inside an internal safety wrapper — a failed plot returns
+a placeholder `ggplot` whose title describes the failure, so unconditional
+`print()` calls never break a rendered Quarto document.
+
+## Integration with Quarto Reports
+
+The intended placement is the final "verify outputs" phase of a production
+run report. Source the script once, call `verify_db()` with the same
+parameters the pipeline was invoked with, print the summary, and render the
+plots:
+
+```{r}
+#| eval: false
+#| echo: false
+source("bin/verify_db.R")
+```
+
+```{r}
+#| eval: false
+result <- verify_db(
+  base_dir   = file.path(params$output_dir, "db"),
+  strainfile = file.path(params$data_dir, "strains_three_species.tsv"),
+  nqtl       = scan(file.path(params$data_dir, "nqtl.csv")),
+  h2         = scan(file.path(params$data_dir, "h2.csv")),
+  effect     = readLines(file.path(params$data_dir, "effect_sizes.csv")),
+  reps       = params$reps,
+  cv_maf     = params$cv_maf,
+  cv_ld      = params$cv_ld
+)
+.vdb_print_summary(result)
+```
+
+```{r}
+#| eval: false
+#| fig-width: 10
+#| fig-height: 7
+print(plot_n_mappings_by_param(result))
+print(plot_n_traits_by_param(result))
+print(plot_completeness_heatmap(result))
+print(plot_marker_set_coverage(result))
+```
+
+Because `verify_db()` never errors out, these chunks can be unconditionally
+rendered — the `status` field and `errors` tibble carry any bad news in a
+structured form rather than breaking the render.
+
+## Unit Tests
+
+`tests/testthat/test-verify_db.R` exercises the script against a tempdir
+fixture DB built from the real `database.R` hash helpers. It does **not**
+require `TEST_DB_DIR` or any pipeline output — it runs alongside the other
+unit tests as part of `Rscript tests/run_tests.R`. The 8 tests cover:
+
+| Test | Asserts |
+|------|---------|
+| Empty DB (discovery) | Returns a well-formed result with `status = "discovery"` |
+| Complete fixture | `status = "complete"`; all summary components at 100 % |
+| Incomplete fixture | Drops 4 mappings; `status = "incomplete"`; `missing_mappings` lists them |
+| Discovery grid derivation | Observed grid matches the fixture without architecture args |
+| Corrupted Parquet | Zero-byte `mappings_metadata.parquet` recorded as an error, not thrown |
+| `max_enumeration_rows` guard | Huge architecture request surfaces a guard warning |
+| Partial architecture args | Fails closed with a warning, returns a result |
+| Plot helpers | All four helpers return `ggplot` objects on both good and bad input |
+
+::: {.callout-tip}
+## See also
+- [Output Validation](testing-output-validation.qmd) — cross-validation tests,
+  `renv.lock`, and GCTA thread-count determinism.
+- [Database Structure](database-structure.qmd) — the Parquet layout that
+  `verify_db()` iterates over.
+:::
