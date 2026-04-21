@@ -39,19 +39,19 @@ Stub runs verify process wiring without executing real computations:
 
 ```bash
 # Fixed architecture
-nextflow run main.nf -profile test -stub-run
+NXF_VER=24.10.5 nextflow run main.nf -profile test -stub-run
 
 # Variable architecture
-nextflow run main.nf -profile test_variable -stub-run
+NXF_VER=24.10.5 nextflow run main.nf -profile test_variable -stub-run
 
 # Three-species (c_elegans + c_briggsae + c_tropicalis)
-nextflow run main.nf -profile test_three_species -stub-run
+NXF_VER=24.10.5 nextflow run main.nf -profile test_three_species -stub-run
 
 # With legacy assessment path
-nextflow run main.nf -profile test --legacy_assess -stub-run
+NXF_VER=24.10.5 nextflow run main.nf -profile test --legacy_assess -stub-run
 
 # CV pool filter — exercises pipeline guard when cv_maf/cv_ld reduce the causal variant pool
-nextflow run main.nf -profile test_cv_pool -stub-run
+NXF_VER=24.10.5 nextflow run main.nf -profile test_cv_pool -stub-run
 ```
 
 The `test_cv_pool` profile sets `cv_maf` and `cv_ld` to values that shrink the available
@@ -171,7 +171,7 @@ Each script:
 Once VCF files are generated and the strainfile is populated:
 
 ```bash
-nextflow run . -profile test_three_species,docker
+NXF_VER=24.10.5 nextflow run . -profile test_three_species,docker
 ```
 
 A stub run (no VCF files required) verifies channel wiring and strainfile parsing for all
