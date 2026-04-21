@@ -102,6 +102,12 @@ workflow {
     } else {
         strainfile = file(params.strainfile).toAbsolutePath().toString()
     }
+    ch_input_files = Channel.of(
+        file(strainfile),
+        file(nqtl_file),
+        file(h2_file),
+        file(effect_file)
+    )
     if (params.mito_name == null){
         mito_name = "MtDNA"
     } else {
@@ -836,12 +842,16 @@ workflow {
     publish:
         ch_mapping_pub >> "."
         ch_db_assessment_pub >> "."
+        ch_input_files >> "inputs"
 }
 
 
 // Current bug that publish doesn't work without an output closure
 output {
     "." {
+        mode "copy"
+    }
+    "inputs" {
         mode "copy"
     }
 }
