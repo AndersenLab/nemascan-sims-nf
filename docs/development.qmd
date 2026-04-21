@@ -174,13 +174,12 @@ and log files that are git-ignored but consume disk space:
 | `.nextflow/` | Nextflow cache (task hashes, metadata) |
 | `.nextflow.log*` | Run logs (`.nextflow.log`, `.nextflow.log.1`, …) |
 | `work/` | Task working directories (can be very large) |
-| `pipeline_info/` or `pipeline-info/` | Execution reports and timelines |
-| `Analysis_Results-*` | Date-stamped output directories |
+| `Analysis_Results-*` | Date-stamped output directories (includes `pipeline-info/` with execution reports and timelines) |
 
 To remove them:
 
 ```bash
-rm -rf .nextflow .nextflow.log* work pipeline_info pipeline-info Analysis_Results-*
+rm -rf .nextflow .nextflow.log* work Analysis_Results-*
 ```
 
 ::: {.callout-tip}
