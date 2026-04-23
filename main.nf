@@ -503,38 +503,66 @@ workflow {
     ch_versions = ch_versions.mix(PLINK_UPDATE_BY_H2.out.versions)
 
     // Create genetic relatedness matrix
-    ch_mode = Channel.of( 
+    // Merge PLINK_UPDATE_BY_H2 outputs before the mode fan-out (inbred/loco).
+    // The previous wrap-combine-unwrap pattern (.map{[it]}.combine(ch_mode).map{it[0]})
+    // returned the same ArrayList reference for both mode emissions. Under SLURM job
+    // array batching + Singularity, two submission threads iterated the shared list
+    // simultaneously -> ConcurrentModificationException (same mechanism as issue #148).
+    // .merge() aligns by emission order — do not insert reordering operators between
+    // PLINK_UPDATE_BY_H2.out.* and this merge chain.
+    ch_mode = Channel.of(
         ["inbred", "fastGWA"],
         ["loco", "mlma"]
         )
-    ch_grm_params = PLINK_UPDATE_BY_H2.out.params.combine(ch_mode)
-    ch_grm_plink = PLINK_UPDATE_BY_H2.out.plink.map{ it: [it] }.combine(ch_mode).map{ it: it[0] }
-    ch_grm_pheno = PLINK_UPDATE_BY_H2.out.pheno.map{ it: [it] }.combine(ch_mode).map{ it: it[0] }
+    PLINK_UPDATE_BY_H2.out.params
+        .merge(PLINK_UPDATE_BY_H2.out.plink)
+        .merge(PLINK_UPDATE_BY_H2.out.pheno)
+        .combine(ch_mode)
+        .multiMap { group, maf, nqtl, effect, rep, h2,
+                    bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
+                    pheno, par, mode, suffix ->
+            params: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix)
+            plink:  tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
+            pheno:  tuple(pheno, par)
+        }
+        .set { ch_grm }
 
-    
     GCTA_MAKE_GRM(
-        ch_grm_params,
-        ch_grm_plink,
-        ch_grm_pheno
+        ch_grm.params,
+        ch_grm.plink,
+        ch_grm.pheno
         )
     ch_versions = ch_versions.mix(GCTA_MAKE_GRM.out.versions)
 
     // Simulate GWA using output from GCTA_MAKE_GRM
+    // Same fix: merge all GCTA_MAKE_GRM outputs before the type fan-out (pca/nopca).
+    // .merge() aligns by emission order — do not insert reordering operators between
+    // GCTA_MAKE_GRM.out.* and this merge chain.
     ch_type = Channel.of(
         "pca",
         "nopca"
         )
+    GCTA_MAKE_GRM.out.params
+        .merge(GCTA_MAKE_GRM.out.grm)
+        .merge(GCTA_MAKE_GRM.out.plink)
+        .merge(GCTA_MAKE_GRM.out.pheno)
+        .combine(ch_type)
+        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix,
+                    grm_bin, grm_n, grm_id,
+                    bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
+                    pheno, par, type ->
+            params: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type)
+            grm:    tuple(grm_bin, grm_n, grm_id)
+            plink:  tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
+            pheno:  tuple(pheno, par)
+        }
+        .set { ch_gwa }
 
-    ch_gwa_params = GCTA_MAKE_GRM.out.params.combine(ch_type)
-    ch_gwa_grm =    GCTA_MAKE_GRM.out.grm.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
-    ch_gwa_plink =  GCTA_MAKE_GRM.out.plink.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
-    ch_gwa_pheno =  GCTA_MAKE_GRM.out.pheno.map{ it: [it] }.combine(ch_type).map{ it: it[0] }
-    
     GCTA_PERFORM_GWA(
-        ch_gwa_params,
-        ch_gwa_grm,
-        ch_gwa_plink,
-        ch_gwa_pheno,
+        ch_gwa.params,
+        ch_gwa.grm,
+        ch_gwa.plink,
+        ch_gwa.pheno,
         params.sparse_cut
         )
     ch_versions = ch_versions.mix(GCTA_PERFORM_GWA.out.versions)
