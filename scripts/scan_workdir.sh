@@ -2,22 +2,28 @@
 # scan_workdir.sh — Audit Nextflow work directory sizes on HPC
 #
 # Usage:
-#   bash scan_workdir.sh <work_dir> <output_tsv> [trace_file]
+#   bash scan_workdir.sh <work_dir> <output_tsv> <run_name> [OPTIONS]
 #
 # Arguments:
 #   work_dir    Path to the Nextflow work directory
 #               e.g. /scratch4/eande106/Ryan_tmp/nf-work-panelsize
 #   output_tsv  Path for the output TSV file
-#   trace_file  (optional) Path to a Nextflow execution trace file
-#               If omitted, process names are extracted from .command.run files
-#               via a single batched grep pass (NOT a per-dir shell loop).
+#   run_name    Nextflow run name (e.g. spontaneous_swirles).
+#               Run 'nextflow log' from your pipeline directory to list names.
+#
+# Options:
+#   --processes PROC1,PROC2,...   Comma-separated process names to scan.
+#                                 If omitted, all processes are included.
+#   --nf_dir PATH                 Directory containing .nextflow/ history
+#                                 (default: current working directory).
+#   --parallel N                  Parallel du/find workers (default: 4).
 #
 # Output TSV columns:
 #   work_hash           relative path to task dir (e.g. ab/cdef1234...)
 #   process             Nextflow process name (e.g. PLINK_RECODE_MS_VCF)
 #   tag                 task tag / meta.id (e.g. ce.n300.r29_0.05)
 #   panel_size          integer panel size extracted from tag, or NA
-#   total_bytes         total disk usage of the task dir in bytes
+#   total_bytes         total disk usage of the task dir in bytes (du --block-size=1)
 #   n_files             total file entries (real files + symlinks)
 #   n_symlinks          number of symbolic links
 #   n_real_files        number of regular (non-symlink) files
@@ -26,35 +32,50 @@
 
 set -euo pipefail
 
-WORK_DIR="${1:?ERROR: work_dir argument required. Usage: $0 <work_dir> <output_tsv> [trace_file]}"
-OUT_TSV="${2:?ERROR: output_tsv argument required. Usage: $0 <work_dir> <output_tsv> [trace_file]}"
-TRACE_FILE="${3:-}"
+WORK_DIR="${1:?ERROR: work_dir argument required. Usage: $0 <work_dir> <output_tsv> <run_name> [OPTIONS]}"
+OUT_TSV="${2:?ERROR: output_tsv argument required. Usage: $0 <work_dir> <output_tsv> <run_name> [OPTIONS]}"
+RUN_NAME="${3:?ERROR: run_name argument required (e.g. spontaneous_swirles). Run 'nextflow log' to list names.}"
+shift 3
+
+PROC_FILTER=""
+NF_DIR="."
+PARALLEL=4
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --processes) PROC_FILTER="$2"; shift 2 ;;
+        --nf_dir)    NF_DIR="$2";      shift 2 ;;
+        --parallel)  PARALLEL="$2";    shift 2 ;;
+        *) echo "ERROR: Unknown option: $1" >&2; exit 1 ;;
+    esac
+done
 
 WORK_DIR="${WORK_DIR%/}"
+NF_DIR="${NF_DIR%/}"
 
 echo "[scan] ──────────────────────────────────────────────────────"
 echo "[scan] Nextflow work directory audit"
 echo "[scan] Work dir:  $WORK_DIR"
+echo "[scan] Run name:  $RUN_NAME"
 echo "[scan] Output:    $OUT_TSV"
-echo "[scan] Trace:     ${TRACE_FILE:-not provided}"
+echo "[scan] Processes: ${PROC_FILTER:-all}"
+echo "[scan] NF dir:    $NF_DIR"
+echo "[scan] Parallel:  $PARALLEL workers"
 echo "[scan] Started:   $(date)"
 echo "[scan] ──────────────────────────────────────────────────────"
 
 # ─── Temp files ──────────────────────────────────────────────────────────────
-TMP_TRACE=$(mktemp /tmp/nf_scan_trace.XXXXXX)
+TMP_TASKS=$(mktemp /tmp/nf_scan_tasks.XXXXXX)
 TMP_DU=$(mktemp /tmp/nf_scan_du.XXXXXX)
 TMP_INV=$(mktemp /tmp/nf_scan_inv.XXXXXX)
-TMP_METRICS=$(mktemp /tmp/nf_scan_metrics.XXXXXX)
-TMP_CMD_MAP=$(mktemp /tmp/nf_scan_cmdmap.XXXXXX)
 
-cleanup() { rm -f "$TMP_TRACE" "$TMP_DU" "$TMP_INV" "$TMP_METRICS" "$TMP_CMD_MAP"; }
+cleanup() { rm -f "$TMP_TASKS" "$TMP_DU" "$TMP_INV"; }
 trap cleanup EXIT
 
 # ─── Helper: run a command in background and print progress every 30s ─────────
 run_with_progress() {
     local label="$1"; shift
     local outfile="$1"; shift
-    # Remaining args are the command to run
     "$@" > "$outfile" &
     local pid=$!
     local elapsed=0
@@ -68,208 +89,141 @@ run_with_progress() {
     wait "$pid"
 }
 
-# ─── STEP 1: Parse trace file ────────────────────────────────────────────────
-echo "[scan] [1/5] Parsing trace file..."
-if [[ -n "$TRACE_FILE" && -f "$TRACE_FILE" ]]; then
-    awk -F'\t' '
-    NR == 1 { next }
-    NF < 4  { next }
-    {
-        hash = $2
-        name = $4
-        sub(/^.*:/, "", name)          # strip workflow prefix
-        tag = ""
-        if (match(name, /\(([^)]+)\)/)) {
-            tag = substr(name, RSTART+1, RLENGTH-2)
-            sub(/ *\([^)]+\)$/, "", name)
-        }
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", tag)
-        if (name != "") print hash "\t" name "\t" tag
-    }' "$TRACE_FILE" > "$TMP_TRACE"
-    echo "[scan]   Loaded $(wc -l < "$TMP_TRACE") trace entries"
+# ─── STEP 1: nextflow log → task list ────────────────────────────────────────
+# Outputs: process TAB tag TAB workdir  (no header, one row per task)
+echo "[scan] [1/4] Fetching task list from 'nextflow log $RUN_NAME'..."
+(cd "$NF_DIR" && nextflow log "$RUN_NAME" -f process,tag,workdir) > "$TMP_TASKS"
+NTOTAL=$(wc -l < "$TMP_TASKS")
+echo "[scan]   $NTOTAL total tasks found"
+
+if [[ -n "$PROC_FILTER" ]]; then
+    awk -F'\t' -v procs="$PROC_FILTER" '
+        BEGIN { n = split(procs, a, ","); for (i = 1; i <= n; i++) f[a[i]] = 1 }
+        $1 in f
+    ' "$TMP_TASKS" > "${TMP_TASKS}.filt" && mv "${TMP_TASKS}.filt" "$TMP_TASKS"
+    NTASKS=$(wc -l < "$TMP_TASKS")
+    echo "[scan]   Filtered to '$PROC_FILTER': $NTASKS tasks ($(( NTOTAL - NTASKS )) excluded)"
 else
-    touch "$TMP_TRACE"
-    echo "[scan]   No trace file — will extract process names from .command.run (step 5)"
+    NTASKS=$NTOTAL
 fi
 
-# ─── STEP 2: Batch du ─────────────────────────────────────────────────────────
-# Outputs: rel_key TAB total_bytes
-# Runs in background with 30s progress ticks.
-echo "[scan] [2/5] Batch du across all task dirs..."
-echo "[scan]   (GPFS/Lustre can take 10–40 min for 58K dirs — progress every 30s)"
+if [[ "$NTASKS" -eq 0 ]]; then
+    echo "[scan] ERROR: No matching tasks. Check run name and --processes filter." >&2
+    exit 1
+fi
 
-run_with_progress "dirs in du" "$TMP_DU" \
-    bash -c "cd '$WORK_DIR' && \
-             find . -mindepth 2 -maxdepth 2 -type d -print0 \
-             | xargs -0 du --block-size=1 --summarize 2>/dev/null \
-             | awk '{sub(/^\\.\\//,\"\",\$2); print \$2\"\\t\"\$1}'"
+# ─── STEP 2: du on task work dirs ─────────────────────────────────────────────
+# Outputs: total_bytes TAB workdir  (du --block-size=1 format)
+echo "[scan] [2/4] Measuring disk usage for $NTASKS dirs..."
+echo "[scan]   (GPFS/Lustre can be slow — progress every 30s; $PARALLEL parallel workers)"
 
-NTASKS=$(wc -l < "$TMP_DU")
-echo "[scan]   du complete: $NTASKS task dirs found"
+run_with_progress "dirs measured" "$TMP_DU" \
+    bash -c "awk -F'\t' '{print \$3}' '$TMP_TASKS' \
+        | xargs -P$PARALLEL du --block-size=1 --summarize 2>/dev/null"
 
-# ─── STEP 3: Single find pass for file inventory ─────────────────────────────
-# Outputs: type(f/l) TAB size_bytes TAB path_relative_to_WORK_DIR
-echo "[scan] [3/5] Collecting file inventory (single find pass)..."
-echo "[scan]   (stat-ing all files in $NTASKS dirs — progress every 30s)"
+echo "[scan]   du complete: $(wc -l < "$TMP_DU") dirs measured"
+
+# ─── STEP 3: find file inventory ──────────────────────────────────────────────
+# Outputs: type(f/l) TAB size_bytes TAB absolute_path
+# Passes dirs in batches of 50 to a single find per invocation (-n50),
+# running N batches in parallel. 'sh -c "find "$@"..." sh' puts dirs
+# before find options so xargs appends them correctly.
+echo "[scan] [3/4] Collecting file inventory for $NTASKS dirs..."
+echo "[scan]   (progress every 30s)"
 
 run_with_progress "files inventoried" "$TMP_INV" \
-    find "$WORK_DIR" -mindepth 3 \
-        -not -path "${WORK_DIR}/.nextflow*" \
-        \( -type f -o -type l \) \
-        -printf '%y\t%s\t%P\n'
+    bash -c "awk -F'\t' '{print \$3}' '$TMP_TASKS' \
+        | xargs -P$PARALLEL -n50 sh -c \
+            'find \"\$@\" -mindepth 1 \( -type f -o -type l \) -printf \"%y\t%s\t%p\n\"' sh"
 
 echo "[scan]   Inventory: $(wc -l < "$TMP_INV") files+symlinks"
 
-# ─── STEP 4: Aggregate per-task-dir metrics ───────────────────────────────────
-echo "[scan] [4/5] Aggregating per-dir metrics..."
-awk -F'\t' '
-{
-    path = $3
-    n = split(path, parts, "/")
-    if (n < 2) next
-    key   = parts[1] "/" parts[2]
-    type  = $1
-    size  = $2 + 0
-    fname = parts[n]
+# ─── STEP 4: aggregate metrics + join all sources + write TSV ─────────────────
+echo "[scan] [4/4] Aggregating metrics and writing output TSV..."
 
-    n_files[key]++
-    if (type == "l") {
-        n_sym[key]++
+WDIR_LEN=${#WORK_DIR}
+
+awk -F'\t' \
+    -v tasks_file="$TMP_TASKS" \
+    -v du_file="$TMP_DU" \
+    -v wdir="$WORK_DIR" \
+    -v wdir_len="$WDIR_LEN" \
+'
+# File 1: task list  (process TAB tag TAB workdir)
+FILENAME == tasks_file {
+    task_proc[$3] = $1
+    task_tag[$3]  = $2
+    next
+}
+# File 2: du output  (total_bytes TAB workdir)
+FILENAME == du_file {
+    du_bytes[$2] = $1 + 0
+    next
+}
+# File 3: file inventory  (type TAB size TAB absolute_path)
+{
+    ftype = $1
+    fsize = $2 + 0
+    fpath = $3
+    fname = fpath; sub(/.*\//, "", fname)
+
+    # Derive absolute workdir: strip WORK_DIR prefix and keep first 2 path components
+    rel = substr(fpath, wdir_len + 2)
+    n = split(rel, parts, "/")
+    if (n < 2) next
+    wabs = wdir "/" parts[1] "/" parts[2]
+
+    n_files[wabs]++
+    if (ftype == "l") {
+        n_sym[wabs]++
     } else {
-        n_real[key]++
-        if (size > max_sz[key]) {
-            max_sz[key] = size
-            max_fn[key] = fname
+        n_real[wabs]++
+        if (fsize > max_sz[wabs]) {
+            max_sz[wabs] = fsize
+            max_fn[wabs] = fname
         }
     }
 }
 END {
-    for (k in n_files) {
-        ns = (k in n_sym)  ? n_sym[k]  : 0
-        nr = (k in n_real) ? n_real[k] : 0
-        ms = (k in max_sz) ? max_sz[k] : 0
-        mn = (k in max_fn) ? max_fn[k] : ""
-        print k "\t" n_files[k] "\t" ns "\t" nr "\t" ms "\t" mn
-    }
-}' "$TMP_INV" > "$TMP_METRICS"
-echo "[scan]   Metrics aggregated: $(wc -l < "$TMP_METRICS") dirs"
+    print "work_hash\tprocess\ttag\tpanel_size\ttotal_bytes\tn_files\tn_symlinks\tn_real_files\tlargest_file_bytes\tlargest_file_name"
+    for (wabs in n_files) {
+        process = (wabs in task_proc) ? task_proc[wabs] : "UNKNOWN"
+        tag     = (wabs in task_tag)  ? task_tag[wabs]  : ""
+        tb      = (wabs in du_bytes)  ? du_bytes[wabs]  : 0
+        ns      = (wabs in n_sym)     ? n_sym[wabs]     : 0
+        nr      = (wabs in n_real)    ? n_real[wabs]    : 0
+        ms      = (wabs in max_sz)    ? max_sz[wabs]    : 0
+        mn      = (wabs in max_fn)    ? max_fn[wabs]    : ""
 
-# ─── STEP 5: Build process map ────────────────────────────────────────────────
-# Primary source: trace file (already loaded into TMP_TRACE).
-# Fallback: single batched grep over all .command.run files — NOT a shell loop.
-# Produces TMP_CMD_MAP: rel_key TAB process  (for SLURM tasks, via SBATCH job-name)
-echo "[scan] [5/5] Building process map and writing output TSV..."
+        rel_key = substr(wabs, wdir_len + 2)
 
-WDIR_LEN=${#WORK_DIR}
-
-if [[ -s "$TMP_TRACE" ]]; then
-    echo "[scan]   Process names from trace file (no .command.run scan needed)"
-    touch "$TMP_CMD_MAP"
-else
-    echo "[scan]   No trace — scanning all .command.run files (batched grep, one pass)..."
-    find "$WORK_DIR" -mindepth 3 -maxdepth 3 -name '.command.run' -print0 \
-        | xargs -0 grep -H '#SBATCH --job-name' 2>/dev/null \
-        | awk -v wdir_len="$WDIR_LEN" '{
-            # Input: /full/path/.command.run:#SBATCH --job-name nf-PROCESSNAME
-            colon = index($0, ":")
-            filepath = substr($0, 1, colon - 1)
-            content  = substr($0, colon + 1)
-            # Strip work dir prefix (+2 to skip trailing slash) and /.command.run suffix
-            rel_path = substr(filepath, wdir_len + 2)
-            sub("/\\.command\\.run$", "", rel_path)
-            # Extract process name (text after "nf-")
-            if (match(content, /nf-[A-Z_0-9]+/)) {
-                process = substr(content, RSTART + 3, RLENGTH - 3)
-            } else {
-                process = ""
-            }
-            if (rel_path != "" && process != "") print rel_path "\t" process
-        }' > "$TMP_CMD_MAP"
-    echo "[scan]   .command.run map: $(wc -l < "$TMP_CMD_MAP") SLURM entries found"
-fi
-
-# ─── Join all sources → output TSV ───────────────────────────────────────────
-printf 'work_hash\tprocess\ttag\tpanel_size\ttotal_bytes\tn_files\tn_symlinks\tn_real_files\tlargest_file_bytes\tlargest_file_name\n' > "$OUT_TSV"
-
-awk -F'\t' \
-    -v trace_file="$TMP_TRACE" \
-    -v du_file="$TMP_DU" \
-    -v cmd_file="$TMP_CMD_MAP" \
-'
-# File 1: trace  (short_hash TAB process TAB tag)
-FILENAME == trace_file {
-    if (NF >= 3) { trace_proc[$1] = $2; trace_tag[$1] = $3 }
-    next
-}
-# File 2: du map  (rel_key TAB total_bytes)
-FILENAME == du_file {
-    du[$1] = $2
-    next
-}
-# File 3: .command.run map  (rel_key TAB process)
-FILENAME == cmd_file {
-    if (NF >= 2) cmd_proc[$1] = $2
-    next
-}
-# File 4: metrics  (rel_key TAB n_files TAB n_sym TAB n_real TAB max_bytes TAB max_name)
-{
-    rel_key   = $1
-    n_files   = $2
-    n_sym     = $3
-    n_real    = $4
-    max_bytes = $5
-    max_fn    = $6
-
-    # Short hash for trace lookup: "ab" + "/" + first 6 chars of second component
-    n = split(rel_key, parts, "/")
-    short_hash = (n >= 2) ? (parts[1] "/" substr(parts[2], 1, 6)) : ""
-
-    # Process: trace > .command.run map > LOCAL
-    if (short_hash in trace_proc) {
-        process = trace_proc[short_hash]
-        tag     = trace_tag[short_hash]
-    } else if (rel_key in cmd_proc) {
-        process = cmd_proc[rel_key]
-        tag     = ""
-    } else {
-        process = "LOCAL"
-        tag     = ""
-    }
-
-    total_bytes = (rel_key in du) ? du[rel_key] : 0
-
-    # Extract panel size from tag: .n{digits}[._] pattern
-    panel_size = "NA"
-    if (tag != "") {
+        # Extract panel size from tag: .n{digits}[._] pattern
+        panel_size = "NA"
         tmp = tag
         if (sub(/.*\.n/, "", tmp) && match(tmp, /^[0-9]+/)) {
             panel_size = substr(tmp, 1, RLENGTH)
         }
-    }
-    if (panel_size == "NA" && max_fn != "") {
-        tmp = max_fn
-        if (sub(/.*\.n/, "", tmp) && match(tmp, /^[0-9]+/)) {
-            panel_size = substr(tmp, 1, RLENGTH)
+        if (panel_size == "NA" && mn != "") {
+            tmp = mn
+            if (sub(/.*\.n/, "", tmp) && match(tmp, /^[0-9]+/)) {
+                panel_size = substr(tmp, 1, RLENGTH)
+            }
         }
-    }
 
-    print rel_key "\t" process "\t" tag "\t" panel_size "\t" \
-          total_bytes "\t" n_files "\t" n_sym "\t" n_real "\t" \
-          max_bytes "\t" max_fn
+        print rel_key "\t" process "\t" tag "\t" panel_size "\t" \
+              tb "\t" n_files[wabs] "\t" ns "\t" nr "\t" ms "\t" mn
+    }
 }
-' "$TMP_TRACE" "$TMP_DU" "$TMP_CMD_MAP" "$TMP_METRICS" >> "$OUT_TSV"
+' "$TMP_TASKS" "$TMP_DU" "$TMP_INV" > "$OUT_TSV"
 
 TOTAL=$(( $(wc -l < "$OUT_TSV") - 1 ))
-NAMED=$(awk -F'\t' 'NR>1 && $2!="" && $2!="LOCAL"' "$OUT_TSV" | wc -l)
-LOCAL=$(awk -F'\t' 'NR>1 && $2=="LOCAL"' "$OUT_TSV" | wc -l)
-EMPTY=$(awk -F'\t' 'NR>1 && $2==""' "$OUT_TSV" | wc -l)
+NAMED=$(awk -F'\t' 'NR>1 && $2 != "UNKNOWN" && $2 != ""' "$OUT_TSV" | wc -l)
+UNKNOWN=$(awk -F'\t' 'NR>1 && ($2 == "UNKNOWN" || $2 == "")' "$OUT_TSV" | wc -l)
 
 echo "[scan] ──────────────────────────────────────────────────────"
 echo "[scan] Complete.  $(date)"
 echo "[scan]   Total task dirs:  $TOTAL"
 echo "[scan]   Named processes:  $NAMED"
-echo "[scan]   LOCAL tasks:      $LOCAL"
-echo "[scan]   Unresolved:       $EMPTY"
+echo "[scan]   Unresolved:       $UNKNOWN"
 echo "[scan]   Output:           $OUT_TSV"
 echo "[scan] ──────────────────────────────────────────────────────"
