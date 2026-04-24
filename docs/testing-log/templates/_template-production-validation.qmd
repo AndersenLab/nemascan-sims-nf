@@ -1,0 +1,117 @@
+---
+title: "Production Validation: {Description}"
+date: YYYY-MM-DD
+categories: [production-validation]
+status: pass          # pass | fail | partial-pass | in-progress
+branch: "main"        # branch or tag of the pipeline that generated the data
+---
+
+<!--
+TEMPLATE — copy to testing-log/{date}-{description}.qmd.
+Use for scientific comparisons: new pipeline vs legacy workflow, a prior production
+run, or any external ground truth. Fill in the parameters, findings, and optionally
+include analysis code with eval: false.
+
+For entries with executable R analysis (plots, tables), either:
+  (a) Set eval: false globally and embed key results as static text, OR
+  (b) Place data files in docs/testing-log/data/ and run quarto render to freeze.
+
+See docs/testing-workflow.qmd for instructions.
+-->
+
+One paragraph summarising what was compared, the mapping panel and genetic architectures
+tested, and the overall conclusion.
+
+**Conclusion:** [State the outcome in one sentence.]
+
+---
+
+## Parameters
+
+| Parameter | Value |
+|-----------|-------|
+| Species / release | — |
+| Mapping panel size | — |
+| nQTL range | — |
+| h² values | — |
+| Replicates (new pipeline) | — |
+| Replicates (reference) | — |
+| Effect distribution | — |
+| MAF | — |
+| Mapping method compared | — |
+| Significance threshold | — |
+
+Pipeline run location (if HPC):
+
+---
+
+## Reference Data
+
+| Dataset | Source | Description |
+|---------|--------|-------------|
+| New pipeline | `db_simulation_assessment_results.tsv` | Output from nemascan-sims-nf production run |
+| Reference | — | Legacy workflow / prior run / external ground truth |
+
+::: {.callout-note}
+Data files are not committed to this repository.
+To reproduce the analysis, place the required files in `docs/testing-log/data/raw/` and re-render.
+:::
+
+---
+
+## Statistical Design
+
+Describe any downsampling, bootstrapping, or matched-replicate approach used to make the comparison fair (e.g., correcting for replicate imbalance between workflows).
+
+---
+
+## Results
+
+### Key metrics
+
+| Metric | Value |
+|--------|-------|
+| — | — |
+
+### Interpretation
+
+Narrative summary of the results. Are the workflows concordant? What is the range of discordance across architectures?
+
+---
+
+## Analysis Code
+
+```{r}
+#| label: setup
+#| eval: false
+
+library(data.table)
+library(dplyr)
+library(ggplot2)
+
+# Update paths to match your data location
+raw_dir <- here::here("docs", "testing-log", "data", "raw")
+new_pipeline_file <- file.path(raw_dir, "db_simulation_assessment_results.tsv")
+reference_file    <- file.path(raw_dir, "reference_assessment.tsv")
+```
+
+```{r}
+#| label: load-data
+#| eval: false
+
+new_df <- data.table::fread(new_pipeline_file)
+ref_df <- data.table::fread(reference_file)
+```
+
+```{r}
+#| label: comparison
+#| eval: false
+
+# Add analysis code here
+```
+
+---
+
+## Notes
+
+<!-- Any caveats, known limitations, or follow-up items. -->
