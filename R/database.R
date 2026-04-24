@@ -353,7 +353,6 @@ trait_metadata_schema <- function() {
     marker_set_id     = arrow::utf8(),
     nqtl              = arrow::int32(),
     rep               = arrow::int32(),
-    sim_seed          = arrow::int32(),
     h2                = arrow::float64(),
     maf               = arrow::float64(),
     effect            = arrow::utf8(),
@@ -881,7 +880,6 @@ get_trait_metadata_path <- function(trait_id, base_dir) {
 #' @param marker_set_id Parent marker set hash from generate_marker_set_id()$hash
 #' @param nqtl Number of QTLs
 #' @param rep Replicate number
-#' @param sim_seed Integer seed used for the stochastic simulation
 #' @param h2 Heritability
 #' @param maf MAF threshold
 #' @param effect Effect distribution
@@ -889,7 +887,7 @@ get_trait_metadata_path <- function(trait_id, base_dir) {
 #' @param base_dir Database base directory
 #' @param overwrite Overwrite existing file (default TRUE for retry safety)
 write_trait_metadata <- function(trait_id, trait_hash_string, marker_set_id,
-                                 nqtl, rep, sim_seed, h2, maf, effect,
+                                 nqtl, rep, h2, maf, effect,
                                  population, cv_maf_effective, cv_ld,
                                  base_dir, overwrite = TRUE) {
   out_path <- get_trait_metadata_path(trait_id, base_dir)
@@ -902,7 +900,6 @@ write_trait_metadata <- function(trait_id, trait_hash_string, marker_set_id,
     marker_set_id     = as.character(marker_set_id),
     nqtl             = as.integer(nqtl),
     rep              = as.integer(rep),
-    sim_seed         = as.integer(sim_seed),
     h2               = as.numeric(h2),
     maf              = as.numeric(maf),
     effect           = as.character(effect),
