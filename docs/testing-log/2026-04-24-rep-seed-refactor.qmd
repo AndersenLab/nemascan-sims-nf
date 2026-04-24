@@ -1,0 +1,501 @@
+---
+title: "Verification: Remove Replicate-Based RNG Seeding"
+date: 2026-04-24
+categories: [verification]
+status: in-progress
+branch: "refactor/rep-seed-strat"
+pr: 0
+---
+
+This notebook walks through every verification step for `refactor/rep-seed-strat`, which removes
+the `rep`-as-RNG-seed pattern from `bin/create_causal_vars.py` and `bin/Create_Causal_QTLs.R`,
+and drops the `sim_seed int32` field from the trait metadata schema.
+
+Work through the steps in order. Steps 1–4 require only the cloned repo and no pipeline data;
+Steps 5–6 require a completed pipeline run.
+
+---
+
+## 0. Nextflow version pinning
+
+The pipeline requires Nextflow `>=24.10.0,<25.0.0`. Nextflow 25.x introduced breaking changes to the
+`nextflow.preview.output` publish-block API used here. Pin the exact version with the `NXF_VER`
+environment variable **before every run** on both local and HPC environments.
+
+```bash
+# Pin to the latest stable 24.10.x release.
+# Check https://github.com/nextflow-io/nextflow/releases for the current 24.10.x patch.
+export NXF_VER=24.10.5
+
+# Verify the active version
+nextflow -version
+# Expected: nextflow version 24.10.5.XXXX
+```
+
+::: {.callout-warning}
+If `nextflow -version` reports 25.x, all stub-runs and full runs below will emit publish-block
+warnings. These are **pre-existing** on machines with system Nextflow ≥ 25.x and are unrelated
+to this refactor — but set `NXF_VER=24.10.5` anyway to avoid false alarm output cluttering the
+verification results.
+:::
+
+Add to your shell profile so it persists across sessions on the local machine:
+
+```bash
+echo 'export NXF_VER=24.10.5' >> ~/.zshrc
+source ~/.zshrc
+```
+
+On Rockfish, set `NXF_VER` in the job submission script or your `~/.bashrc` before loading the
+Nextflow module:
+
+```bash
+export NXF_VER=24.10.5
+module load nextflow/24.10.5   # or whichever module name your cluster uses
+```
+
+---
+
+## 1. Pipeline wiring — stub-runs (local)
+
+Stub-runs skip all computation and confirm only that Nextflow can resolve every `input:` / `output:`
+declaration. Run one per relevant local profile. None of these require installed tools, VCFs, or
+containers — they complete in seconds.
+
+All commands assume you are in the project root.
+
+### 1a. Fixed architecture (`test`)
+
+The primary local test profile: 1 population, 5 nQTL, 0.8 h², 1 replicate.
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test -stub-run
+```
+
+**Pass criteria:** exits 0; all `DB_MIGRATION_WRITE_TRAIT_DATA` task stubs complete without
+`Missing output file` or `No such variable` errors.
+
+### 1b. Fixed architecture with Docker (`test,docker`)
+
+Confirms the Docker config and module wiring together.
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test,docker -stub-run
+```
+
+**Pass criteria:** same as 1a.
+
+### 1c. Variable architecture (`test_variable`)
+
+Exercises the broader parameter grid: multiple nQTL × h² × 2 replicates.
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_variable -stub-run
+```
+
+**Pass criteria:** exits 0 for all combinations in the cartesian product.
+
+### 1d. Non-marker CV pool (`test_cv_pool`)
+
+Exercises the code path where the causal-variant pool (`cv_maf=0.01`) is broader than the
+marker set (`ms_maf=0.05`).
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_cv_pool -stub-run
+```
+
+**Pass criteria:** exits 0; `PYTHON_SIMULATE_EFFECTS_GLOBAL` stubs complete.
+
+### 1e. Three-species path (`test_three_species`)
+
+Exercises the mixed-species pipeline path without requiring the `c_briggsae` / `c_tropicalis`
+test VCFs (stub-run skips bcftools extraction).
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_three_species -stub-run
+```
+
+**Pass criteria:** exits 0 across all 3 species × population groups.
+
+---
+
+## 2. Pipeline wiring — stub-runs (HPC)
+
+Run on Rockfish. These confirm the Singularity + SLURM wiring works with the full VCF paths.
+Requires `hpc_strains.txt` (generate with `bash data/test/generate_hpc_strainfile.sh` if absent).
+
+### 2a. HPC fixed architecture (`test_hpc,rockfish`)
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_hpc,rockfish -stub-run
+```
+
+### 2b. HPC variable architecture (`test_hpc_variable,rockfish`)
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_hpc_variable,rockfish -stub-run
+```
+
+### 2c. HPC non-marker CV pool (`test_hpc_cv_pool,rockfish`)
+
+Note: `--legacy_assess` is omitted — the legacy R path is incompatible with non-marker
+causal variants.
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_hpc_cv_pool,rockfish -stub-run
+```
+
+### 2d. HPC three-species (`test_hpc_three_species,rockfish`)
+
+Requires all three HPC VCF paths in `hpc_strains_three_species.txt`.
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_hpc_three_species,rockfish -stub-run
+```
+
+**Pass criteria for all HPC stub-runs:** exits 0; no SLURM submission errors (stub-run does not
+submit real jobs but does resolve the `clusterOptions` and container directives).
+
+---
+
+## 3. R schema and unit tests
+
+Verifies that `trait_metadata_schema()` now has 12 fields (no `sim_seed`), and that
+`write_trait_metadata()` compiles and runs without the removed parameter.
+
+### 3a. Full test suite
+
+```bash
+cd /path/to/refactor-rep-seed-strat
+
+Rscript tests/run_tests.R
+```
+
+**Pass criteria:**
+
+- All tests pass or skip cleanly (integration tests auto-skip when `TEST_DB_DIR` is unset).
+- No `unused argument (sim_seed = ...)` errors.
+- `test-db_structure.R` "trait metadata parquets have correct schema" test: if integration data
+  is present, asserts 12 expected columns and no `sim_seed` key.
+
+### 3b. Schema spot-check (R session, no pipeline data required)
+
+Open an R session in the project root, or run as a script:
+
+```r
+# Source only database.R (it has no external pipeline deps)
+source("R/utils.R")
+source("R/io.R")
+source("R/database.R")
+
+schema <- trait_metadata_schema()
+
+cat("Field count:", length(schema$names), "\n")
+cat("Fields:\n  ", paste(schema$names, collapse = "\n   "), "\n")
+
+stopifnot(
+  !"sim_seed" %in% schema$names,
+  length(schema$names) == 12L
+)
+cat("PASS: 12-column schema, sim_seed absent\n")
+```
+
+Expected output:
+
+```
+Field count: 12
+Fields:
+   trait_id
+   trait_hash_string
+   marker_set_id
+   nqtl
+   rep
+   h2
+   maf
+   effect
+   population
+   cv_maf_effective
+   cv_ld
+   created_at
+PASS: 12-column schema, sim_seed absent
+```
+
+### 3c. Round-trip write/read without `sim_seed`
+
+Confirms `write_trait_metadata()` writes and reads back cleanly under the new signature.
+
+```r
+source("R/utils.R")
+source("R/io.R")
+source("R/database.R")
+
+tmp <- tempdir()
+init_database(tmp)
+
+# Build a minimal trait_id for the round-trip
+ids <- build_ids_from_params(list(
+  population = "testpop", maf = 0.05, species = "c_elegans",
+  vcf_release_id = "test", ms_ld = 0.8,
+  nqtl = 5L, effect = "gamma", rep = 1L, h2 = 0.8,
+  cv_maf_effective = 0.05, cv_ld = 0.8
+))
+trait_id <- ids$trait_id$hash
+
+write_trait_metadata(
+  trait_id          = trait_id,
+  trait_hash_string = ids$trait_id$hash_string,
+  marker_set_id     = ids$ms_id$hash,
+  nqtl             = 5L,
+  rep              = 1L,
+  h2               = 0.8,
+  maf              = 0.05,
+  effect           = "gamma",
+  population       = "testpop",
+  cv_maf_effective = 0.05,
+  cv_ld            = 0.8,
+  base_dir         = tmp
+)
+
+result <- arrow::read_parquet(get_trait_metadata_path(trait_id, tmp))
+stopifnot(
+  !"sim_seed" %in% names(result),
+  result$rep == 1L,
+  result$nqtl == 5L
+)
+cat("PASS: round-trip write/read succeeded without sim_seed\n")
+```
+
+---
+
+## 4. Unseeded script behavior
+
+Runs each stochastic script twice with identical arguments and confirms the outputs differ —
+proving that OS-entropy seeding produces independent draws rather than a deterministic
+rep-seeded sequence.
+
+Under the old design, both runs would produce identical files (same seed = `rep` value).
+A non-zero `diff` exit code is the **expected** post-refactor result.
+
+### 4a. Python: `create_causal_vars.py`
+
+Requires a working Python environment with `numpy` and `pandas` (or run inside the Docker container).
+The test VCF's `.bim` file is used as the marker pool.
+
+```bash
+cd /tmp   # work outside the repo to keep outputs separate
+
+BIM=/Users/ryanmckeown/Desktop/refactor-rep-seed-strat/tests/fixtures/test.bim
+SCRIPT=/Users/ryanmckeown/Desktop/refactor-rep-seed-strat/bin/create_causal_vars.py
+
+# Run 1: nqtl=5, effect=gamma, rep=1
+python3 "$SCRIPT" "$BIM" 5 gamma 1
+mv causal_vars.txt causal_vars_run1.txt
+
+# Run 2: identical arguments
+python3 "$SCRIPT" "$BIM" 5 gamma 1
+mv causal_vars.txt causal_vars_run2.txt
+
+diff causal_vars_run1.txt causal_vars_run2.txt
+echo "diff exit code: $? (expected: non-zero = files differ = PASS)"
+```
+
+To find the correct `.bim` path after a local test run:
+
+```bash
+find Analysis_Results-*/work -name "CV_TO_SIMS.bim" | head -1
+```
+
+**Pass criteria:** `diff` exits non-zero; the two output files contain different variant selections
+and/or effect sizes.
+
+### 4b. R: `Create_Causal_QTLs.R`
+
+```bash
+cd /tmp
+
+BIM=/Users/ryanmckeown/Desktop/refactor-rep-seed-strat/tests/fixtures/test.bim
+SCRIPT=/Users/ryanmckeown/Desktop/refactor-rep-seed-strat/bin/Create_Causal_QTLs.R
+
+# Run 1: nqtl=5, effect=gamma, rep=1
+Rscript --vanilla "$SCRIPT" "$BIM" 5 gamma 1
+mv causal.variants.sim.5.txt causal_variants_run1.txt
+
+# Run 2: identical arguments
+Rscript --vanilla "$SCRIPT" "$BIM" 5 gamma 1
+mv causal.variants.sim.5.txt causal_variants_run2.txt
+
+diff causal_variants_run1.txt causal_variants_run2.txt
+echo "diff exit code: $? (expected: non-zero = files differ = PASS)"
+```
+
+**Pass criteria:** `diff` exits non-zero.
+
+---
+
+## 5. Integration tests — local pipeline run
+
+Runs the full pipeline locally and validates the resulting database. Requires Docker and the test
+VCF (`data/test/` directory). The `collect_test_data.sh` helper both runs the pipeline and
+collects its output into the `tests/integration_data/` directories expected by the test suite.
+
+### 5a. Fixed architecture
+
+```bash
+export NXF_VER=24.10.5
+
+bash tests/collect_test_data.sh --profile test
+```
+
+Then run the integration test suite with the collected data:
+
+```bash
+TEST_DB_DIR=tests/integration_data/test/db \
+TEST_WORK_DIR=tests/integration_data/test/work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+**Pass criteria:** all integration tests pass; `test-db_structure.R` "trait metadata parquets have
+correct schema" reports no missing columns and no `sim_seed` assertion failures.
+
+### 5b. Variable architecture
+
+```bash
+export NXF_VER=24.10.5
+
+bash tests/collect_test_data.sh --profile test_variable
+```
+
+```bash
+TEST_DB_DIR=tests/integration_data/test_variable/db \
+TEST_WORK_DIR=tests/integration_data/test_variable/work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test_variable/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test_variable/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+### 5c. Non-marker CV pool (no legacy assess)
+
+```bash
+export NXF_VER=24.10.5
+
+bash tests/collect_test_data.sh --profile test_cv_pool --no-legacy
+```
+
+```bash
+TEST_DB_DIR=tests/integration_data/test_cv_pool/db \
+TEST_WORK_DIR=tests/integration_data/test_cv_pool/work \
+TEST_DB_ASSESSMENT=tests/integration_data/test_cv_pool/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+### 5d. Spot-check trait parquet schema from any local run
+
+```r
+library(arrow)
+
+db_dir <- "tests/integration_data/test/db"   # adjust to whichever profile you ran
+
+trait_files <- list.files(
+  file.path(db_dir, "traits"),
+  pattern = "^[0-9a-f]{20}\\.parquet$",
+  full.names = TRUE
+)
+stopifnot(length(trait_files) > 0)
+
+schema <- read_parquet(trait_files[1], as_data_frame = FALSE)$schema
+cat("Columns:", paste(names(schema), collapse = ", "), "\n")
+
+stopifnot(!"sim_seed" %in% names(schema))
+stopifnot(length(names(schema)) == 12L)
+cat("PASS: 12-column schema, no sim_seed\n")
+```
+
+---
+
+## 6. Integration tests — HPC pipeline run (Rockfish)
+
+Run on Rockfish after the local checks pass. These use full-scale VCFs and SLURM submission.
+
+### 6a. Fixed architecture
+
+```bash
+export NXF_VER=24.10.5
+
+bash tests/collect_test_data.sh --profile test_hpc
+# collect_test_data.sh auto-appends ",rockfish" for HPC profiles
+```
+
+Or manually:
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_hpc,rockfish --legacy_assess
+```
+
+### 6b. Variable architecture
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_hpc_variable,rockfish --legacy_assess
+```
+
+### 6c. Non-marker CV pool
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_hpc_cv_pool,rockfish
+# --legacy_assess intentionally omitted: incompatible with non-marker CVs
+```
+
+### 6d. Three-species
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_hpc_three_species,rockfish --legacy_assess
+```
+
+**Pass criteria for all HPC runs:** pipeline exits 0; `db_simulation_assessment_results.tsv`
+present in the output directory; `traits/` parquet files have 12-column schema (spot-check
+with the R snippet from Step 5d, pointing `db_dir` at the HPC run's `db/` output).
+
+---
+
+## Summary checklist
+
+| # | Step | Environment | Pass criterion |
+|---|------|-------------|---------------|
+| 0 | `NXF_VER=24.10.5` pinned | local + HPC | `nextflow -version` shows 24.10.x |
+| 1a | stub-run `test` | local | exits 0, no wiring errors |
+| 1b | stub-run `test,docker` | local | exits 0 |
+| 1c | stub-run `test_variable` | local | exits 0 |
+| 1d | stub-run `test_cv_pool` | local | exits 0 |
+| 1e | stub-run `test_three_species` | local | exits 0 |
+| 2a | stub-run `test_hpc,rockfish` | Rockfish | exits 0 |
+| 2b | stub-run `test_hpc_variable,rockfish` | Rockfish | exits 0 |
+| 2c | stub-run `test_hpc_cv_pool,rockfish` | Rockfish | exits 0 |
+| 2d | stub-run `test_hpc_three_species,rockfish` | Rockfish | exits 0 |
+| 3a | `Rscript tests/run_tests.R` | local | all pass/skip |
+| 3b | schema spot-check | local R session | 12 fields, no `sim_seed` |
+| 3c | round-trip write/read | local R session | read-back succeeds, no `sim_seed` |
+| 4a | Python script unseeded | local | `diff` exits non-zero |
+| 4b | R script unseeded | local | `diff` exits non-zero |
+| 4c | Batch-independence | local | `diff` exits non-zero |
+| 5a | full run `test` + integration tests | local | all tests pass |
+| 5b | full run `test_variable` + tests | local | all tests pass |
+| 5c | full run `test_cv_pool` + tests | local | all tests pass |
+| 5d | trait parquet schema check | local R | 12-col, no `sim_seed` |
+| 6a | HPC run `test_hpc,rockfish` | Rockfish | exits 0, assessment TSV present |
+| 6b | HPC run `test_hpc_variable,rockfish` | Rockfish | exits 0 |
+| 6c | HPC run `test_hpc_cv_pool,rockfish` | Rockfish | exits 0 |
+| 6d | HPC run `test_hpc_three_species,rockfish` | Rockfish | exits 0 |

@@ -118,7 +118,7 @@ You do not need one for routine bug fixes with clear integration test coverage.
 
 ### Notebook structure
 
-Create the notebook at `docs/templates/verify-{feature-slug}.qmd` in your feature branch. A template is available at `docs/testing-log/_template-verification.qmd` — copy it to `docs/verify-{feature}.qmd` to get the standard section structure and summary checklist.
+Create the notebook directly at `docs/testing-log/{YYYY-MM-DD}-{feature}.qmd`. A template is available at `docs/testing-log/templates/_template-verification.qmd` — copy it and fill in the placeholders.
 
 The standard sections are:
 
@@ -131,14 +131,9 @@ The standard sections are:
 | `## 4. Integration tests — HPC` | Rockfish run (omit if HPC is not affected) |
 | `## Summary checklist` | Table with `[ ]` / `[x]` pass/fail per step |
 
-### After the PR merges
+### Before the PR merges
 
-Move the verification notebook into the [Testing Log](testing-log.qmd):
-
-1. Copy `docs/verify-{feature}.qmd` → `docs/testing-log/{date}-{feature}.qmd`
-2. Update the frontmatter: replace `subtitle` with `categories` and `status` (see [Testing Log Entry Format](#testing-log-entry-format) below)
-3. Delete `docs/verify-{feature}.qmd` from the merged state (it is now archived in `testing-log/`)
-4. Commit the archive as a follow-up commit on `testing-docs` (or include in the merge PR)
+Update `status: in-progress` → `status: pass` (or `fail`) in the frontmatter. The notebook is already in `docs/testing-log/` and requires no move or archiving step.
 
 ---
 
@@ -166,7 +161,7 @@ pr: 157                   # optional: PR number
 | `production-validation` | Scientific comparison of pipeline output vs. a reference | `_template-production-validation.qmd` |
 | `scenario` | Targeted test for a specific edge case or configuration | `_template-scenario.qmd` |
 
-All four templates live in `docs/testing-log/`. Copy the relevant one and fill in the placeholders.
+All four templates live in `docs/testing-log/templates/`. Copy the relevant one and fill in the placeholders.
 
 **Naming convention:** `{YYYY-MM-DD}-{brief-slug}.qmd`
 Examples: `2026-03-27-hpc-integration-test.qmd`, `2026-04-15-rep-seed-refactor.qmd`
@@ -203,8 +198,7 @@ For entries without executable code, write the findings as prose with a code blo
 
 | Artifact | Location |
 |----------|----------|
-| Feature verification notebook (in-progress) | `docs/verify-{feature}.qmd` in the feature branch |
-| Archived verification notebook (after merge) | `docs/testing-log/{date}-{feature}.qmd` on `testing-docs` |
+| Feature verification notebook | `docs/testing-log/{date}-{feature}.qmd` |
 | Integration test log entry | `docs/testing-log/{date}-integration-run.qmd` |
 | Production validation report | `docs/testing-log/{date}-{description}.qmd` |
 | Raw test runner output (optional) | `tests/integration_results_{date}.log` (existing convention) |
