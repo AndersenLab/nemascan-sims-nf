@@ -122,7 +122,7 @@ if __name__ == "__main__":
         )
         sys.exit(1)
     rep = int(sys.argv[4])
-    rng = np.random.default_rng(rep)
+    rng = np.random.default_rng()
     # Read in annotated strain_set variants
     strain_var = load_strain_set_variants(strain_set_variant_file)
 
