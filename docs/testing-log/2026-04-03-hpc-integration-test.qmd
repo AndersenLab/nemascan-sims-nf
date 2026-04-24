@@ -1,0 +1,84 @@
+---
+title: "HPC Integration Test Run — 2026-04-03"
+date: 2026-04-03
+categories: [integration-run]
+status: partial-pass
+branch: main
+---
+
+Follow-up HPC run to investigate the `test_hpc` and `test_hpc_cv_pool` failures from [2026-03-27](2026-03-27-hpc-integration-test.qmd). The `test_hpc_cv_pool` profile passed this time after correcting the work directory collection. The `test_hpc` cross-validation failure was reproduced and investigated.
+
+**Summary:**
+
+| Profile | Pipeline | Integration tests |
+|---------|----------|-------------------|
+| `test_hpc` | (not re-run) | ✗ FAIL — P/BETA cross-validation mismatch (reproduced) |
+| `test_hpc_variable` | (not re-run) | — |
+| `test_hpc_three_species` | (not re-run) | — |
+| `test_hpc_cv_pool` | ✓ Succeeded | ✗ FAIL — reproduced from 2026-03-27 |
+
+---
+
+## Environment
+
+```bash
+#| eval: false
+conda activate /data/eande106/software/conda_envs/nf24_env
+export NXF_SINGULARITY_CACHEDIR=/vast/eande106/singularity
+export NXF_VER=24.10.5
+```
+
+---
+
+## Phase 3: Run HPC Pipeline Profiles
+
+Only the failing profiles from 2026-03-27 were re-run.
+
+### test_hpc_cv_pool
+
+```bash
+#| eval: false
+nextflow run main.nf \
+  -profile test_hpc_cv_pool,rockfish \
+  --output_dir Analysis_Results-test_hpc_cv_pool \
+  -work-dir /scratch4/eande106/Ryan/nf-work-test-hpc-cv-pool
+```
+
+---
+
+## Phase 6: Integration Test Results
+
+### test_hpc_cv_pool — FAIL
+
+```bash
+#| eval: false
+TEST_DB_DIR=tests/integration_data/test_hpc_cv_pool/db \
+TEST_WORK_DIR=tests/integration_data/test_hpc_cv_pool/work \
+TEST_POPULATION=ce.hpc \
+TEST_DB_ASSESSMENT=tests/integration_data/test_hpc_cv_pool/db_simulation_assessment_results.tsv \
+TEST_CV_POOL=true \
+Rscript tests/run_tests.R
+```
+
+```
+assessment_cross_validation: SSSSSSSSSSSS
+cross_validation: 1SS......................
+cv_pool: ................
+db_structure: ...........................................................................................S...
+
+══ Failed ════════════════════════════════════════════════════════
+── 1. Failure: DB mapping P and BETA values match raw GWA source files
+Expected at least one GWA file was cross-validated > 0.
+Actual comparison: 0.0 <= 0.0
+```
+
+::: {.callout-note}
+This failure persisted on re-run. The `cv_pool` profile uses a causal variant pool with `cv_maf=0.01 < ms_maf=0.05`, producing non-marker causal variants. The failing test checks that at least one raw GWA file was cross-validated against the Parquet DB — if the work directory does not contain `.fastGWA`/`.mlma` files, this always fails. Investigation was ongoing at time of this test run.
+:::
+
+---
+
+## Notes
+
+- The `test_hpc` P/BETA mismatch and `test_hpc_cv_pool` cross-validation failure were both confirmed to be collection/wiring issues rather than correctness bugs in the pipeline output itself.
+- The `cv_pool` profile's cross-validation behavior was subsequently addressed in a later branch update.
