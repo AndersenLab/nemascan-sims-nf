@@ -89,7 +89,7 @@ Verifies the Parquet database written by `DB_MIGRATION_*` modules. Requires `TES
 | Marker set schema | Correct 6-column schema; FK columns absent from data files |
 | Mappings metadata | Core columns present; algorithm values `"inbred"`/`"loco"`; both PCA flags present; mapping IDs are 20-char hex |
 | Genotype matrix schema | Long-format schema: `marker_set_id utf8`, `CHROM utf8`, `POS int32`, `strain utf8`, `allele float64` |
-| Trait metadata schema | 13 columns including `nqtl int32`, `sim_seed int32`, `h2 float64`; `trait_id utf8` |
+| Trait metadata schema | 12 columns including `nqtl int32`, `h2 float64`; `trait_id utf8` |
 | Phenotype schema | `strain`/`phenotype` columns; no NA phenotype values |
 | Causal variants schema | 6 columns; `QTL` values in `CHROM:POS` format |
 | **Inbred marker invariant** | `meta$n_markers == marker_set_metadata$n_markers` — GCTA processes all markers for inbred |
