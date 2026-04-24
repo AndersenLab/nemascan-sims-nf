@@ -11,6 +11,20 @@ All notable changes to `nemascan-sims-nf` are recorded here. The project does
 not use version tags; entries are organized by development phase and date.
 
 
+## [Unreleased] — April 2026
+
+### Removed
+- **Replicate-based RNG seeding removed from causal variant scripts** (`refactor/rep-seed-strat`, 2026-04-23):
+  The `fix/rand-seed-stochastic-scripts` fix used `rep` directly as the RNG seed, which prevented
+  scaling up simulations (adding replicates reused existing seeds) and created seed collisions when
+  failed replicates were re-run with a new ID. Because GCTA phenotype simulation is itself
+  non-deterministic (no `--seed` flag), there is no pipeline-wide reproducibility to preserve.
+  - `bin/create_causal_vars.py`: `np.random.default_rng(rep)` → `np.random.default_rng()` (OS-entropy seed)
+  - `bin/Create_Causal_QTLs.R`: `set.seed(as.integer(rep))` call removed
+  - `trait_metadata_schema()` `sim_seed int32` field removed; `write_trait_metadata()` signature updated
+  - `write_trait_data.R` no longer passes `sim_seed`
+  - `test-db_structure.R` updated to expect 12-column trait metadata schema (no `sim_seed`)
+
 ## [Unreleased] — March 2026
 
 ### Fixed
@@ -156,17 +170,11 @@ not use version tags; entries are organized by development phase and date.
     overridable without editing the config file.
 
 ### Fixed
-- **Stochastic script reproducibility** (`fix/rand-seed-stochastic-scripts`, 2026-03-05): causal variant
-  selection and effect size simulation are now fully reproducible across pipeline runs:
-  - `bin/create_causal_vars.py` seeds `np.random.default_rng(rep)` at startup; all stochastic calls
-    (`rng.choice`, `rng.gamma`, `rng.uniform`) use the seeded Generator. Previously, `np.random.default_rng()`
-    was called without a seed, making results non-deterministic.
-  - `bin/Create_Causal_QTLs.R` calls `set.seed(as.integer(rep))` before any stochastic draws (`rgamma`,
-    `sample`, `runif`).
-  - Both Nextflow modules (`PYTHON_SIMULATE_EFFECTS_GLOBAL`, `R_SIMULATE_EFFECTS_GLOBAL`,
-    `R_SIMULATE_EFFECTS_LOCAL`) now pass `${rep}` as the seed argument to the scripts.
-  - `trait_metadata_schema()` gains a new `sim_seed` (int32) field; `write_trait_metadata()` stores the
-    seed used for each simulated trait, enabling exact post-hoc reproduction without the Nextflow cache.
+- **Stochastic script RNG wired through single Generator** (`fix/rand-seed-stochastic-scripts`, 2026-03-05): causal variant
+  selection and effect size simulation calls (`rng.choice`, `rng.gamma`, `rng.uniform`) were unified under a
+  single NumPy `Generator` instance in `create_causal_vars.py`. Previously, `simulate_effect_gamma()` called
+  `np.random.default_rng()` internally, creating an independent unseeded Generator. The rep-based seeding
+  added in this fix was subsequently removed — see `refactor/rep-seed-strat` above.
 
 ### Added
 - **Non-marker causal variants** (`feature/add-nonmarker-cvs`, 2026-03-03): causal variants
