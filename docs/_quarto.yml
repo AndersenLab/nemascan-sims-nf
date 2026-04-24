@@ -36,11 +36,19 @@ website:
           - text: "Verifying Simulation Outputs"
             href: verifying-outputs.qmd
           - text: "---"
+          - text: "Testing Workflow Guide"
+            href: testing-workflow.qmd
+          - text: "Testing Log"
+            href: testing-log.qmd
+          - text: "---"
           - text: "Transfer & Archival"
             href: transfer-and-archival.qmd
           - text: "---"
           - text: "Changelog"
             href: changelog.qmd
+
+execute:
+  freeze: auto
 
 format:
   html:

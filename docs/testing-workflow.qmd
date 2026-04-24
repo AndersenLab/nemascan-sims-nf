@@ -1,0 +1,212 @@
+---
+title: "Testing Workflow Guide"
+subtitle: "When to test, what to run, and how to document results"
+date: last-modified
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 3
+---
+
+This guide answers: *what should I test before merging a PR, and how do I record the results?* It is a workflow guide — for mechanics of each test tier, see the dedicated pages: [Local Integration Testing](testing-integration.qmd), [HPC End-to-End Testing](testing-hpc.qmd), [Output Validation](testing-output-validation.qmd).
+
+---
+
+## Testing Philosophy
+
+Integration tests against real pipeline output are the **primary evaluation metric** for pipeline correctness. Static fixtures and unit tests catch isolated function regressions, but only a full pipeline run exposes the class of bugs that matter most: GCTA marker exclusions, Hive partition path construction, Nextflow channel wiring, schema drift between write and read, and floating-point determinism across SLURM nodes.
+
+The testing tiers in order of importance:
+
+| Tier | When required | What it catches |
+|------|--------------|----------------|
+| Integration tests | Every significant change | End-to-end correctness with real GCTA output |
+| Unit tests | Any change to `R/` functions | Pure-computation correctness |
+| Stub-runs | Every change to `main.nf` or any module `main.nf` | Nextflow channel wiring |
+| Python tests | Changes to `bin/create_causal_vars.py` | Causal variant generation correctness |
+
+---
+
+## Pre-Merge Testing Checklist
+
+Work through this checklist in order. Earlier steps are cheap and catch most wiring errors before committing to a full pipeline run (which takes 20–45 minutes locally, longer on HPC).
+
+### Step 0: Pin Nextflow version
+
+```bash
+export NXF_VER=24.10.5
+nextflow -version   # must show 24.10.x
+```
+
+Add to `~/.zshrc` on local machines and `~/.bashrc` on Rockfish so it persists. See [Setup](setup.qmd) for details.
+
+### Step 1: Stub-runs (wiring check)
+
+Run one stub-run per relevant local profile. These take seconds and require no containers, VCFs, or data.
+
+```bash
+export NXF_VER=24.10.5
+
+# Always run these for any pipeline change
+nextflow run main.nf -profile test -stub-run
+nextflow run main.nf -profile test,docker -stub-run
+nextflow run main.nf -profile test_variable -stub-run
+
+# Run if the change affects multi-species or CV pool code paths
+nextflow run main.nf -profile test_three_species -stub-run
+nextflow run main.nf -profile test_cv_pool -stub-run
+```
+
+**Pass criterion:** exits 0 with no `Missing output file` or `No such variable` errors.
+
+### Step 2: Unit tests (no pipeline run needed)
+
+```bash
+Rscript tests/run_tests.R
+```
+
+Integration tests skip automatically when `TEST_DB_DIR` is not set. Only unit tests run. Check for failures before investing time in a full pipeline run.
+
+### Step 3: Local integration tests
+
+Run the full pipeline and validate the resulting database:
+
+```bash
+export NXF_VER=24.10.5
+bash tests/collect_test_data.sh --profile test
+```
+
+Then run the test suite against the collected output:
+
+```bash
+TEST_DB_DIR=tests/integration_data/test/db \
+TEST_WORK_DIR=tests/integration_data/test/work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+For changes that touch multi-population code paths or the CV pool logic, also run:
+
+```bash
+bash tests/collect_test_data.sh --profile test_variable
+bash tests/collect_test_data.sh --profile test_cv_pool --no-legacy
+```
+
+See [Local Integration Testing](testing-integration.qmd) for full environment variable reference and profile-specific commands.
+
+### Step 4: HPC integration tests (for Rockfish-specific changes)
+
+Required when changing SLURM configuration, Singularity container paths, or any code that has behaved differently on HPC vs local in the past. See [HPC End-to-End Testing](testing-hpc.qmd) for the full workflow.
+
+---
+
+## Feature Verification Notebooks
+
+For significant feature branches — schema changes, new pipeline stages, refactors that affect output determinism — create a verification notebook that documents the pre-production checks.
+
+### When to create one
+
+Create a verification notebook when:
+- A schema field is added, removed, or renamed
+- A new pipeline module or process is added
+- A change affects RNG seeding, thread counts, or numeric precision
+- The change is complex enough that a future developer would benefit from a record of what was validated
+
+You do not need one for routine bug fixes with clear integration test coverage.
+
+### Notebook structure
+
+Create the notebook at `docs/templates/verify-{feature-slug}.qmd` in your feature branch. A template is available at `docs/testing-log/_template-verification.qmd` — copy it to `docs/verify-{feature}.qmd` to get the standard section structure and summary checklist.
+
+The standard sections are:
+
+| Section | Purpose |
+|---------|---------|
+| `## 0. Prerequisites` | `NXF_VER` pinning; any required input files |
+| `## 1. Stub-runs (local)` | One sub-section per relevant profile |
+| `## 2. Unit / schema tests` | R spot-checks runnable without pipeline data |
+| `## 3. Integration tests — local` | Full pipeline run + `Rscript tests/run_tests.R` |
+| `## 4. Integration tests — HPC` | Rockfish run (omit if HPC is not affected) |
+| `## Summary checklist` | Table with `[ ]` / `[x]` pass/fail per step |
+
+### After the PR merges
+
+Move the verification notebook into the [Testing Log](testing-log.qmd):
+
+1. Copy `docs/verify-{feature}.qmd` → `docs/testing-log/{date}-{feature}.qmd`
+2. Update the frontmatter: replace `subtitle` with `categories` and `status` (see [Testing Log Entry Format](#testing-log-entry-format) below)
+3. Delete `docs/verify-{feature}.qmd` from the merged state (it is now archived in `testing-log/`)
+4. Commit the archive as a follow-up commit on `testing-docs` (or include in the merge PR)
+
+---
+
+## Testing Log Entry Format
+
+Every file under `docs/testing-log/` must have this frontmatter:
+
+```yaml
+---
+title: "Descriptive title of what was tested"
+date: YYYY-MM-DD          # date the test was completed
+categories: [integration-run]  # see categories below
+status: pass              # pass | fail | partial-pass | in-progress
+branch: feature/my-branch  # optional
+pr: 157                   # optional: PR number
+---
+```
+
+**Categories and templates** (choose one):
+
+| Value | Use for | Template |
+|-------|---------|---------|
+| `integration-run` | An execution of `tests/run_tests.R` against pipeline output | `_template-integration-run.qmd` |
+| `verification` | A feature branch pre-production checklist | `_template-verification.qmd` |
+| `production-validation` | Scientific comparison of pipeline output vs. a reference | `_template-production-validation.qmd` |
+| `scenario` | Targeted test for a specific edge case or configuration | `_template-scenario.qmd` |
+
+All four templates live in `docs/testing-log/`. Copy the relevant one and fill in the placeholders.
+
+**Naming convention:** `{YYYY-MM-DD}-{brief-slug}.qmd`
+Examples: `2026-03-27-hpc-integration-test.qmd`, `2026-04-15-rep-seed-refactor.qmd`
+
+---
+
+## Adding an Integration Test Run Entry
+
+After running `Rscript tests/run_tests.R`, capture the results in a log entry:
+
+1. Copy `docs/testing-log/_template-integration-run.qmd` → `docs/testing-log/{date}-integration-run.qmd`
+2. Set `status:` to `pass`, `fail`, or `partial-pass`
+3. Fill in the profile(s) tested and paste the test runner output into each profile's code block
+4. Add a **Notes** section for failures or unexpected skips
+
+There is no need to commit the raw `tests/integration_results_*.log` file separately — the testing log entry is the record.
+
+---
+
+## Production Validation Entries
+
+Production validations compare pipeline output to an external reference (the legacy NemaScan workflow, a prior production run, or a known biological ground truth). Start from `docs/testing-log/_template-production-validation.qmd`.
+
+For entries with embedded R analysis (plots, tables), two options:
+
+- **Static text:** set `execute: eval: false` globally and paste key numeric results as prose or tables. Best when data files are too large to commit.
+- **Frozen output:** place required data files under `docs/testing-log/data/raw/` (committed), then run `quarto render docs/` once to generate `_freeze/` artifacts and commit them. Quarto will not re-execute those chunks on subsequent renders.
+
+For entries without executable code, write the findings as prose with a code block (marked `eval: false`) showing the commands that generated the data.
+
+---
+
+## Summary: What Belongs Where
+
+| Artifact | Location |
+|----------|----------|
+| Feature verification notebook (in-progress) | `docs/verify-{feature}.qmd` in the feature branch |
+| Archived verification notebook (after merge) | `docs/testing-log/{date}-{feature}.qmd` on `testing-docs` |
+| Integration test log entry | `docs/testing-log/{date}-integration-run.qmd` |
+| Production validation report | `docs/testing-log/{date}-{description}.qmd` |
+| Raw test runner output (optional) | `tests/integration_results_{date}.log` (existing convention) |
+| Test fixtures | `tests/fixtures/` |
+| Integration test data | `tests/integration_data/{profile}/` |
