@@ -427,7 +427,7 @@ test_that("trait metadata parquets have correct schema", {
   schema <- arrow::read_parquet(trait_files[1], as_data_frame = FALSE)$schema
   expected_cols <- c(
     "trait_id", "trait_hash_string", "marker_set_id",
-    "nqtl", "rep", "sim_seed", "h2", "maf", "effect",
+    "nqtl", "rep", "h2", "maf", "effect",
     "population", "cv_maf_effective", "cv_ld", "created_at"
   )
   expect_true(all(expected_cols %in% names(schema)),
@@ -438,7 +438,6 @@ test_that("trait metadata parquets have correct schema", {
   )
   expect_equal(schema$GetFieldByName("trait_id")$type, arrow::utf8())
   expect_equal(schema$GetFieldByName("nqtl")$type, arrow::int32())
-  expect_equal(schema$GetFieldByName("sim_seed")$type, arrow::int32())
   expect_equal(schema$GetFieldByName("h2")$type, arrow::float64())
 })
 
