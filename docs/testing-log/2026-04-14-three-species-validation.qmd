@@ -1,0 +1,202 @@
+---
+title: "Production Three-Species Simulation Validation"
+date: 2026-04-14
+categories: [production-validation]
+status: pass
+---
+
+Comparison of simulation performance (Power and FDR) between the new `nemascan-sims-nf` pipeline and the legacy NemaScan workflow, using full-population panels for all three *Caenorhabditis* species. Focus: Inbred PCA mappings with Bonferroni threshold — the only method with comparable data from both workflows.
+
+**Conclusion:** The two pipelines are concordant. Median absolute Power difference was **3.8%** and median absolute FDR difference was **3.7%** across all genetic architectures. Variation between pipelines was substantially smaller than variation across replicates of the same architecture.
+
+---
+
+## Parameters
+
+| Parameter | Value |
+|-----------|-------|
+| *C. elegans* release (n = 550) | 20220216 |
+| *C. briggsae* release (n = 610) | 20210803 |
+| *C. tropicalis* release (n = 509) | 20210901 |
+| nQTL | 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 25, 50 |
+| h² | 0.2, 0.4, 0.6, 0.8 |
+| Reps (new pipeline) | 50 |
+| Reps (legacy workflow) | 100 |
+| Effect distribution | gamma |
+| MAF (marker set and CV pool) | 0.05 |
+| LD | 0.8 |
+| Mapping method compared | Inbred PCA, Bonferroni threshold |
+
+Pipeline runs were executed on Rockfish (Rockfish output directory: `/vast/eande106/projects/Ryan/simulation_pipeline/nemascan-sims-nf/Sims_ce-cb-ct_nqtl1-50_h2grid_50reps/`). Nextflow execution reports are preserved: runs completed 2026-04-09 and 2026-04-10.
+
+---
+
+## Key Differences Between Workflows
+
+| Aspect | Legacy NemaScan | nemascan-sims-nf |
+|--------|-----------------|-----------------|
+| Replicate count | 100 per (nQTL, h², species) | 50 per cell |
+| Assessment output | Per-species TSVs (`INBRED_PCA_all_sims.tsv`) | Single combined TSV (`db_simulation_assessment_results.tsv`) |
+| Significance thresholds | Bonferroni only | Bonferroni + EIGEN |
+| Mapping methods | Inbred PCA only | Inbred + LOCO, PCA + noPCA |
+| RNG | Not deterministic | Seeded per replicate (`rep`-based seeding, later removed) |
+
+Because the two pipelines generated different trait draws (different RNG, different simulation seeds), a one-to-one replicate comparison is not possible. Instead, we compared distributions across the same `(species, nQTL, h²)` parameter cells using a matched-replicate resampling design.
+
+---
+
+## Statistical Design
+
+To correct for the 4× replicate imbalance (100 legacy vs 25 matched new-pipeline):
+
+1. For each `(species, nQTL, h²)` cell, drew 25 legacy replicates without replacement
+2. Computed mean Power and mean FDR for that 25-replicate sample
+3. Repeated 500 times (Monte Carlo resampling)
+4. Took the median of the 500 mean-power and mean-FDR estimates
+5. Compared to the new pipeline's mean over 25 replicates for the same cell
+
+Absolute difference = |new pipeline mean − median legacy estimate| per cell.
+
+---
+
+## Results
+
+### Power concordance
+
+| Metric | Value |
+|--------|-------|
+| Median absolute Power difference | **3.8%** |
+| 90th percentile absolute Power difference | 12% |
+| Maximum absolute Power difference | ~12% (worst-case architecture) |
+
+### FDR concordance
+
+| Metric | Value |
+|--------|-------|
+| Median absolute FDR difference | **3.7%** |
+| 90th percentile absolute FDR difference | 10.4% |
+| Maximum absolute FDR difference | ~10.4% (worst-case architecture) |
+
+Worst-case architectures (largest absolute differences) were those with extreme genetic parameters (very high nQTL or very low h²) where both pipelines show high variability across replicates. The between-pipeline variation at these extremes was smaller than within-pipeline replicate variance.
+
+Per-species concordance scatter plots (Power and FDR for each `(nQTL, h²)` cell) show tight clustering around the 1:1 line for all three species.
+
+---
+
+## Replication Sensitivity
+
+A secondary sensitivity sweep varied the number of legacy replicates used in each matched sample (10, 25, 50, 75). The median and 90th percentile absolute differences were stable across all replicate counts, confirming that the 25-replicate comparison is not underpowered.
+
+---
+
+## Data and Code
+
+::: {.callout-note}
+The full analysis notebook (`2026-04-14_simulation-comparison.qmd`) is in the `nemascan-sims-nf-notes` Obsidian vault at `Testing/2026-04-03-production_three_species_sims/`. Raw data files are not committed to this repository due to size (8–70 MB per species). To reproduce the analysis locally:
+
+1. Copy data files to `docs/testing-log/data/raw/`:
+   - `db_simulation_assessment_results.tsv` from the production Rockfish run
+   - `ce_INBRED_PCA_all_sims.tsv`, `cb_INBRED_PCA_all_sims.tsv`, `ct_INBRED_PCA_all_sims.tsv` from the legacy workflow
+2. Run `quarto render docs/testing-log/2026-04-14-three-species-validation.qmd`
+:::
+
+### Setup
+
+```{r}
+#| label: setup
+#| eval: false
+
+set.seed(123)
+
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(here)
+library(gt)
+library(purrr)
+
+# Data paths — place files in docs/testing-log/data/raw/ to render
+raw_dir <- here::here("docs", "testing-log", "data", "raw")
+ce_sim_file        <- file.path(raw_dir, "ce_INBRED_PCA_all_sims.tsv")
+cb_sim_file        <- file.path(raw_dir, "cb_INBRED_PCA_all_sims.tsv")
+ct_sim_file        <- file.path(raw_dir, "ct_INBRED_PCA_all_sims.tsv")
+db_assessment_file <- file.path(raw_dir, "db_simulation_assessment_results.tsv")
+```
+
+### Load legacy workflow data
+
+```{r}
+#| label: load-legacy
+#| eval: false
+
+load_assessed_sim_data <- function(sim_file_name) {
+  column_names <- c(
+    "QTL", "Simulated", "Detected", "CHROM", "POS", "RefAllele",
+    "Frequency", "Effect", "Simulated.QTL.VarExp", "log10p", "aboveBF",
+    "startPOS", "peakPOS", "endPOS", "detected.peak", "interval.Frequency",
+    "BETA", "interval.log10p", "peak_id", "interval_size", "interval.var.exp",
+    "top.hit", "nQTL", "simREP", "h2", "maf", "effect_distribution",
+    "strain_set_id", "algorithm_id"
+  )
+  data.table::fread(sim_file_name, col.names = column_names)
+}
+
+ce_sim_df <- load_assessed_sim_data(ce_sim_file)
+cb_sim_df <- load_assessed_sim_data(cb_sim_file)
+ct_sim_df <- load_assessed_sim_data(ct_sim_file)
+```
+
+### Load new pipeline output
+
+```{r}
+#| label: load-new-pipeline
+#| eval: false
+
+db_df <- data.table::fread(db_assessment_file)
+
+# Filter to Inbred PCA, Bonferroni threshold for comparison
+db_inbred_pca_bf <- db_df |>
+  dplyr::filter(
+    grepl("inbred", algorithm_id, ignore.case = TRUE),
+    grepl("pca",    algorithm_id, ignore.case = TRUE),
+    grepl("BF",     algorithm_id, ignore.case = TRUE)
+  )
+```
+
+### Matched-replicate resampling
+
+```{r}
+#| label: matched-resampling
+#| eval: false
+
+# Downsample legacy data to 25 replicates per (species, nQTL, h2) cell, 500 times
+n_target   <- 25
+n_boot     <- 500
+
+downsample_cell <- function(df, n_target, n_boot) {
+  purrr::map_dfr(seq_len(n_boot), function(b) {
+    sampled_reps <- sample(unique(df$simREP), min(n_target, length(unique(df$simREP))), replace = FALSE)
+    df |>
+      dplyr::filter(simREP %in% sampled_reps) |>
+      dplyr::summarise(
+        mean_power = mean(Detected[Simulated == TRUE], na.rm = TRUE),
+        mean_fdr   = mean(!Detected[Simulated == FALSE], na.rm = TRUE),
+        .groups = "drop"
+      ) |>
+      dplyr::mutate(boot = b)
+  })
+}
+```
+
+---
+
+## Figures
+
+The following figures were generated by this analysis and are stored in the Obsidian vault:
+
+- Per-species Power boxplots by nQTL and h² (`plot-ce-power-1.png`, `plot-cb-power-1.png`, `plot-ct-power-1.png`)
+- Per-species FDR boxplots by nQTL and h² (`plot-ce-fdr-1.png`, `plot-cb-fdr-1.png`, `plot-ct-fdr-1.png`)
+- Per-species concordance scatter plots (`plot-concordance-cb-1.png`)
+- Overall Power and FDR distributions (`plot-power-1.png`, `plot-fdr-1.png`)
+- Replication sensitivity curve (`plot-replication-sensitivity-1.png`)
