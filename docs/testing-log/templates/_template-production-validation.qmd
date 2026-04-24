@@ -26,6 +26,18 @@ tested, and the overall conclusion.
 
 ---
 
+## Summary
+
+| Metric | Value |
+|--------|-------|
+| Median absolute Power difference | — |
+| Median absolute FDR difference | — |
+| Max absolute Power difference | — |
+| Max absolute FDR difference | — |
+| Between-workflow vs within-workflow variation | — |
+
+---
+
 ## Parameters
 
 | Parameter | Value |
