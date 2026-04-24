@@ -113,15 +113,16 @@ used:
 | Input | `CV_TO_SIMS.bim` | PLINK marker information file from the CV pool (`PLINK_RECODE_CV_VCF`, Phase 1); variant IDs in column 2 |
 | Input | `nqtl` (val) | Number of causal variants to select |
 | Input | `effect` (val) | Effect size specification: `gamma` or `low-high` range |
-| Input | `rep` (val) | Replicate number; used as RNG seed and in output filename |
+| Input | `rep` (val) | Replicate number; used in output filename |
 | Output | `causal.variants.sim.${nqtl}.${rep}.txt` | Space-separated file: marker ID (col 1) and effect size (col 2), one row per causal variant |
 
 ::: {.callout-note}
-## Reproducibility: RNG seeding
+## Stochastic causal variant selection
 
-`create_causal_vars.py` seeds NumPy's `np.random.default_rng(rep)` at startup, so identical
-`rep` values always produce the same causal variant selection and effect sizes. The seed value
-(`rep`) is stored as `sim_seed` in the trait metadata Parquet file for post-hoc verification.
+`create_causal_vars.py` draws an OS-entropy seed via `np.random.default_rng()` (no fixed seed),
+so each task produces independent causal variant selection and effect sizes regardless of replicate
+number. This allows simulation batches to be scaled up (e.g., doubling replicate count at reviewer
+request) without any seed collision between the original and extended runs.
 :::
 
 ### Example output
