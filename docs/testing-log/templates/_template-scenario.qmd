@@ -1,0 +1,110 @@
+---
+title: "Scenario Test: {Description}"
+date: YYYY-MM-DD
+categories: [scenario]
+status: pass          # pass | fail | partial-pass | in-progress
+branch: "main"        # or feature branch being tested
+---
+
+<!--
+TEMPLATE — copy to testing-log/{date}-{description}.qmd.
+Use for targeted tests of a specific edge case or pipeline configuration not covered
+by the standard integration test profiles (e.g., a particular genetic architecture,
+a new three-species combination, or a scenario-specific parameter setting).
+See docs/testing-workflow.qmd for guidance.
+-->
+
+One paragraph describing what scenario is being tested and why it warrants a standalone entry
+(i.e., what makes this edge case interesting or risky).
+
+---
+
+## Summary Checklist
+
+Fill in the **Result** column as you work through each step.
+
+| # | Step | Environment | Pass criterion | Result |
+|---|------|-------------|----------------|--------|
+| 1 | Pipeline run | local / HPC | exits 0, all tasks succeed | [ ] |
+| 2 | Integration tests | local | all tests pass | [ ] |
+| 3 | Specific assertions | local R session | scenario-specific checks pass | [ ] |
+
+---
+
+## Scenario Description
+
+| Aspect | Value |
+|--------|-------|
+| Profile used | `test` / `test_cv_pool` / custom |
+| Key parameters | — |
+| Why this scenario matters | — |
+| How it differs from standard integration tests | — |
+
+---
+
+## Setup
+
+Any configuration or data generation steps needed before the pipeline run.
+
+```bash
+#| eval: false
+export NXF_VER=24.10.5
+# Setup commands here
+```
+
+---
+
+## Pipeline Run
+
+```bash
+#| eval: false
+nextflow run main.nf \
+  -profile <profile>,docker \
+  --<param> <value> \
+  --output_dir Analysis_Results-scenario
+```
+
+Pipeline output:
+```
+Completed at:
+Duration    :
+CPU hours   :
+Succeeded   :
+```
+
+---
+
+## Test Results
+
+```bash
+#| eval: false
+TEST_DB_DIR=<path>/db \
+TEST_WORK_DIR=<path>/work \
+TEST_DB_ASSESSMENT=<path>/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+Result: <!-- PASS / FAIL -->
+```
+# Paste test runner output here
+```
+
+---
+
+## Specific Assertions
+
+Any checks beyond the standard test suite — R snippets, manual inspections, or ad-hoc validations specific to this scenario.
+
+```r
+#| eval: false
+# Example: inspect a specific output file or value
+library(arrow)
+db_dir <- "<path>/db"
+# ...
+```
+
+---
+
+## Notes
+
+<!-- Findings, caveats, or follow-up items. -->

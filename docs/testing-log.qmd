@@ -1,0 +1,27 @@
+---
+title: "Testing Log"
+subtitle: "Record of integration test runs, feature verifications, and production validations"
+date: last-modified
+listing:
+  contents: testing-log
+  type: table
+  fields: [date, title, categories, status]
+  field-types:
+    status: String
+  sort: "date desc"
+  filter-ui: [categories]
+  sort-ui: false
+---
+
+Each entry is a dated record of a test campaign. Use the **category filter** to narrow by type.
+
+| Category | When to use |
+|----------|-------------|
+| `integration-run` | Execution of `Rscript tests/run_tests.R` against pipeline output from one or more profiles |
+| `verification` | Pre-production checklist for a specific feature branch or PR |
+| `production-validation` | Scientific comparison validating output quality against a reference (legacy workflow, prior run, or known ground truth) |
+| `scenario` | Targeted test for a specific edge-case scenario (e.g., non-marker CV pool, three-species run) |
+
+::: {.callout-note}
+See [Testing Workflow Guide](testing-workflow.qmd) for instructions on when to run each type of test and how to add entries to this log. The existing testing procedure pages ([Local Integration Testing](testing-integration.qmd), [HPC End-to-End Testing](testing-hpc.qmd), [Output Validation](testing-output-validation.qmd)) cover the mechanics of running each tier.
+:::
