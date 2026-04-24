@@ -118,7 +118,7 @@ You do not need one for routine bug fixes with clear integration test coverage.
 
 ### Notebook structure
 
-Create the notebook at `docs/verify-{feature-slug}.qmd` in your feature branch. A template is available at `docs/testing-log/_template-verification.qmd` — copy it to `docs/verify-{feature}.qmd` to get the standard section structure and summary checklist.
+Create the notebook at `docs/templates/verify-{feature-slug}.qmd` in your feature branch. A template is available at `docs/testing-log/_template-verification.qmd` — copy it to `docs/verify-{feature}.qmd` to get the standard section structure and summary checklist.
 
 The standard sections are:
 
@@ -130,8 +130,6 @@ The standard sections are:
 | `## 3. Integration tests — local` | Full pipeline run + `Rscript tests/run_tests.R` |
 | `## 4. Integration tests — HPC` | Rockfish run (omit if HPC is not affected) |
 | `## Summary checklist` | Table with `[ ]` / `[x]` pass/fail per step |
-
-See `docs/verify-rep-seed-refactor.qmd` (in the `refactor/rep-seed-strat` branch) for a complete real-world example.
 
 ### After the PR merges
 
