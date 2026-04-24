@@ -19,6 +19,18 @@ One paragraph describing what scenario is being tested and why it warrants a sta
 
 ---
 
+## Summary Checklist
+
+Fill in the **Result** column as you work through each step.
+
+| # | Step | Environment | Pass criterion | Result |
+|---|------|-------------|----------------|--------|
+| 1 | Pipeline run | local / HPC | exits 0, all tasks succeed | [ ] |
+| 2 | Integration tests | local | all tests pass | [ ] |
+| 3 | Specific assertions | local R session | scenario-specific checks pass | [ ] |
+
+---
+
 ## Scenario Description
 
 | Aspect | Value |

@@ -16,6 +16,39 @@ Steps 5–6 require a completed pipeline run.
 
 ---
 
+## Summary Checklist
+
+Fill in the **Result** column as you work through each step.
+
+| # | Step | Environment | Pass criterion | Result |
+|---|------|-------------|----------------|--------|
+| 0 | `NXF_VER=24.10.5` pinned | local + HPC | `nextflow -version` shows 24.10.x | [ ] |
+| 1a | stub-run `test` | local | exits 0, no wiring errors | [ ] |
+| 1b | stub-run `test,docker` | local | exits 0 | [ ] |
+| 1c | stub-run `test_variable` | local | exits 0 | [ ] |
+| 1d | stub-run `test_cv_pool` | local | exits 0 | [ ] |
+| 1e | stub-run `test_three_species` | local | exits 0 | [ ] |
+| 2a | stub-run `test_hpc,rockfish` | Rockfish | exits 0 | [ ] |
+| 2b | stub-run `test_hpc_variable,rockfish` | Rockfish | exits 0 | [ ] |
+| 2c | stub-run `test_hpc_cv_pool,rockfish` | Rockfish | exits 0 | [ ] |
+| 2d | stub-run `test_hpc_three_species,rockfish` | Rockfish | exits 0 | [ ] |
+| 3a | `Rscript tests/run_tests.R` | local | all pass/skip | [ ] |
+| 3b | schema spot-check | local R session | 12 fields, no `sim_seed` | [ ] |
+| 3c | round-trip write/read | local R session | read-back succeeds, no `sim_seed` | [ ] |
+| 4a | Python script unseeded | local | `diff` exits non-zero | [ ] |
+| 4b | R script unseeded | local | `diff` exits non-zero | [ ] |
+| 4c | Batch-independence | local | `diff` exits non-zero | [ ] |
+| 5a | full run `test` + integration tests | local | all tests pass | [ ] |
+| 5b | full run `test_variable` + tests | local | all tests pass | [ ] |
+| 5c | full run `test_cv_pool` + tests | local | all tests pass | [ ] |
+| 5d | trait parquet schema check | local R | 12-col, no `sim_seed` | [ ] |
+| 6a | HPC run `test_hpc,rockfish` | Rockfish | exits 0, assessment TSV present | [ ] |
+| 6b | HPC run `test_hpc_variable,rockfish` | Rockfish | exits 0 | [ ] |
+| 6c | HPC run `test_hpc_cv_pool,rockfish` | Rockfish | exits 0 | [ ] |
+| 6d | HPC run `test_hpc_three_species,rockfish` | Rockfish | exits 0 | [ ] |
+
+---
+
 ## 0. Nextflow version pinning
 
 The pipeline requires Nextflow `>=24.10.0,<25.0.0`. Nextflow 25.x introduced breaking changes to the
@@ -469,33 +502,3 @@ nextflow run main.nf -profile test_hpc_three_species,rockfish --legacy_assess
 present in the output directory; `traits/` parquet files have 12-column schema (spot-check
 with the R snippet from Step 5d, pointing `db_dir` at the HPC run's `db/` output).
 
----
-
-## Summary checklist
-
-| # | Step | Environment | Pass criterion |
-|---|------|-------------|---------------|
-| 0 | `NXF_VER=24.10.5` pinned | local + HPC | `nextflow -version` shows 24.10.x |
-| 1a | stub-run `test` | local | exits 0, no wiring errors |
-| 1b | stub-run `test,docker` | local | exits 0 |
-| 1c | stub-run `test_variable` | local | exits 0 |
-| 1d | stub-run `test_cv_pool` | local | exits 0 |
-| 1e | stub-run `test_three_species` | local | exits 0 |
-| 2a | stub-run `test_hpc,rockfish` | Rockfish | exits 0 |
-| 2b | stub-run `test_hpc_variable,rockfish` | Rockfish | exits 0 |
-| 2c | stub-run `test_hpc_cv_pool,rockfish` | Rockfish | exits 0 |
-| 2d | stub-run `test_hpc_three_species,rockfish` | Rockfish | exits 0 |
-| 3a | `Rscript tests/run_tests.R` | local | all pass/skip |
-| 3b | schema spot-check | local R session | 12 fields, no `sim_seed` |
-| 3c | round-trip write/read | local R session | read-back succeeds, no `sim_seed` |
-| 4a | Python script unseeded | local | `diff` exits non-zero |
-| 4b | R script unseeded | local | `diff` exits non-zero |
-| 4c | Batch-independence | local | `diff` exits non-zero |
-| 5a | full run `test` + integration tests | local | all tests pass |
-| 5b | full run `test_variable` + tests | local | all tests pass |
-| 5c | full run `test_cv_pool` + tests | local | all tests pass |
-| 5d | trait parquet schema check | local R | 12-col, no `sim_seed` |
-| 6a | HPC run `test_hpc,rockfish` | Rockfish | exits 0, assessment TSV present |
-| 6b | HPC run `test_hpc_variable,rockfish` | Rockfish | exits 0 |
-| 6c | HPC run `test_hpc_cv_pool,rockfish` | Rockfish | exits 0 |
-| 6d | HPC run `test_hpc_three_species,rockfish` | Rockfish | exits 0 |
