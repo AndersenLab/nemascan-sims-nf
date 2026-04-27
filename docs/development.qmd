@@ -188,6 +188,47 @@ If you plan to resume a run with `nextflow run … -resume`, keep `work/` and
 :::
 
 
+## Work Directory Size Audit
+
+After a pipeline run on Rockfish, collect per-task disk metrics with
+`scripts/scan_workdir.sh`, then render `notebooks/summarize_workdir.qmd`
+to visualize results.
+
+**Step 1 — collect:**
+
+```bash
+bash scripts/scan_workdir.sh <work_dir> <output_tsv> <run_name> [--nf_dir PATH] [--processes LIST] [--parallel N]
+```
+
+Run `nextflow log` from your pipeline directory to get the run name.
+The script prints progress every 30 s and writes a TSV with one row per task.
+
+::: {.callout-warning}
+`du` on large work directories can take 30+ minutes and consume significant
+CPU. **Do not run on a login node.** Either start an interactive job first
+or submit as a batch script:
+
+```bash
+# Interactive job (Rockfish)
+interact -a eande106 -c 4 -t 2:00:00
+
+# Or submit as a batch job
+sbatch --account=eande106 --time=2:00:00 --cpus-per-task=8 \
+  --wrap="bash scripts/scan_workdir.sh <work_dir> <output_tsv> <run_name> --parallel 8"
+```
+:::
+
+**Step 2 — visualize:**
+
+```bash
+quarto render notebooks/summarize_workdir.qmd \
+  -P tsv_in:<output_tsv> \
+  -P out_dir:<results_dir>
+```
+
+Produces a self-contained HTML report and saves plots/summary TSVs to `out_dir`.
+
+
 ## Project Structure
 
 ```
