@@ -110,13 +110,6 @@
                     "default": 150,
                     "minimum": 0
                 },
-                "sparse_cut": {
-                    "type": "number",
-                    "description": "Off-diagonal GRM values above this threshold are set to zero (sparsity cutoff).",
-                    "default": 0.05,
-                    "minimum": 0,
-                    "maximum": 1
-                },
                 "mito_name": {
                     "type": "string",
                     "description": "Name of the mitochondrial chromosome to exclude from GWA mapping.",

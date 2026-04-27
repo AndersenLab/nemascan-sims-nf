@@ -1,0 +1,332 @@
+---
+title: "Verification: Remove Sparse GRM for Inbred Mappings"
+date: 2026-04-27
+categories: [verification]
+status: in-progress
+branch: "fix/rm-sparse"
+pr: 0
+---
+
+For inbred mappings (`--fastGWA-mlm-exact`), the pipeline previously built a sparse GRM
+approximation via `gcta64 --make-bK-sparse 0.05` and passed it with `--grm-sparse`. This branch
+removes that intermediate step and passes the full GRM directly with `--grm`, consistent with
+how the loco path (`--mlma-loco`) already behaves. The `sparse_cut` parameter is removed from
+the pipeline entirely.
+
+Files changed: `modules/gcta/perform_gwa/main.nf`, `main.nf`, `nextflow.config`,
+`nextflow_schema.json`.
+
+---
+
+## Summary Checklist
+
+Fill in the **Result** column as you work through each step.
+
+| # | Step | Environment | Pass criterion | Result |
+|---|------|-------------|----------------|--------|
+| 0 | `NXF_VER=24.10.5` pinned | local + HPC | `nextflow -version` shows 24.10.x | [ ] |
+| 1a | stub-run `test` | local | exits 0, no `No such variable: sparse_cut` | [ ] |
+| 1b | stub-run `test,docker` | local | exits 0 | [ ] |
+| 1c | stub-run `test_variable` | local | exits 0 | [ ] |
+| 1d | stub-run `test_cv_pool` | local | exits 0 | [ ] |
+| 1e | stub-run `test_three_species` | local | exits 0 | [ ] |
+| 2a | stub-run `test_hpc,rockfish` | Rockfish | exits 0 | [ ] |
+| 2b | stub-run `test_hpc_variable,rockfish` | Rockfish | exits 0 | [ ] |
+| 2c | stub-run `test_hpc_cv_pool,rockfish` | Rockfish | exits 0 | [ ] |
+| 2d | stub-run `test_hpc_three_species,rockfish` | Rockfish | exits 0 | [ ] |
+| 3a | `Rscript tests/run_tests.R` | local | all pass/skip | [ ] |
+| 4a | full run `test` + integration tests | local | all tests pass | [ ] |
+| 4b | full run `test_variable` + tests | local | all tests pass | [ ] |
+| 4c | no sparse GRM files in work dir | local | `find` returns nothing | [ ] |
+| 4d | inbred p-value sanity check | local R | all finite, range plausible | [ ] |
+| 5a | HPC stub-run `test_hpc,rockfish` | Rockfish | exits 0 | [ ] |
+| 5b | HPC full run `test_hpc,rockfish` | Rockfish | exits 0, assessment TSV present | [ ] |
+| 5c | HPC full run `test_hpc_variable,rockfish` | Rockfish | exits 0 | [ ] |
+
+---
+
+## 0. Nextflow version pinning
+
+The pipeline requires Nextflow `>=24.10.0,<25.0.0`. Pin the version before every run.
+
+```bash
+export NXF_VER=24.10.5
+nextflow -version   # must show 24.10.x
+```
+
+::: {.callout-warning}
+If `nextflow -version` reports 25.x, stub-run publish-block warnings will appear. These are
+pre-existing on machines with system Nextflow ≥ 25.x and unrelated to this change — set
+`NXF_VER=24.10.5` anyway to keep the output clean.
+:::
+
+---
+
+## 1. Pipeline wiring — stub-runs (local)
+
+Stub-runs confirm that Nextflow resolves every `input:` / `output:` declaration without running
+any computation. The critical check here is that removing `val sparse_cut` from `GCTA_PERFORM_GWA`
+and dropping the corresponding `params.sparse_cut` argument from `main.nf` does not leave a
+dangling reference anywhere in the channel graph.
+
+### 1a. Fixed architecture (`test`)
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test -stub-run
+```
+
+**Pass criteria:** exits 0; no `No such variable: sparse_cut` or `Missing output file` errors.
+The `GCTA_PERFORM_GWA` stubs for both `inbred` and `loco` modes complete successfully.
+
+### 1b. Fixed architecture with Docker (`test,docker`)
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test,docker -stub-run
+```
+
+### 1c. Variable architecture (`test_variable`)
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_variable -stub-run
+```
+
+**Pass criteria:** exits 0 across all combinations in the cartesian product.
+
+### 1d. Non-marker CV pool (`test_cv_pool`)
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_cv_pool -stub-run
+```
+
+### 1e. Three-species path (`test_three_species`)
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_three_species -stub-run
+```
+
+---
+
+## 2. Pipeline wiring — stub-runs (HPC)
+
+Run on Rockfish. Confirms the SLURM + Singularity wiring resolves correctly without `sparse_cut`.
+
+### 2a. HPC fixed architecture (`test_hpc,rockfish`)
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_hpc,rockfish -stub-run
+```
+
+### 2b. HPC variable architecture (`test_hpc_variable,rockfish`)
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_hpc_variable,rockfish -stub-run
+```
+
+### 2c. HPC non-marker CV pool (`test_hpc_cv_pool,rockfish`)
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_hpc_cv_pool,rockfish -stub-run
+```
+
+### 2d. HPC three-species (`test_hpc_three_species,rockfish`)
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_hpc_three_species,rockfish -stub-run
+```
+
+**Pass criteria for all HPC stub-runs:** exits 0; no SLURM submission errors.
+
+---
+
+## 3. R unit and schema tests
+
+No R library files were modified by this branch, so only the standard test suite is needed.
+
+```bash
+Rscript tests/run_tests.R
+```
+
+**Pass criteria:** all tests pass or skip cleanly (integration tests auto-skip when
+`TEST_DB_DIR` is unset). No failures related to `sparse_cut` or `GCTA_PERFORM_GWA` signatures.
+
+---
+
+## 4. Integration tests — local pipeline run
+
+Runs the full pipeline with Docker and validates the resulting database. The key checks beyond
+the standard suite are: (a) no sparse GRM intermediate files appear in the work directory, and
+(b) inbred mapping p-values are finite and plausible.
+
+### 4a. Fixed architecture
+
+```bash
+export NXF_VER=24.10.5
+bash tests/collect_test_data.sh --profile test
+```
+
+```bash
+TEST_DB_DIR=tests/integration_data/test/db \
+TEST_WORK_DIR=tests/integration_data/test/work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+Result:
+```
+```
+
+### 4b. Variable architecture
+
+```bash
+export NXF_VER=24.10.5
+bash tests/collect_test_data.sh --profile test_variable
+```
+
+```bash
+TEST_DB_DIR=tests/integration_data/test_variable/db \
+TEST_WORK_DIR=tests/integration_data/test_variable/work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test_variable/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test_variable/db_simulation_assessment_results.tsv \
+TEST_EXPECTED_MAPPINGS=256 \
+Rscript tests/run_tests.R
+```
+
+Result:
+```
+```
+
+### 4c. Confirm no sparse GRM intermediate files
+
+The old code emitted `{prefix}_sparse_grm_{mode}.grm.{bin,N.bin,id}` into the work directory.
+After this change, no such files should exist.
+
+```bash
+# Adjust the work dir path to match your local run
+find Analysis_Results-*/work -name "*_sparse_grm_*" 2>/dev/null
+# Expected: no output (exits 0 with empty result)
+```
+
+**Pass criteria:** the `find` command returns no files.
+
+### 4d. Inbred p-value sanity check
+
+Confirms that `fastGWA-mlm-exact` with `--grm` (full GRM) produces valid, finite p-values across
+all inbred mapping tasks. Adjusts `db_dir` to match the output from Step 4a.
+
+```r
+#| eval: false
+library(arrow)
+library(dplyr)
+
+db_dir <- "tests/integration_data/test/db"
+
+# Read all mappings metadata and join to mapping data for inbred tasks
+meta <- read_parquet(file.path(db_dir, "mappings_metadata.parquet")) |>
+  filter(mode == "inbred")
+
+cat("Inbred mapping count:", nrow(meta), "\n")
+stopifnot(nrow(meta) > 0)
+
+# Load p-values from one inbred mapping partition (spot-check)
+mapping_id <- meta$mapping_id[1]
+pop        <- meta$population[1]
+
+mapping_file <- file.path(
+  db_dir, "mappings",
+  paste0("population=", pop),
+  paste0("mapping_id=", mapping_id),
+  "data.parquet"
+)
+d <- read_parquet(mapping_file)
+
+cat("Rows:", nrow(d), "\n")
+cat("P range: [", min(d$P), ",", max(d$P), "]\n")
+cat("Any NA P:", any(is.na(d$P)), "\n")
+cat("Any infinite P:", any(!is.finite(d$P)), "\n")
+
+stopifnot(
+  nrow(d) > 0,
+  all(!is.na(d$P)),
+  all(is.finite(d$P)),
+  all(d$P >= 0),
+  all(d$P <= 1)
+)
+cat("PASS: inbred p-values are finite and in [0, 1]\n")
+```
+
+---
+
+## 5. Integration tests — HPC pipeline run (Rockfish)
+
+Run on Rockfish after all local checks pass.
+
+### 5a. Stub-run (already covered in Step 2a, re-confirm if needed)
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_hpc,rockfish -stub-run
+```
+
+### 5b. Full HPC run — fixed architecture
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf \
+  -profile test_hpc,rockfish \
+  --legacy_assess \
+  --output_dir Analysis_Results-rm-sparse-verification \
+  -work-dir /scratch4/eande106/${USER}/nf-work-rm-sparse
+```
+
+Result:
+```
+Completed at:
+Duration    :
+CPU hours   :
+Succeeded   :
+```
+
+**Pass criteria:** exits 0; `db_simulation_assessment_results.tsv` present; inbred mapping files
+(`*_lmm-exact_inbred_*.fastGWA`) present in published output; assessment metrics are in a
+plausible range (power and precision not degenerate).
+
+### 5c. Full HPC run — variable architecture
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf \
+  -profile test_hpc_variable,rockfish \
+  --legacy_assess \
+  --output_dir Analysis_Results-rm-sparse-variable \
+  -work-dir /scratch4/eande106/${USER}/nf-work-rm-sparse-variable
+```
+
+Result:
+```
+Completed at:
+Duration    :
+CPU hours   :
+Succeeded   :
+```
+
+---
+
+## Notes
+
+<!-- Record any issues, unexpected behavior, or deviations from the standard workflow. -->
+
+<!-- Key design note: fastGWA-mlm-exact supports both --grm (full GRM) and --grm-sparse.
+     The sparse step was removed to eliminate an extra GCTA invocation per task and to make
+     the inbred path symmetric with the loco path, which never used --grm-sparse.
+     The LOCO comment in perform_gwa/main.nf (that --mlma-loco requires the full GRM) was
+     already accurate; this branch removes the discrepancy on the inbred side. -->

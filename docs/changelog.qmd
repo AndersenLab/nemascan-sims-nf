@@ -13,6 +13,28 @@ not use version tags; entries are organized by development phase and date.
 
 ## [Unreleased] — April 2026
 
+### Fixed
+- **Switch inbred mapping from sparse GRM to full GRM** (`fix/rm-sparse`, 2026-04-24):
+  Closes issues #143 and #153. The inbred mapping mode previously sparsified the GRM
+  via `gcta64 --make-bK-sparse` before running `--fastGWA-mlm-exact --grm-sparse`. This
+  sparse approximation caused two distinct deterministic failures: (1) Vp falling below
+  GCTA's internal 1e-5 threshold after sparsification even when the full-GRM REML
+  estimate passed the `>= 1e-4` guard in `GCTA_MAKE_GRM`; (2) for high-h², small-n
+  populations (e.g. `n=100, h2=0.8`), the sparse GRM pushed Vg > Vp (h² > 1), causing
+  `"fastGWA-REML can't converge"`. The fix drops sparsification entirely: inbred mode
+  now passes `--grm` (full GRM) to `--fastGWA-mlm-exact`, mirroring the loco path.
+  `--fastGWA-mlm-exact` accepts a full GRM via `--grm` (GCTA-documented). The full GRM
+  is appropriate for all NemaScan sample sizes (n ≤ ~2000); sparse GRM would only be
+  needed at n > 5K. Output format (`.fastGWA` columns) is unchanged.
+  - `modules/gcta/perform_gwa/main.nf`: removed `val sparse_cut` input; replaced
+    `--make-bK-sparse` + `--grm-sparse` block with `--grm` for inbred
+  - `main.nf`, `nextflow.config`, `nextflow_schema.json`, `README.md`: `sparse_cut`
+    parameter removed
+  - **`-resume` note:** Existing `GCTA_PERFORM_GWA` cached results are invalidated by
+    this change (task hash changes with the removal of `val sparse_cut`). All inbred
+    tasks will re-run when resuming across this fix. This is intentional — old cached
+    results used the sparse GRM.
+
 ### Removed
 - **Replicate-based RNG seeding removed from causal variant scripts** (`refactor/rep-seed-strat`, 2026-04-23):
   The `fix/rand-seed-stochastic-scripts` fix used `rep` directly as the RNG seed, which prevented

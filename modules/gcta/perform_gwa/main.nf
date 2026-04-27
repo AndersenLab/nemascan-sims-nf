@@ -8,7 +8,6 @@ process GCTA_PERFORM_GWA {
     tuple path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm.bin"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm.N.bin"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}.grm.id")
     tuple path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bed"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bim"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.fam"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.map"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.nosex"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.ped"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.log"), path(gm), path(n_indep_tests)
     tuple path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"), path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par")
-    val sparse_cut
 
     output:
     tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix), val(type), emit: params
@@ -28,14 +27,8 @@ process GCTA_PERFORM_GWA {
         COMMAND='--fastGWA-mlm-exact'
         GWA_THREADS=1  # pinned: BLAS reduction order must be deterministic
 
-        # Inbred: create sparse GRM approximation (supported by fastGWA-mlm-exact)
-        gcta64 --grm TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode} \\
-            --make-bK-sparse ${sparse_cut} \\
-            --out ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode} \\
-            --thread-num 1
-
-        GRM_OPTION='--grm-sparse'
-        GRM_PREFIX=${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sparse_grm_${mode}
+        GRM_OPTION='--grm'
+        GRM_PREFIX=TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_gcta_grm_${mode}
     else
         COMMAND="--mlma-loco"
         GWA_THREADS=${task.cpus}  # mlma-loco: per-chromosome refits are independent

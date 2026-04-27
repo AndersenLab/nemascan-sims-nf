@@ -170,7 +170,6 @@ construction through REML, PCA, and the LMM solve into BETA, SE, and P-values.
 | `--make-grm-inbred` / `--make-grm` | **1** | Errors here propagate to all downstream steps |
 | `--reml` | **1** | Governs Vp upscaling decision; must be consistent at borderline values |
 | `--simu-qt` | **1** | Ensures phenotype simulation is deterministic for a given random seed |
-| `--make-bK-sparse` | **1** | Eliminates residual non-determinism in sparse encoding |
 | `--pca 1` | **1** | Eigenvector iteration sensitive to BLAS reduction order |
 | `--fastGWA-mlm-exact` | **1** | LMM solve; diverges between local and HPC without pinning |
 | `--mlma-loco` | **configurable (`task.cpus`)** | Per-chromosome refits are independent; highest compute cost; least numerically sensitive step |

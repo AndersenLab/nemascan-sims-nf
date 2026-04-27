@@ -147,7 +147,6 @@ workflow {
         log.info "--alpha           Decimal            Significance level for Bonferroni and EIGEN threshold calculation (Default: 0.05)"
         log.info "--group_qtl       Integer            If two QTL are less than this distance from each other, combine the QTL into one, (DEFAULT = 1000)"
         log.info "--ci_size         Integer            Number of SNVs to the left and right of the peak marker used to define the QTL confidence interval, (DEFAULT = 150)"
-        log.info "--sparse_cut      Decimal            Any off-diagonal value in the genetic relatedness matrix greater than this is set to 0 (Default: 0.05)"
         log.info "--mito_name       Strain             Name of mitochondrial chromosome"
         log.info "--simulate_qtlloc Boolean            Whether to simulate QTLs in specific genomic regions (Default: false)"
         log.info "--legacy_assess   Boolean            Run legacy R-based QTL detection in parallel with DB path for cross-validation (Default: false)"
@@ -173,7 +172,6 @@ workflow {
         log.info "Significance Thresholds                 = BF, EIGEN"
         log.info "Window for combining QTLs               = ${params.group_qtl}"
         log.info "Number of SNVs to define QTL CI         = ${params.ci_size}"
-        log.info "Relatedness cutoff                      = ${params.sparse_cut}"
         log.info "Mitochondrial chromosome name           = ${mito_name}"
         log.info "Simulate QTLs in specific regions       = ${simulate_qtlloc}"
         log.info "Output directory                        = ${workflow.outputDir}"
@@ -562,8 +560,7 @@ workflow {
         ch_gwa.params,
         ch_gwa.grm,
         ch_gwa.plink,
-        ch_gwa.pheno,
-        params.sparse_cut
+        ch_gwa.pheno
         )
     ch_versions = ch_versions.mix(GCTA_PERFORM_GWA.out.versions)
 
@@ -921,7 +918,6 @@ workflow.onComplete {
     Significance Thresholds                 = BF, EIGEN
     Threshold for grouping QTL              = ${params.group_qtl}
     Number of SNVs to define CI             = ${params.ci_size}
-    Relatedness Matrix Cutoff               = ${params.sparse_cut}
     Mitochondrial chromosome name           = ${mito_name}
     Simulate QTLs in specific regions       = ${simulate_qtlloc}
     Result Directory                        = ${workflow.outputDir}
