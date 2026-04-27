@@ -1,0 +1,338 @@
+---
+title: "Verification: Remove 15%-significant-markers threshold from QTL interval definition"
+date: 2026-04-24
+categories: [verification]
+status: complete
+branch: "fix/remove-n-sigmarkers-thresh"
+pr: 0
+---
+
+`check_significant_proportion()` has been removed from `analyze_mapping()` in `R/analysis.R`. Previously, when more than 15% of GWA markers were significant, the function short-circuited and returned all-NA interval columns (`startPOS`, `peakPOS`, `endPOS`, `peak_id`, `interval_size`). Now `analyze_mapping()` always proceeds through `group_markers_to_intervals()` and `define_confidence_intervals()` regardless of significant-marker proportion. New unit tests in `tests/testthat/test-analyze_mapping.R` cover all sub-functions and regression scenarios.
+
+---
+
+## Summary Checklist
+
+| \# | Step | Environment | Pass criterion | Result |
+|---|------|-------------|---------------|--------|
+| 0 | `NXF_VER=24.10.5` pinned | local | `nextflow -version` shows 24.10.x | [X] |
+| 1a | stub-run `test` | local | exits 0, no wiring errors | [X] |
+| 1b | stub-run `test,docker` | local | exits 0 | [X] |
+| 1c | stub-run `test_variable` | local | exits 0 | [X] |
+| 2 | unit tests | local | 0 failures in `test-analyze_mapping.R` | [X] |
+| 3 | integration `test` | local | all tests pass | [ ] |
+
+---
+
+## 0. Prerequisites
+
+```bash
+export NXF_VER=24.10.5
+nextflow -version   # must show 24.10.x
+```
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+
+      N E X T F L O W
+      version 24.10.5 build 5935
+      created 04-03-2025 17:55 UTC (11:55 CDT)
+      cite doi:10.1038/nbt.3820
+      http://nextflow.io
+```
+:::
+
+---
+
+## 1. Stub-runs (local)
+
+Confirm Nextflow can resolve every `input:` / `output:` declaration before installing containers or generating pipeline data. The guard removal is pure R logic inside a process — no channel wiring changed — but stub-runs rule out accidental breakage.
+
+### 1a. Fixed architecture (`test`)
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test -stub-run
+```
+
+**Pass criterion:** exits 0, no `Missing output file` or `No such variable` errors.
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+    Pipeline execution summary
+    ---------------------------
+    Completed at: 2026-04-24T15:08:55.965182-05:00
+    Duration    : 4.1s
+    Success     : true
+    workDir     : /Users/ryanmckeown/Desktop/remove-n-sigmarkers-thresh/work
+    exit status : 0
+    Error report: -
+    Git info: null - null [null]
+```
+:::
+
+### 1b. Fixed architecture with Docker (`test,docker`)
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test,docker -stub-run
+```
+
+**Pass criterion:** same as 1a.
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+    Completed at: 2026-04-24T15:13:37.588870-05:00
+    Duration    : 34.4s
+    Success     : true
+    workDir     : /Users/ryanmckeown/Desktop/remove-n-sigmarkers-thresh/work
+    exit status : 0
+    Error report: -
+    Git info: null - null [null]
+```
+:::
+
+### 1c. Variable architecture (`test_variable`)
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_variable -stub-run
+```
+
+**Pass criterion:** exits 0 across all combinations in the cartesian product.
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+   Pipeline execution summary
+    ---------------------------
+    Completed at: 2026-04-24T15:27:11.527021-05:00
+    Duration    : 39.7s
+    Success     : true
+    workDir     : /Users/ryanmckeown/Desktop/remove-n-sigmarkers-thresh/work
+    exit status : 0
+    Error report: -
+    Git info: null - null [null]
+```
+:::
+
+---
+
+## 2. Unit Tests
+
+Primary behavioral verification — runs entirely without pipeline data.
+
+`test-analyze_mapping.R` (25+ tests) covers `flag_significant_markers()`, `group_markers_to_intervals()`, `define_confidence_intervals()`, and `analyze_mapping()`, including regression tests specifically for the removed guard:
+
+- `analyze_mapping returns intervals when >15% of markers are significant [regression]` — 50% significant, would have returned all-NA before the fix
+- `analyze_mapping returns intervals when 100% of markers are significant [regression]` — all markers significant
+- `analyze_mapping returns all-NA intervals when no markers are significant [unchanged]` — 0% significant, expected all-NA
+- `analyze_mapping defines intervals when <15% of markers are significant [unchanged]` — 5% significant, expected interval
+
+```bash
+Rscript tests/run_tests.R
+```
+
+**Pass criterion:** 0 failures. Integration tests auto-skip when `TEST_DB_DIR` is not set.
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+analyze_mapping: ...................................................
+assessment_cross_validation: SSSSSSSSSSSS
+cross_validation: SSSSSSSSS
+cv_pool: SSSSSSSS
+db_structure: SSSSSSSSSSSSSSSSSSSSSSSSSSSS
+
+══ Skipped ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+1. generate_mapping_id() is deterministic across invocations (test-assessment_cross_validation.R:199:3) - Reason: TEST_LEGACY_ASSESSMENT not set or file does not exist
+
+2. both assessment output files exist and are non-empty (test-assessment_cross_validation.R:257:3) - Reason: TEST_LEGACY_ASSESSMENT not set or file does not exist
+
+3. per-mapping detection concordance is 1.0 for all mappings (test-assessment_cross_validation.R:277:3) - Reason: TEST_LEGACY_ASSESSMENT not set or file does not exist
+
+4. per-mapping designation concordance is 1.0 for all mappings (test-assessment_cross_validation.R:307:3) - Reason: TEST_LEGACY_ASSESSMENT not set or file does not exist
+
+5. per-mapping interval Jaccard concordance is 1.0 for all mappings (test-assessment_cross_validation.R:342:3) - Reason: TEST_LEGACY_ASSESSMENT not set or file does not exist
+
+6. Simulated.QTL.VarExp is populated in DB assessment output (test-assessment_cross_validation.R:410:3) - Reason: TEST_LEGACY_ASSESSMENT not set or file does not exist
+
+7. DB assessment output has all expected columns from format_assessment_tsv() (test-assessment_cross_validation.R:423:3) - Reason: TEST_LEGACY_ASSESSMENT not set or file does not exist
+
+8. calculate_simrep_performance() runs without error on real assessment data (test-assessment_cross_validation.R:443:3) - Reason: TEST_LEGACY_ASSESSMENT not set or file does not exist
+
+9. designate_qtl() produces only valid categories on real data (test-assessment_cross_validation.R:466:3) - Reason: TEST_LEGACY_ASSESSMENT not set or file does not exist
+
+10. concordance holds for each population independently (multi-species guard) (test-assessment_cross_validation.R:494:3) - Reason: TEST_LEGACY_ASSESSMENT not set or file does not exist
+
+11. QTL chromosome names are consistent between DB and legacy paths (test-assessment_cross_validation.R:526:3) - Reason: TEST_LEGACY_ASSESSMENT not set or file does not exist
+
+12. Simulated.QTL.VarExp is concordant between DB and legacy paths (test-assessment_cross_validation.R:555:3) - Reason: TEST_LEGACY_ASSESSMENT not set or file does not exist
+
+13. DB mapping P and BETA values match raw GWA source files (test-cross_validation.R:84:3) - Reason: TEST_DB_DIR not set or directory does not exist
+
+14. DB SE values match raw GWA source files (test-cross_validation.R:150:3) - Reason: TEST_DB_DIR not set or directory does not exist
+
+15. DB AF1 values match raw GWA source files (test-cross_validation.R:188:3) - Reason: TEST_DB_DIR not set or directory does not exist
+
+16. EIGEN threshold from DB matches pipeline EIGEN value (test-cross_validation.R:227:3) - Reason: TEST_DB_DIR not set or directory does not exist
+
+17. read_raw_gwa_file() returns normalized columns for inbred and loco formats (test-cross_validation.R:261:3) - Reason: TEST_DB_DIR not set or directory does not exist
+
+18. query_by_mapping_id() returns non-empty result for every mapping_id in metadata (test-cross_validation.R:312:3) - Reason: TEST_DB_DIR not set or directory does not exist
+
+19. loco and inbred GWA have equal marker counts for same marker set (test-cross_validation.R:336:3) - Reason: TEST_DB_DIR not set or directory does not exist
+
+20. marker counts in metadata match actual partition row counts (test-cross_validation.R:378:3) - Reason: TEST_DB_DIR not set or directory does not exist
+
+21. query_mapping_direct() matches query_for_threshold_analysis() schema and content (test-cross_validation.R:406:3) - Reason: TEST_DB_DIR not set or directory does not exist
+
+22. traits/causal_genotypes/ directory exists and contains parquet files (test-cv_pool.R:73:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+23. causal genotype parquets have correct schema (test-cv_pool.R:87:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+24. non-marker causal variants appear as FN rows with NA log10p in assessment (test-cv_pool.R:109:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+25. non-marker FN rows have significant=NA (not FALSE) in assessment (test-cv_pool.R:126:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+26. Simulated.QTL.VarExp is populated for non-marker FN rows (test-cv_pool.R:141:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+27. non-marker causal variants appear in causal_variants/ but not in markers DB view (test-cv_pool.R:157:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+28. designate_qtl() classifies non-marker rows correctly by Detected status (test-cv_pool.R:188:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+29. calculate_simrep_performance() runs correctly on cv_pool assessment data (test-cv_pool.R:223:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+30. database root directory exists and has expected subdirectories (test-db_structure.R:37:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+31. marker set parquet files exist (test-db_structure.R:46:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+32. mapping partitions exist in Hive-style structure (test-db_structure.R:66:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+33. metadata files exist (test-db_structure.R:89:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+34. marker_set_metadata has required columns and valid data (test-db_structure.R:100:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+35. marker_set_metadata contains strainfile_hash and strain_list (test-db_structure.R:130:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+36. marker set parquet has correct schema (test-db_structure.R:158:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+37. mappings_metadata.parquet has required columns (test-db_structure.R:185:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+38. hash_string columns are present in metadata files and absent from data files (test-db_structure.R:212:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+39. mappings_metadata has correct row count (test-db_structure.R:236:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+40. algorithm values are valid (test-db_structure.R:251:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+41. PCA flags are correct (test-db_structure.R:269:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+42. mapping IDs are 20-character lowercase hex hashes (test-db_structure.R:279:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+43. database can be opened and queried via open_mapping_db() (test-db_structure.R:290:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+44. db_stats() returns valid statistics (test-db_structure.R:305:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+45. query_mapping_data() returns joined data with marker info (test-db_structure.R:317:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+46. get_threshold_params() returns valid thresholds (test-db_structure.R:330:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+47. all mapping partitions have non-empty data (test-db_structure.R:345:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+48. P values are in valid range (0, 1] (test-db_structure.R:360:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+49. traits directory exists with expected subdirectories (test-db_structure.R:381:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+50. genotype matrix parquets have correct schema (test-db_structure.R:394:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+51. trait metadata parquets have correct schema (test-db_structure.R:420:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+52. phenotype parquets have correct schema and non-NA values (test-db_structure.R:445:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+53. causal variant parquets have correct schema and QTL format (test-db_structure.R:463:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+54. all expected populations appear in mappings_metadata and are queryable (test-db_structure.R:488:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+55. inbred GWA marker count equals marker set size (test-db_structure.R:527:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+56. loco GWA marker count equals marker set size (test-db_structure.R:553:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+57. var.exp is absent or NA for inline-path mappings (test-db_structure.R:582:3) - Reason: TEST_DB_DIR not set or directory does not exist — skipping integration tests
+
+```
+:::
+
+---
+
+## 3. Integration Tests — Local
+
+### 3. Fixed architecture (`test`) — regression
+
+Verifies the common case (typically <15% significant markers with BF threshold) still works correctly.
+
+```bash
+export NXF_VER=24.10.5
+bash tests/collect_test_data.sh --profile test
+
+TEST_DB_DIR=tests/integration_data/test/db \
+TEST_WORK_DIR=tests/integration_data/test/work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+**Pass criterion:** all tests pass (`test-db_structure.R`, `test-cross_validation.R`, `test-assessment_cross_validation.R`).
+
+::: {.callout-note collapse="true" title="Pipeline run output"}
+``` text
+Completed at: 27-Apr-2026 11:47:16
+Duration    : 8m 12s
+CPU hours   : 0.3
+Succeeded   : 59
+
+
+Collecting outputs from: /Users/ryanmckeown/Desktop/remove-n-sigmarkers-thresh/Analysis_Results-test
+Collected 43 cross-validation files to: /Users/ryanmckeown/Desktop/remove-n-sigmarkers-thresh/tests/integration_data/test/work
+
+Test data collected to: /Users/ryanmckeown/Desktop/remove-n-sigmarkers-thresh/tests/integration_data/test
+
+Run integration tests with:
+
+TEST_DB_DIR=/Users/ryanmckeown/Desktop/remove-n-sigmarkers-thresh/tests/integration_data/test/db \
+TEST_WORK_DIR=/Users/ryanmckeown/Desktop/remove-n-sigmarkers-thresh/tests/integration_data/test/work \
+TEST_LEGACY_ASSESSMENT=/Users/ryanmckeown/Desktop/remove-n-sigmarkers-thresh/tests/integration_data/test/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=/Users/ryanmckeown/Desktop/remove-n-sigmarkers-thresh/tests/integration_data/test/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+:::
+
+::: {.callout-note collapse="true" title="Test suite output"}
+``` text
+analyze_mapping: ...................................................
+assessment_cross_validation: ..........................
+cross_validation: ........................................................
+cv_pool: SSSSSSSS
+db_structure: ..........................................................................................S...
+
+══ Skipped ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+1. traits/causal_genotypes/ directory exists and contains parquet files (test-cv_pool.R:73:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+2. causal genotype parquets have correct schema (test-cv_pool.R:87:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+3. non-marker causal variants appear as FN rows with NA log10p in assessment (test-cv_pool.R:109:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+4. non-marker FN rows have significant=NA (not FALSE) in assessment (test-cv_pool.R:126:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+5. Simulated.QTL.VarExp is populated for non-marker FN rows (test-cv_pool.R:141:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+6. non-marker causal variants appear in causal_variants/ but not in markers DB view (test-cv_pool.R:157:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+7. designate_qtl() classifies non-marker rows correctly by Detected status (test-cv_pool.R:188:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+8. calculate_simrep_performance() runs correctly on cv_pool assessment data (test-cv_pool.R:223:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+9. all expected populations appear in mappings_metadata and are queryable (test-db_structure.R:490:5) - Reason: TEST_EXPECTED_POPULATIONS not set — skipping multi-population assertions
+```
+:::
+
+## Notes
+
+<!-- Record any issues, unexpected behavior, or deviations from the standard workflow. -->
