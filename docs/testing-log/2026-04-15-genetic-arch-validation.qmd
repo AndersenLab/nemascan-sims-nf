@@ -1,0 +1,51 @@
+---
+title: "Genetic Architecture Validation: Legacy vs New Pipeline"
+date: 2026-04-15
+categories: [production-validation]
+status: pass
+---
+
+Focused validation comparing simulation performance between the legacy NemaScan workflow and `nemascan-sims-nf` specifically for Inbred PCA mappings with a Bonferroni significance threshold — the only method present in both workflows. This targeted validation complements the broader [Three-Species Production Validation](2026-04-14-three-species-validation.qmd) by confirming concordance at the level of individual genetic architectures.
+
+**Conclusion:** Power and FDR estimates from the two workflows were concordant across all tested genetic architectures. Variation between workflows was much smaller than variation within each workflow across replicates.
+
+---
+
+## Objective
+
+Confirm that the new `nemascan-sims-nf` pipeline produces Power and FDR estimates that agree with the legacy NemaScan simulation workflow when given the same genetic parameters and mapping panel.
+
+---
+
+## Method
+
+- **Legacy data source:** `/Users/ryanmckeown/Desktop/Caenorhabditis_GWAS_Manuscript/data/proc/simulations/full_population/{species}/INBRED_PCA_all_sims.tsv`
+- **New pipeline data:** `db_simulation_assessment_results.tsv` from the 50-replicate production run
+- **Comparison method:** Matched-replicate downsampling (see [Three-Species Validation](2026-04-14-three-species-validation.qmd) for full design)
+- **Scope:** Inbred PCA, Bonferroni threshold; three species; nQTL = 1–10, 25, 50; h² = 0.2, 0.4, 0.6, 0.8
+
+The `test-assessment_cross_validation.R` test file in the pipeline's test suite was re-used and adapted for the broader legacy-vs-new comparison.
+
+---
+
+## Results
+
+| Metric | Value |
+|--------|-------|
+| Median absolute Power difference | **3.8%** |
+| Median absolute FDR difference | **3.7%** |
+| Max absolute Power difference | 12% (extreme architectures) |
+| Max absolute FDR difference | 10.4% (extreme architectures) |
+| Between-workflow variation vs within-workflow | Between << within at all architectures |
+
+::: {.callout-note}
+The architectures with the largest absolute differences (up to 12% Power, 10.4% FDR) were those where both pipelines show high replicate-to-replicate variability (e.g., nQTL = 50, h² = 0.2). In those cells the between-pipeline gap is still smaller than the within-pipeline standard deviation.
+:::
+
+---
+
+## Notes
+
+- This validation used 25 matched replicates from the legacy workflow (downsampled from 100) compared to 25 replicates from the new pipeline. The matched design accounts for the 4× replicate imbalance.
+- The concordance confirmed that differences introduced by the new pipeline's parameterization (database structure, Parquet storage, refactored R assessment functions) do not meaningfully alter simulation performance estimates.
+- Database structure and queryability were separately validated by the integration test suite (`test-db_structure.R`, `test-assessment_cross_validation.R`).

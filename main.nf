@@ -617,9 +617,14 @@ workflow {
     ch_versions = ch_versions.mix(DB_MIGRATION_WRITE_MARKER_SET.out.versions)
 
     // WRITE_GENOTYPE_MATRIX — join(by:[0,1]) is 1:1 per group
+    // .map{} trims strains/strainfile (join artifacts not needed by write_genotype_matrix.R).
+    // tuple() constructs a fresh object per emission — no shared ArrayList references (safe
+    // from the ConcurrentModificationException class documented in issues #148/#154).
     ch_gm_inputs = BCFTOOLS_CREATE_GENOTYPE_MATRIX.out.matrix
         .join(ch_marker_set_params_for_gm, by: [0, 1])
-    // Result: tuple(group, maf, genotype_matrix, species, vcf_release_id, ms_ld, strains, strainfile)
+        .map { group, maf, gm, species, vcf_release_id, ms_ld, _strains, _strainfile ->
+            tuple(group, maf, gm, species, vcf_release_id, ms_ld)
+        }
 
     DB_MIGRATION_WRITE_GENOTYPE_MATRIX(ch_gm_inputs, db_output_dir)
     ch_versions = ch_versions.mix(DB_MIGRATION_WRITE_GENOTYPE_MATRIX.out.versions)
