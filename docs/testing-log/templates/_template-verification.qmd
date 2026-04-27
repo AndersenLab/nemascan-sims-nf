@@ -46,6 +46,12 @@ export NXF_VER=24.10.5
 nextflow -version   # must show 24.10.x
 ```
 
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
 ---
 
 ## 1. Stub-runs (local)
@@ -61,17 +67,35 @@ nextflow run main.nf -profile test -stub-run
 
 **Pass criterion:** exits 0, no `Missing output file` or `No such variable` errors.
 
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
 ### 1b. With Docker
 
 ```bash
 nextflow run main.nf -profile test,docker -stub-run
 ```
 
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
 ### 1c. Variable architecture
 
 ```bash
 nextflow run main.nf -profile test_variable -stub-run
 ```
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
 
 *(Add additional profiles here if the change affects them.)*
 
@@ -84,6 +108,12 @@ Rscript tests/run_tests.R
 ```
 
 **Pass criterion:** no failures (integration tests auto-skip when `TEST_DB_DIR` is not set).
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
 
 ### 2b. Spot-check (add change-specific R assertions here)
 
@@ -116,9 +146,11 @@ TEST_DB_ASSESSMENT=tests/integration_data/test/db_simulation_assessment_results.
 Rscript tests/run_tests.R
 ```
 
-Result:
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
 ```
-```
+:::
 
 ### 3b. Variable architecture
 
@@ -133,9 +165,11 @@ TEST_EXPECTED_MAPPINGS=256 \
 Rscript tests/run_tests.R
 ```
 
-Result:
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
 ```
-```
+:::
 
 ---
 
@@ -150,6 +184,12 @@ export NXF_VER=24.10.5
 nextflow run main.nf -profile test_hpc,rockfish -stub-run
 ```
 
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
 ### 4b. Full HPC run
 
 ```bash
@@ -160,13 +200,14 @@ nextflow run main.nf \
   -work-dir /scratch4/eande106/${USER}/nf-work-verification
 ```
 
-Result:
-```
+::: {.callout-note collapse="true" title="Output"}
+``` text
 Completed at:
 Duration    :
 CPU hours   :
 Succeeded   :
 ```
+:::
 
 ---
 

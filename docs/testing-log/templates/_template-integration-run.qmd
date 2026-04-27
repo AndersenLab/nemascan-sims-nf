@@ -36,6 +36,12 @@ nextflow -version
 Platform: local Docker / Rockfish Singularity
 Nextflow version:
 
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
 ---
 
 ## Collect Test Data
@@ -71,10 +77,13 @@ TEST_DB_ASSESSMENT=tests/integration_data/test/db_simulation_assessment_results.
 Rscript tests/run_tests.R
 ```
 
-Result: PASS <!-- PASS / FAIL -->
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
 ```
-# Paste test runner output here
-```
+:::
+
+Result: <!-- PASS / FAIL -->
 
 ### `test_variable` profile
 
@@ -88,9 +97,13 @@ TEST_EXPECTED_MAPPINGS=256 \
 Rscript tests/run_tests.R
 ```
 
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
 Result: <!-- PASS / FAIL -->
-```
-```
 
 ### `test_three_species` profile
 
@@ -107,9 +120,13 @@ TEST_EXPECTED_POPULATIONS=ce.test,ce.test.popA,ce.test.popB,cb.test,cb.test.popA
 Rscript tests/run_tests.R
 ```
 
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
 Result: <!-- PASS / FAIL -->
-```
-```
 
 ### `test_cv_pool` profile
 
@@ -122,9 +139,13 @@ TEST_CV_POOL=true \
 Rscript tests/run_tests.R
 ```
 
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
 Result: <!-- PASS / FAIL -->
-```
-```
 
 ---
 

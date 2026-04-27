@@ -64,13 +64,14 @@ nextflow run main.nf \
   --output_dir Analysis_Results-scenario
 ```
 
-Pipeline output:
-```
+::: {.callout-note collapse="true" title="Pipeline output"}
+``` text
 Completed at:
 Duration    :
 CPU hours   :
 Succeeded   :
 ```
+:::
 
 ---
 
@@ -84,10 +85,13 @@ TEST_DB_ASSESSMENT=<path>/db_simulation_assessment_results.tsv \
 Rscript tests/run_tests.R
 ```
 
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
 Result: <!-- PASS / FAIL -->
-```
-# Paste test runner output here
-```
 
 ---
 
