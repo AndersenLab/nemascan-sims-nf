@@ -1,0 +1,205 @@
+---
+title: "Verification: Remove VCF Copy in PLINK_RECODE_VCF"
+date: 2026-04-27
+categories: [verification]
+status: in-progress
+branch: "fix/plink-wd-disk-util"
+pr: 0
+---
+
+`PLINK_RECODE_VCF` (aliased as `PLINK_RECODE_MS_VCF` and `PLINK_RECODE_CV_VCF`) previously copied the full VCF and its `.tbi` index into every task work directory before running plink. The fix removes that copy step: both plink invocations now reference the Nextflow-staged input path directly, and the `emit: vcf` output re-emits the staged input rather than a renamed copy. This notebook verifies that the optimization is working — no `recoded.vcf.gz` in work dirs, reduced per-task disk footprint, and correct downstream pipeline behavior.
+
+------------------------------------------------------------------------
+
+## Summary Checklist
+
+Fill in the **Result** column as you work through each step.
+
+| \# | Step | Environment | Pass criterion | Result |
+|---------------|---------------|---------------|---------------|---------------|
+| 0 | `NXF_VER=24.10.5` pinned | local | `nextflow -version` shows 24.10.x | \[X\] |
+| 1a | stub-run `test` | local | exits 0, no `Missing output file` for recode outputs | \[X\] |
+| 1b | stub-run `test,docker` | local | exits 0 | \[X\] |
+| 2 | full run `test,docker` profile | local + Docker | exits 0, all tasks complete | \[ \] |
+| 3a | `recoded.vcf.gz` absent from PLINK_RECODE work dirs | local | `find` returns zero matches | \[ \] |
+| 3b | PLINK_RECODE work dirs hold plink outputs + staged symlinks only | local | per-task `du -sh` is small; VCF + `.tbi` appear as symlinks, not real files | \[ \] |
+
+------------------------------------------------------------------------
+
+## 0. Prerequisites
+
+``` bash
+export NXF_VER=24.10.5
+nextflow -version
+```
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
+------------------------------------------------------------------------
+
+## 1. Stub-runs (local)
+
+Confirm that removing `recoded.vcf.gz` from the stub block and changing `emit: vcf` from `path("recoded.vcf.gz")` to `path(vcf)` does not break channel wiring. These complete in seconds and require no containers or VCF data.
+
+### 1a. Fixed architecture (`test`)
+
+``` bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test -stub-run
+```
+
+**Pass criterion:** exits 0; no `Missing output file` or `No such variable` errors related to `PLINK_RECODE_MS_VCF` or `PLINK_RECODE_CV_VCF`. In particular, confirm that `BCFTOOLS_CREATE_GENOTYPE_MATRIX` (which consumes `emit: vcf`) stubs complete without a missing-input error.
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+    Pipeline execution summary
+    ---------------------------
+    Completed at: 2026-04-27T12:55:01.158168-05:00
+    Duration    : 4.2s
+    Success     : true
+    workDir     : /Users/ryanmckeown/Desktop/fix-plink-wd-disk-util/work
+    exit status : 0
+    Error report: -
+    Git info: null - null [null]
+```
+:::
+
+### 1b. Fixed architecture with Docker (`test,docker`)
+
+``` bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test,docker -stub-run
+```
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+    Pipeline execution summary
+    ---------------------------
+    Completed at: 2026-04-27T12:56:45.588692-05:00
+    Duration    : 26.3s
+    Success     : true
+    workDir     : /Users/ryanmckeown/Desktop/fix-plink-wd-disk-util/work
+    exit status : 0
+    Error report: -
+    Git info: null - null [null]
+```
+:::
+
+------------------------------------------------------------------------
+
+## 2. Full local test run
+
+Run the pipeline end-to-end using the `test,docker` profile. This uses the local Docker images together with the small 3-chromosome, 13-strain test VCF at `data/test/` — no full VCF download required. The resulting work directory is what steps 3–5 will inspect.
+
+``` bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test,docker
+```
+
+Note the **run name** printed by Nextflow (e.g., `spontaneous_swirles`) — you will need it for `scan_workdir.sh` in Step 3.
+
+**Pass criterion:** exits 0; `PLINK_RECODE_MS_VCF` and `PLINK_RECODE_CV_VCF` tasks appear in the completed task list.
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+    Pipeline execution summary
+    ---------------------------
+    Completed at: 2026-04-27T13:17:09.452020-05:00
+    Duration    : 7m 9s
+    Success     : true
+    workDir     : /Users/ryanmckeown/Desktop/fix-plink-wd-disk-util/work
+    exit status : 0
+    Error report: -
+    Git info: null - null [null]
+```
+:::
+
+------------------------------------------------------------------------
+
+## 3. Inspect PLINK_RECODE work directories (local / macOS)
+
+::: {.callout-note title="Why not `scripts/scan_workdir.sh`?"}
+`scripts/scan_workdir.sh` (and the `summarize_workdir.qmd` notebook that consumes its TSV) rely on GNU coreutils (`du --block-size=1`, `find -printf`) and are intended for HPC (Linux) audits at scale. They do not run as-is on macOS BSD utilities. For local fix verification on the 13-strain test VCF, the checks below use portable BSD-compatible commands that validate the same properties: `recoded.vcf.gz` absence, per-task footprint, and that the VCF is staged as a symlink rather than copied. The full `scan_workdir.sh` + notebook flow remains available for richer aggregate metrics on Rockfish, but is not required to verify this fix.
+:::
+
+``` bash
+# Set this to the run name printed by Step 2 (e.g. spontaneous_swirles)
+RUN_NAME=angry_lumiere
+```
+
+::: {.callout-tip title="Filter syntax note"}
+`nextflow log -filter "process =~ /PLINK_RECODE/"` evaluates a Groovy expression and can silently return zero rows depending on quoting and Nextflow version. The checks below avoid `-filter` and instead pipe the full task list through `awk` to match on the `process` column — which is robust and easy to adjust. Confirm the process names in your run first:
+
+``` bash
+nextflow log "$RUN_NAME" -f process | sort -u | grep -i plink
+# expected to include PLINK_RECODE_MS_VCF and PLINK_RECODE_CV_VCF
+```
+:::
+
+### 3a. Confirm `recoded.vcf.gz` is absent
+
+The fix removes the `cp` step in both `PLINK_RECODE_VCF` invocations, so no `recoded.vcf.gz` should remain in any task work directory.
+
+``` bash
+nextflow log "$RUN_NAME" -f process,workdir \
+    | awk -F'\t' '$1 ~ /PLINK_RECODE/ {print $2}' \
+    | xargs -I{} find {} -maxdepth 1 -name "recoded.vcf.gz" 2>/dev/null
+
+echo "PASS if no output above (zero matches expected)"
+```
+
+**Pass criterion:** no `recoded.vcf.gz` listed across any recode task work dir. (Sanity-check the upstream task count first: `nextflow log "$RUN_NAME" -f process,workdir | awk -F'\t' '$1 ~ /PLINK_RECODE/' | wc -l` should be ≥ 2.)
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
+### 3b. Per-task footprint and staged-input check
+
+For each PLINK_RECODE task, print the total work-dir size, the real files produced by the task, and the symlinks staged by Nextflow. After the fix, real files should be only the plink outputs (`.bed`, `.bim`, `.ped`, `.map`) plus Nextflow housekeeping (`.command.*`); the input VCF (`*.vcf.gz`) and its index (`*.vcf.gz.tbi`) should appear in the symlink list, not the real-file list.
+
+``` bash
+nextflow log "$RUN_NAME" -f process,tag,workdir \
+| awk -F'\t' '$1 ~ /PLINK_RECODE/' \
+| while IFS=$'\t' read -r proc tag wd; do
+    printf '\n── %s / %s\n' "$proc" "$tag"
+    printf '   total size: %s\n' "$(du -sh "$wd" | cut -f1)"
+    printf '   real files: '
+    find "$wd" -maxdepth 1 -type f -exec basename {} \; | sort | tr '\n' ' '
+    printf '\n   symlinks:   '
+    find "$wd" -maxdepth 1 -type l -exec basename {} \; | sort | tr '\n' ' '
+    printf '\n'
+done
+```
+
+**Pass criteria:**
+
+-   `total size` per task is small (PLINK binary outputs only — tens of MB at most for the 13-strain test VCF; well under 1 GB).
+-   `real files` contains the plink outputs (`.bed`, `.bim`, `.ped`, `.map`) and Nextflow housekeeping (`.command.*`). **No `*recode.vcf.gz` or `*recode.vcf.gz.tbi` in this list** — that would indicate the file was copied rather than staged.
+-   `symlinks` contains `*.renamed.vcf.gz` **and** `*renamed.vcf.gz.tbi`, confirming the input VCF and its index are referenced as symlinks (the `cp` step has been removed).
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+── PLINK_RECODE_MS_VCF / ce.test.200strains_0.05
+   total size:  21M
+   real files: .command.begin .command.err .command.log .command.out .command.run .command.sh .command.trace .exitcode TO_SIMS.bed TO_SIMS.bim TO_SIMS.fam TO_SIMS.log TO_SIMS.map TO_SIMS.nosex TO_SIMS.ped markers.txt plink.log plink.nosex plink.prune.in plink.prune.out versions.yml 
+   symlinks:   ce.test.200strains_renamed.vcf.gz ce.test.200strains_renamed.vcf.gz.tbi 
+
+── PLINK_RECODE_CV_VCF / ce.test.200strains_0.05
+   total size:  21M
+   real files: .command.begin .command.err .command.log .command.out .command.run .command.sh .command.trace .exitcode TO_SIMS.bed TO_SIMS.bim TO_SIMS.fam TO_SIMS.log TO_SIMS.map TO_SIMS.nosex TO_SIMS.ped markers.txt plink.log plink.nosex plink.prune.in plink.prune.out versions.yml 
+   symlinks:   ce.test.200strains_renamed.vcf.gz ce.test.200strains_renamed.vcf.gz.tbi 
+```
+:::
+
+------------------------------------------------------------------------
+
+## Notes
+
+<!-- Record any issues, unexpected behavior, or deviations from the standard workflow. -->
