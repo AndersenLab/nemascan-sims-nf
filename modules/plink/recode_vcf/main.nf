@@ -11,7 +11,7 @@ process PLINK_RECODE_VCF {
 
     output:
     tuple val(meta.id), val(maf), path("TO_SIMS.bed"), path("TO_SIMS.bim"), path("TO_SIMS.fam"), path("TO_SIMS.map"), path("TO_SIMS.nosex"), path("TO_SIMS.ped"), path("TO_SIMS.log"), emit: plink
-    tuple val(meta.id), val(maf), path("recoded.vcf.gz"), path("recoded.vcf.gz.tbi"),                                                                                                  emit: vcf
+    tuple val(meta.id), val(maf), path(vcf), path(vcf_index),                                                                                                                        emit: vcf
     tuple val(meta.id), val(maf), path("markers.txt"),                                                                                                                                 emit: markers
     path "versions.yml",                                                                                                                                                               emit: versions
 
@@ -21,10 +21,7 @@ process PLINK_RECODE_VCF {
     script:
     def args = task.ext.args ?: ''
     """
-    cp ${vcf} recoded.vcf.gz
-    cp ${vcf_index} recoded.vcf.gz.tbi
-
-    plink --vcf recoded.vcf.gz \\
+    plink --vcf ${vcf} \\
         --snps-only \\
         --biallelic-only \\
         --maf ${maf} \\
@@ -34,7 +31,7 @@ process PLINK_RECODE_VCF {
         --not-chr ${mito_name} \\
         --allow-extra-chr
 
-    plink --vcf recoded.vcf.gz \\
+    plink --vcf ${vcf} \\
         --make-bed \\
         --snps-only \\
         --biallelic-only \\
@@ -64,8 +61,6 @@ process PLINK_RECODE_VCF {
     touch TO_SIMS.nosex
     touch TO_SIMS.ped
     touch TO_SIMS.log
-    touch recoded.vcf.gz
-    touch recoded.vcf.gz.tbi
     touch markers.txt
 
     cat <<-END_VERSIONS > versions.yml
