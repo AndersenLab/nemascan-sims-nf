@@ -1,0 +1,154 @@
+---
+title: "Integration Test Run — {YYYY-MM-DD}"
+date: YYYY-MM-DD
+categories: [integration-run]
+status: pass          # pass | fail | partial-pass | in-progress
+branch: "main"        # or feature branch name if testing against a branch
+---
+
+<!--
+TEMPLATE — copy to testing-log/{date}-integration-run.qmd.
+Fill in the profile(s) tested, paste the test runner output, and set status:.
+See docs/testing-workflow.qmd for when and how to add an integration run entry.
+-->
+
+Brief summary: which profiles were run, on what hardware (local/HPC), and overall outcome.
+
+**Summary:**
+
+| Profile | Pipeline | Integration tests |
+|---------|----------|-------------------|
+| `test` | ✓ / ✗ | ✓ PASS / ✗ FAIL |
+| `test_variable` | ✓ / ✗ | ✓ PASS / ✗ FAIL |
+| `test_three_species` | ✓ / ✗ | ✓ PASS / ✗ FAIL |
+| `test_cv_pool` | ✓ / ✗ | ✓ PASS / ✗ FAIL |
+
+---
+
+## Environment
+
+```bash
+#| eval: false
+export NXF_VER=24.10.5
+nextflow -version
+```
+
+Platform: local Docker / Rockfish Singularity
+Nextflow version:
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
+---
+
+## Collect Test Data
+
+```bash
+#| eval: false
+bash tests/collect_test_data.sh --profile test
+bash tests/collect_test_data.sh --profile test_variable
+# Add other profiles as needed
+```
+
+For HPC runs, sync after collection:
+
+```bash
+#| eval: false
+rsync -av --delete \
+  rmckeow1@login.rockfish.jhu.edu:/vast/eande106/projects/Ryan/simulation_pipeline/nemascan-sims-nf/tests/integration_data/ \
+  tests/integration_data/
+```
+
+---
+
+## Integration Test Results
+
+### `test` profile
+
+```bash
+#| eval: false
+TEST_DB_DIR=tests/integration_data/test/db \
+TEST_WORK_DIR=tests/integration_data/test/work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
+Result: <!-- PASS / FAIL -->
+
+### `test_variable` profile
+
+```bash
+#| eval: false
+TEST_DB_DIR=tests/integration_data/test_variable/db \
+TEST_WORK_DIR=tests/integration_data/test_variable/work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test_variable/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test_variable/db_simulation_assessment_results.tsv \
+TEST_EXPECTED_MAPPINGS=256 \
+Rscript tests/run_tests.R
+```
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
+Result: <!-- PASS / FAIL -->
+
+### `test_three_species` profile
+
+```bash
+#| eval: false
+TEST_DB_DIR=tests/integration_data/test_three_species/db \
+TEST_WORK_DIR=tests/integration_data/test_three_species/work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test_three_species/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test_three_species/db_simulation_assessment_results.tsv \
+TEST_EXPECTED_MAPPINGS=36 \
+TEST_EXPECTED_MARKER_SETS=9 \
+TEST_POPULATION=ce.test \
+TEST_EXPECTED_POPULATIONS=ce.test,ce.test.popA,ce.test.popB,cb.test,cb.test.popA,cb.test.popB,ct.test,ct.test.popA,ct.test.popB \
+Rscript tests/run_tests.R
+```
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
+Result: <!-- PASS / FAIL -->
+
+### `test_cv_pool` profile
+
+```bash
+#| eval: false
+TEST_DB_DIR=tests/integration_data/test_cv_pool/db \
+TEST_WORK_DIR=tests/integration_data/test_cv_pool/work \
+TEST_DB_ASSESSMENT=tests/integration_data/test_cv_pool/db_simulation_assessment_results.tsv \
+TEST_CV_POOL=true \
+Rscript tests/run_tests.R
+```
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
+Result: <!-- PASS / FAIL -->
+
+---
+
+## Notes
+
+<!-- Any failures, unexpected skips, or deviations from the standard workflow. -->

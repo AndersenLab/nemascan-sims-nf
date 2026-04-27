@@ -1,0 +1,216 @@
+---
+title: "Verification: {Short description of change}"
+date: YYYY-MM-DD
+categories: [verification]
+status: in-progress
+branch: "feature/branch-name"
+pr: 0
+---
+
+<!--
+TEMPLATE — copy this file to testing-log/{date}-{feature}.qmd when starting a pre-production
+verification for a new feature branch. Fill in the placeholders, work through the steps in
+order, and update `status:` to `pass` or `fail` before committing.
+
+See docs/testing-workflow.qmd for instructions on when to create a verification notebook
+and how to archive it after the PR merges.
+-->
+
+Brief description of what changed and why this verification is needed. One or two sentences.
+
+---
+
+## Summary Checklist
+
+Fill in the **Result** column as you work through each step.
+
+| # | Step | Environment | Pass criterion | Result |
+|---|------|-------------|---------------|--------|
+| 0 | `NXF_VER=24.10.5` pinned | local + HPC | `nextflow -version` shows 24.10.x | [ ] |
+| 1a | stub-run `test` | local | exits 0 | [ ] |
+| 1b | stub-run `test,docker` | local | exits 0 | [ ] |
+| 1c | stub-run `test_variable` | local | exits 0 | [ ] |
+| 2a | unit tests | local | no failures | [ ] |
+| 2b | schema spot-check | R session | key assertions pass | [ ] |
+| 3a | integration test `test` profile | local | all tests pass | [ ] |
+| 3b | integration test `test_variable` | local | all tests pass | [ ] |
+| 4a | HPC stub-run `test_hpc,rockfish` | Rockfish | exits 0 | [ ] |
+| 4b | HPC integration test | Rockfish | all tests pass | [ ] |
+
+---
+
+## 0. Prerequisites
+
+```bash
+export NXF_VER=24.10.5
+nextflow -version   # must show 24.10.x
+```
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
+---
+
+## 1. Stub-runs (local)
+
+Run before installing containers or generating pipeline data — fails immediately if Nextflow can't resolve channel wiring.
+
+### 1a. Fixed architecture
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test -stub-run
+```
+
+**Pass criterion:** exits 0, no `Missing output file` or `No such variable` errors.
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
+### 1b. With Docker
+
+```bash
+nextflow run main.nf -profile test,docker -stub-run
+```
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
+### 1c. Variable architecture
+
+```bash
+nextflow run main.nf -profile test_variable -stub-run
+```
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
+*(Add additional profiles here if the change affects them.)*
+
+---
+
+## 2. Unit and Schema Tests
+
+```bash
+Rscript tests/run_tests.R
+```
+
+**Pass criterion:** no failures (integration tests auto-skip when `TEST_DB_DIR` is not set).
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
+### 2b. Spot-check (add change-specific R assertions here)
+
+```r
+#| eval: false
+source("R/utils.R")
+source("R/io.R")
+source("R/database.R")
+
+# Add spot-checks specific to the change, e.g.:
+# schema <- trait_metadata_schema()
+# stopifnot("new_field" %in% schema$names)
+# cat("PASS\n")
+```
+
+---
+
+## 3. Integration Tests — Local
+
+### 3a. Fixed architecture
+
+```bash
+export NXF_VER=24.10.5
+bash tests/collect_test_data.sh --profile test
+
+TEST_DB_DIR=tests/integration_data/test/db \
+TEST_WORK_DIR=tests/integration_data/test/work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
+### 3b. Variable architecture
+
+```bash
+bash tests/collect_test_data.sh --profile test_variable
+
+TEST_DB_DIR=tests/integration_data/test_variable/db \
+TEST_WORK_DIR=tests/integration_data/test_variable/work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test_variable/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test_variable/db_simulation_assessment_results.tsv \
+TEST_EXPECTED_MAPPINGS=256 \
+Rscript tests/run_tests.R
+```
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
+---
+
+## 4. Integration Tests — HPC (Rockfish)
+
+See [HPC End-to-End Testing](../testing-hpc.qmd) for environment setup.
+
+### 4a. Stub-runs on Rockfish
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_hpc,rockfish -stub-run
+```
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+[paste output here]
+```
+:::
+
+### 4b. Full HPC run
+
+```bash
+nextflow run main.nf \
+  -profile test_hpc,rockfish \
+  --legacy_assess \
+  --output_dir Analysis_Results-verification \
+  -work-dir /scratch4/eande106/${USER}/nf-work-verification
+```
+
+::: {.callout-note collapse="true" title="Output"}
+``` text
+Completed at:
+Duration    :
+CPU hours   :
+Succeeded   :
+```
+:::
+
+---
+
+## Notes
+
+<!-- Record any issues, unexpected behavior, or deviations from the standard workflow. -->

@@ -1,0 +1,204 @@
+---
+title: "Verification: Fix DB_MIGRATION_WRITE_GENOTYPE_MATRIX Tuple Mismatch"
+date: 2026-04-24
+categories: [verification]
+status: in-progress
+branch: "fix/db-tuple"
+pr: 0
+---
+
+One-line channel fix in `main.nf`: a `.map{}` clause trims the 8-element join result down to the 6 elements declared in `DB_MIGRATION_WRITE_GENOTYPE_MATRIX`'s `input:` block. No R library changes, no schema changes, no module changes — wiring only.
+
+The specific warning suppressed by this fix:
+
+```
+WARN: Input tuple does not match tuple declaration in process
+`DB_MIGRATION_WRITE_GENOTYPE_MATRIX` -- offending value: [<group>, <maf>, <path>, ...]
+```
+
+---
+
+## Summary Checklist
+
+Fill in the **Result** column as you work through each step.
+
+| \# | Step | Environment | Pass criterion | Result |
+|-------|-------|-------|-------|-------|
+| 0 | `NXF_VER=24.10.5` pinned | local | `nextflow -version` shows 24.10.x | \[ \] |
+| 1a | stub-run `test` — no WARN | local | exits 0, no `Input tuple does not match` warning | \[ \] |
+| 1b | stub-run `test,docker` | local | exits 0 | \[ \] |
+| 1c | stub-run `test_variable` | local | exits 0 | \[ \] |
+| 2a | unit tests | local | all pass/skip | \[ \] |
+| 3a | full run `test` + integration tests | local | all pass; genotype parquet present | \[ \] |
+
+---
+
+## 0. Prerequisites
+
+```bash
+export NXF_VER=24.10.5
+nextflow -version   # must show 24.10.x
+```
+
+::: {.callout-note collapse="true" title="Output"}
+```text
+[paste output here]
+```
+:::
+
+---
+
+## 1. Stub-runs (local)
+
+Stub-runs exercise channel wiring without computation. The primary signal for this fix is the **absence of the tuple-mismatch WARN** in step 1a output. Steps 1b–1c confirm no regressions in other profiles.
+
+### 1a. Fixed architecture (`test`) — primary wiring check
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test -stub-run 2>&1 | tee /tmp/stub-test.log
+
+# Confirm the warning is gone
+grep "Input tuple does not match" /tmp/stub-test.log \
+  && echo "FAIL: warning still present" \
+  || echo "PASS: no tuple-mismatch warning"
+
+# Confirm DB_MIGRATION_WRITE_GENOTYPE_MATRIX ran
+grep "DB_MIGRATION_WRITE_GENOTYPE_MATRIX" /tmp/stub-test.log
+```
+
+**Pass criterion:** exits 0; `grep` for `Input tuple does not match` returns nothing.
+
+::: {.callout-note collapse="true" title="Output"}
+```text
+PASS: no tuple-mismatch warning
+
+[f6/cced40] process > DB_MIGRATION_WRITE_GENOTYPE_MATRIX (ce.test.200strains_0.05) [100%] 1 of 1 ✔
+[f6/cced40] process > DB_MIGRATION_WRITE_GENOTYPE_MATRIX (ce.test.200strains_0.05)      [100%] 1 of 1 ✔
+[f6/cced40] process > DB_MIGRATION_WRITE_GENOTYPE_MATRIX (ce.test.200strains_0.05)      [100%] 1 of 1 ✔
+[f6/cced40] process > DB_MIGRATION_WRITE_GENOTYPE_MATRIX (ce.test.200strains_0.05)          [100%] 1 of 1 ✔
+[f6/cced40] process > DB_MIGRATION_WRITE_GENOTYPE_MATRIX (ce.test.200strains_0.05)                  [100%] 1 of 1 ✔
+[f6/cced40] process > DB_MIGRATION_WRITE_GENOTYPE_MATRIX (ce.test.200strains_0.05)                        [100%] 1 of 1 ✔
+[f6/cced40] process > DB_MIGRATION_WRITE_GENOTYPE_MATRIX (ce.test.200strains_0.05)                        [100%] 1 of 1 ✔
+[f6/cced40] process > DB_MIGRATION_WRITE_GENOTYPE_MATRIX (ce.test.200strains_0.05)                        [100%] 1 of 1 ✔
+[f6/cced40] process > DB_MIGRATION_WRITE_GENOTYPE_MATRIX (ce.test.200strains_0.05)                        [100%] 1 of 1 ✔
+```
+:::
+
+### 1b. Fixed architecture with Docker (`test,docker`)
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test,docker -stub-run
+```
+
+::: {.callout-note collapse="true" title="Output"}
+```text
+    Pipeline execution summary
+    ---------------------------
+    Completed at: 2026-04-27T11:58:30.502948-05:00
+    Duration    : 25.5s
+    Success     : true
+    workDir     : /Users/ryanmckeown/Desktop/fix-db-tuple/work
+    exit status : 0
+    Error report: -
+    Git info: null - null [null]
+
+```
+:::
+
+### 1c. Variable architecture (`test_variable`)
+
+```bash
+export NXF_VER=24.10.5
+nextflow run main.nf -profile test_variable -stub-run
+```
+
+::: {.callout-note collapse="true" title="Output"}
+```text
+    Pipeline execution summary
+    ---------------------------
+    Completed at: 2026-04-27T11:59:50.566918-05:00
+    Duration    : 31.3s
+    Success     : true
+    workDir     : /Users/ryanmckeown/Desktop/fix-db-tuple/work
+    exit status : 0
+    Error report: -
+    Git info: null - null [null]
+```
+:::
+
+---
+
+## 2. Unit tests
+
+No R library or schema changes were made
+
+---
+
+## 3. Integration test — fixed architecture (`test`)
+
+Runs the full pipeline locally and confirms the genotype matrix Parquet was written to the database. This is the only end-to-end step needed: the fix is isolated to channel wiring upstream of `DB_MIGRATION_WRITE_GENOTYPE_MATRIX`, and the downstream barrier (`ch_marker_barrier`) already gates `WRITE_GWA_TO_DB` on genotype-matrix completion.
+
+```bash
+export NXF_VER=24.10.5
+bash tests/collect_test_data.sh --profile test
+```
+
+After the run completes:
+
+```bash
+# Confirm genotype parquet exists in the database
+ls tests/integration_data/test/db/markers/genotypes/*_genotypes.parquet
+```
+
+Then run the integration test suite:
+
+```bash
+TEST_DB_DIR=tests/integration_data/test/db \
+TEST_WORK_DIR=tests/integration_data/test/work \
+TEST_LEGACY_ASSESSMENT=tests/integration_data/test/simulation_assessment_results.tsv \
+TEST_DB_ASSESSMENT=tests/integration_data/test/db_simulation_assessment_results.tsv \
+Rscript tests/run_tests.R
+```
+
+**Pass criterion:** `*_genotypes.parquet` present in `marker_sets/`; all integration tests pass.
+
+::: {.callout-note collapse="true" title="Output"}
+```text
+tests/integration_data/test/db/markers/genotypes/8a73ad76f9e47ee088e1_genotypes.parquet
+
+analyze_mapping: ...................................................
+assessment_cross_validation: ..........................
+cross_validation: ........................................................
+cv_pool: SSSSSSSS
+db_structure: ..........................................................................................S...
+
+══ Skipped ═══════════════════════════════════════════════════════════════════════════════════════════
+1. traits/causal_genotypes/ directory exists and contains parquet files (test-cv_pool.R:73:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+2. causal genotype parquets have correct schema (test-cv_pool.R:87:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+3. non-marker causal variants appear as FN rows with NA log10p in assessment (test-cv_pool.R:109:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+4. non-marker FN rows have significant=NA (not FALSE) in assessment (test-cv_pool.R:126:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+5. Simulated.QTL.VarExp is populated for non-marker FN rows (test-cv_pool.R:141:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+6. non-marker causal variants appear in causal_variants/ but not in markers DB view (test-cv_pool.R:157:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+7. designate_qtl() classifies non-marker rows correctly by Detected status (test-cv_pool.R:188:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+8. calculate_simrep_performance() runs correctly on cv_pool assessment data (test-cv_pool.R:223:3) - Reason: TEST_CV_POOL=true not set — skipping cv_pool integration tests
+
+9. all expected populations appear in mappings_metadata and are queryable (test-db_structure.R:490:5) - Reason: TEST_EXPECTED_POPULATIONS not set — skipping multi-population assertions
+
+══ DONE ══════════════════════════════════════════════════════════════════════════════════════════════
+```
+:::
+
+---
+
+## Notes
+
+<!-- Record any issues, unexpected behavior, or deviations from the standard workflow. -->
