@@ -118,33 +118,6 @@ flag_significant_markers <- function(df,
 }
 
 
-#' Check if too many markers are significant
-#'
-#' If more than a certain percentage of markers are significant,
-#' the threshold may be too lenient or there may be data issues.
-#'
-#' @param df Dataframe with significant column
-#' @param max_proportion Maximum acceptable proportion (default: 0.15)
-#' @param verbose Whether to log warnings (default: TRUE)
-#' @return TRUE if proportion is acceptable, FALSE otherwise
-check_significant_proportion <- function(df, max_proportion = 0.15, verbose = TRUE) {
-  n_sig <- sum(df$significant, na.rm = TRUE)
-  n_total <- nrow(df)
-  proportion <- n_sig / n_total
-
-  if (proportion > max_proportion) {
-    if (verbose) {
-      log_msg(glue::glue(
-        "Warning: {round(100*proportion, 1)}% of markers are significant (>{100*max_proportion}%)"
-      ), level = "WARN")
-    }
-    return(FALSE)
-  }
-
-  TRUE
-}
-
-
 # =============================================================================
 # QTL Interval Functions
 # =============================================================================
@@ -349,27 +322,6 @@ analyze_mapping <- function(df,
     threshold_method = threshold_method,
     verbose = verbose
   )
-
-  # Check for excessive significant markers
-  sig_ok <- check_significant_proportion(processed, verbose = verbose)
-
-  if (!sig_ok) {
-    if (verbose) {
-      log_msg(
-        "Too many significant markers - QTL intervals will not be defined",
-        level = "WARN"
-      )
-    }
-    processed <- processed %>%
-      dplyr::mutate(
-        startPOS = NA_integer_,
-        peakPOS = NA_integer_,
-        endPOS = NA_integer_,
-        peak_id = NA_integer_,
-        interval_size = NA_integer_
-      )
-    return(processed)
-  }
 
   # Step 2: Group significant markers into intervals
   processed <- group_markers_to_intervals(
