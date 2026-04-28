@@ -107,18 +107,29 @@ Requires Nextflow `>=24.10.0,<25.0.0`. Uses `nextflow.preview.output = true` for
 
 ### Output Structure
 
-Primary output is `db_simulation_assessment_results.tsv`. The Parquet database lives under `{outputDir}/db/` with six directories:
+Primary output is `db_simulation_assessment_results.tsv`. The Parquet database lives under `{outputDir}/db/` with the following structure:
 
-| Directory | Content |
-|-----------|---------|
-| `marker_sets/` | `{pop}_{maf}_markers.parquet` + `{pop}_{maf}_genotypes.parquet` (long format) + `marker_set_metadata.parquet` |
-| `mappings/` | Hive-partitioned GWA statistics: `population={pop}/mapping_id={id}/data.parquet` |
-| `traits/` | Per-trait metadata: `{trait_id}.parquet` |
-| `causal_variants/` | Causal variant parameters: `{trait_id}_causal.parquet` |
-| `phenotypes/` | Pre-upscaled phenotype values: `{trait_id}_phenotype.parquet` |
-| *(root)* | `mappings_metadata.parquet` |
+```
+db/
+├── markers/
+│   ├── marker_sets/    {marker_set_id}_markers.parquet       — marker, CHROM, POS, A1, A2, marker_set_id
+│   └── genotypes/      {marker_set_id}_genotypes.parquet     — long format: marker_set_id, CHROM, POS, strain, allele
+├── traits/
+│   ├── {trait_id}.parquet                                     — trait metadata
+│   ├── causal_variants/   {trait_id}_causal.parquet          — causal variant parameters
+│   ├── causal_genotypes/  {trait_id}_causal_geno.parquet     — per-strain genotypes at causal positions
+│   └── phenotypes/        {trait_id}_phenotype.parquet       — pre-upscaled phenotype values
+├── mappings/
+│   └── population={pop}/mapping_id={id}/
+│       ├── data.parquet    — marker, AF1, BETA, SE, P
+│       └── meta.parquet    — mapping metadata sidecar (aggregated into mappings_metadata.parquet)
+├── marker_set_metadata/   {population}_{maf}_metadata.parquet — per-population marker set metadata
+└── mappings_metadata.parquet                                   — aggregated by DB_MIGRATION_AGGREGATE_METADATA
+```
 
-`var.exp` was removed from the mappings schema in Phase 5 — it was always `NA` in the DB path. Raw data for offline variance-explained estimation is now in `traits/`, `causal_variants/`, and `phenotypes/`.
+All IDs (`marker_set_id`, `trait_id`, `mapping_id`) are 20-char lowercase hex strings (SHA-256 truncated), computed only in R via `generate_marker_set_id()` / `generate_trait_id()` / `generate_mapping_id()`.
+
+`var.exp` was removed from the mappings schema in Phase 5 — it was always `NA` in the DB path. Raw data for offline variance-explained estimation is now in `traits/`, `traits/causal_variants/`, `traits/causal_genotypes/`, and `traits/phenotypes/`.
 
 ## Key Parameters
 
@@ -150,18 +161,20 @@ The `docs/` directory is a Quarto website published to GitHub Pages. One `.qmd` 
 - GCTA phenotype simulation can produce very small variance; `GCTA_MAKE_GRM` runs an iterative REML loop that scales phenotypes ×1000 per round until Vp >= 1e-4 (max 4 rounds). A future enhancement could add a catch-and-retry safety net in `GCTA_PERFORM_GWA` for the sparse-GRM edge case in inbred mode (see `issues/143-low-vp-error/future-gwa-safety-net.md`).
 - Log10P values are computed at query time via `safe_log10p()` in `R/analysis.R`, never stored in the Parquet database.
 - The test suite is **integration-only**: `tests/testthat/` contains three integration test files (`test-db_structure.R`, `test-cross_validation.R`, `test-assessment_cross_validation.R`) that require real pipeline output via `TEST_DB_DIR` / `TEST_WORK_DIR` / `TEST_LEGACY_ASSESSMENT` / `TEST_DB_ASSESSMENT` env vars. All tests skip automatically when these are not set. Static-fixture unit tests were removed in favor of integration coverage with real data.
-- **Phase 5 — Trait IDs and Mapping IDs:**
-  - `generate_trait_id(group, maf, nqtl, effect, rep, h2)` → `MD5(paste(...))[1:12]` — 12-char hex string, stable across `-resume`, identifies all trait data files
-  - `generate_mapping_id(trait_id, mode, type)` → `MD5(paste(...))[1:12]` — identifies a specific mapping run; used as Hive partition key in `mappings/population={pop}/mapping_id={id}/`
-  - Both computed only in R — no Groovy counterpart.
+- **ID generation — all three hash functions:**
+  - `generate_marker_set_id(population, maf, species, vcf_release_id, ms_ld)` → SHA-256 → 20-char hex ("v=2" schema). CV params (`cv_maf`, `cv_ld`) are NOT included — two runs differing only in CV params get the same `marker_set_id`.
+  - `generate_trait_id(marker_set_hash, nqtl, effect, rep, h2, cv_maf_effective, cv_ld)` → SHA-256 → 20-char hex ("v=2"). Takes `$hash` (not `$hash_string`) from the marker set ID object.
+  - `generate_mapping_id(trait_hash, algorithm, pca)` → SHA-256 → 20-char hex ("v=1"). `algorithm` is `"inbred"` or `"loco"`; `pca` is logical.
+  - `build_ids_from_params(params, mode, pca)` — canonical entry point used by all four DB migration scripts; calls all three functions in order and returns `list(ms_id, trait_id, mapping_id)`.
+  - All computed only in R — no Groovy counterpart. `marker_set_id` used as Hive partition prefix in `markers/marker_sets/`; `mapping_id` as `mappings/population={pop}/mapping_id={id}/`.
 - **Phase 5 — `var.exp` removed:** The `var.exp` column is gone from `mappings_schema()` and `prepare_mapping_data()`. `R/queries.R` already handled its absence (`NULL AS "var.exp"` fallback) and `R/assessment.R` uses `any_of("var.exp")` — no query-side changes needed.
-- **Mapping data Parquet schema — FK columns removed:** `mappings/population={pop}/mapping_id={id}/data.parquet` contains only five columns: `marker`, `AF1`, `BETA`, `SE`, `P`. `mapping_id` is the Hive partition key (auto-promoted by DuckDB from the directory path, not stored in the file). `marker_set_id` and `trait_id` are in `mappings_metadata.parquet`, not in the data files.
+- **Mapping data Parquet schema:** `mappings/population={pop}/mapping_id={id}/data.parquet` contains only five columns: `marker`, `AF1`, `BETA`, `SE`, `P`. `mapping_id` is the Hive partition key (auto-promoted by DuckDB from the directory path, not stored in the file). Each partition also has a `meta.parquet` sidecar (all `metadata_schema()` columns) written by `write_gwa_to_db.R`; `DB_MIGRATION_AGGREGATE_METADATA` unions all sidecars into `mappings_metadata.parquet`. On `-resume` runs where `write_gwa_to_db` tasks are cached, no new sidecars are written — the fallback scans `data.parquet` but loses simulation parameter fields.
 - **Phase 5 — Parquet write safety:** All DB write functions default to `overwrite = TRUE` because `arrow::write_parquet()` is non-atomic. A crashed task leaves a partial file; retry with `overwrite = TRUE` replaces it cleanly.
-- **Phase 5 — Narrow glob:** `R/queries.R` uses `_markers\\.parquet$` (not `\\.parquet$`) to exclude genotype files from the `markers` DuckDB view. The genotype files in `marker_sets/` have a different schema and must not be union-read with marker files.
+- **Narrow glob:** `R/queries.R` uses `_markers\\.parquet$` (not `\\.parquet$`) to exclude genotype files from the `markers` DuckDB view. Marker files live in `markers/marker_sets/` (`{id}_markers.parquet`) and genotype files in `markers/genotypes/` (`{id}_genotypes.parquet`) — both match `\\.parquet$` but only markers match `_markers\\.parquet$`.
 - **Phase 5 — `.merge()` ordering:** `DB_MIGRATION_WRITE_TRAIT_DATA` uses `.merge()` to align `GCTA_SIMULATE_PHENOTYPES` output channels. `.merge()` aligns by emission order, not key — do not insert any reordering operator (`.filter()`, `.map()`, `.branch()`) between `GCTA_SIMULATE_PHENOTYPES.out.*` and the `.merge()` chain.
 - **DB write barrier pattern:** `DB_MIGRATION_WRITE_MARKER_SET` emits `val true` on `done`; downstream `WRITE_GWA_TO_DB` gates on `.collect()` of all marker set completions combined with the GWA channel — ensures marker schemas exist before mappings are written.
-- **Strainfile provenance:** `marker_set_metadata.parquet` stores `strainfile_hash` (SHA-256 of the full strainfile at pipeline submission, same for all groups) and `strain_list` (comma-separated strain names for the specific population group). Both columns are NA-safe for backward compatibility with pre-existing databases.
-- **Phase 5 — Pre-upscaled phenotype:** The phenotype stored in `phenotypes/` is the GCTA `.phen` output *before* `GCTA_MAKE_GRM` iterative REML scaling. It may differ from the GWAS input by 1000^N× if upscaling was applied. This is intentional — the ANOVA SS ratio for offline variance-explained is scale-invariant.
+- **Strainfile provenance:** Per-population files in `marker_set_metadata/` (`{population}_{maf}_metadata.parquet`) store `strainfile_hash` (SHA-256 of the full strainfile at pipeline submission, same for all groups) and `strain_list` (comma-separated strain names for the specific population group). Per-population files eliminate the concurrent read-modify-write race that caused lost records on HPC with parallel `DB_MIGRATION_WRITE_MARKER_SET` tasks. Both columns are NA-safe for backward compatibility with pre-existing databases.
+- **Pre-upscaled phenotype:** The phenotype stored in `traits/phenotypes/` is the GCTA `.phen` output *before* `GCTA_MAKE_GRM` iterative REML scaling. It may differ from the GWAS input by 1000^N× if upscaling was applied. This is intentional — the ANOVA SS ratio for offline variance-explained is scale-invariant.
 - **GCTA thread pinning:** All GCTA steps except `--mlma-loco` use `--thread-num 1` to ensure deterministic floating-point results across runs. Multi-threaded BLAS introduces non-deterministic reduction order. `--mlma-loco` remains configurable via `GWA_THREADS=${task.cpus}` in `perform_gwa/main.nf`. The `gcta_make_grm` Rockfish label uses `cpus = 1`; `gcta_perform_gwa` uses `cpus = 4` to support loco parallelism.
 - **RNG seeding:** `bin/create_causal_vars.py` uses `np.random.default_rng()` (OS-entropy, unseeded); `bin/Create_Causal_QTLs.R` has no `set.seed()` call. Both receive `rep` as a CLI argument (4th arg for Python, last arg for R) for output filename construction only. Causal variant selection is intentionally non-reproducible to allow independent scaling of simulation batches. `trait_metadata_schema()` does not include a `sim_seed` field.
 - **GCTA replicate RNG strategy:** `GCTA_SIMULATE_PHENOTYPES` uses `--simu-rep ${rep}` (not `--simu-rep 1`). Because GCTA has no `--seed` flag, parallel tasks starting near-simultaneously can draw the same random state. `--simu-rep ${rep}` advances the RNG by N draws so that replicate N produces a distinct phenotype draw. An awk post-processing step immediately extracts the N-th phenotype column (`col = rep + 2`) and overwrites the `.phen` file in place, keeping it in standard 3-column format (`FID IID value`) for all downstream consumers. The `.par` file is unaffected (always single-row-per-QTL regardless of N reps).
