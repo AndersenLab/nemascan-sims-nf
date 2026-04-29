@@ -724,7 +724,9 @@ workflow {
     ch_versions = ch_versions.mix(DB_MIGRATION_WRITE_GWA_TO_DB.out.versions)
 
     // ── METADATA AGGREGATION ─────────────────────────────────────────
-    // Runs after ALL WRITE_GWA_TO_DB processes complete.
+    // Trigger: fire-once gate. List may be shorter than the param grid if any
+    // reps were dropped under errorStrategy = 'ignore'. No size: constraint —
+    // AGGREGATE_METADATA scans the filesystem directly; list contents unused.
     // Does NOT block the existing R_GET_GCTA_INTERVALS → R_ASSESS_SIMS chain.
     DB_MIGRATION_AGGREGATE_METADATA(
         DB_MIGRATION_WRITE_GWA_TO_DB.out.done.collect(),
