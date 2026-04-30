@@ -37,7 +37,7 @@ process GCTA_PERFORM_GWA {
     export REP=${rep}
     export MODE="${mode}"
     export TYPE="${type}"
-    source ${projectDir}/templates/failure_trap.sh
+    source ${projectDir}/bin/failure_trap.sh
 
     if [[ ${mode} == "inbred" ]]; then
         COMMAND='--fastGWA-mlm-exact'

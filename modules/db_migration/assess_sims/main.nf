@@ -32,7 +32,7 @@ process DB_MIGRATION_ASSESS_SIMS {
     export REP=${rep}
     export MODE="${mode}"
     export TYPE="${type}"
-    source ${projectDir}/templates/failure_trap.sh
+    source ${projectDir}/bin/failure_trap.sh
 
     export R_SOURCE_DIR="${projectDir}/R"
     assess_sims.R \

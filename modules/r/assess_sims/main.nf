@@ -37,7 +37,7 @@ process R_ASSESS_SIMS {
     export REP=${rep}
     export MODE="${mode}"
     export TYPE="${type}"
-    source ${projectDir}/templates/failure_trap.sh
+    source ${projectDir}/bin/failure_trap.sh
 
     Rscript --vanilla ${assess_sims} ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_processed_LMM-EXACT_${mode}_${type}_mapping.tsv \\
         ${gm} ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno \\

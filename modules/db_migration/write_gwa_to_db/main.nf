@@ -29,7 +29,7 @@ process DB_MIGRATION_WRITE_GWA_TO_DB {
     export REP=${rep}
     export MODE="${mode}"
     export TYPE="${type}"
-    source ${projectDir}/templates/failure_trap.sh
+    source ${projectDir}/bin/failure_trap.sh
 
     export R_SOURCE_DIR="${projectDir}/R"
     write_gwa_to_db.R \
