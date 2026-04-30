@@ -1,7 +1,7 @@
 process DB_MIGRATION_WRITE_GWA_TO_DB {
 
     label 'db_migration_write_gwa_to_db'
-    tag "${nqtl} ${rep} ${h2} ${effect} ${mode} ${type} ${group}_${maf}"
+    tag "${group}_${maf}_${nqtl}_${effect}_${h2}_${rep}_${mode}_${type}"
 
     input:
     tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2),
@@ -16,6 +16,21 @@ process DB_MIGRATION_WRITE_GWA_TO_DB {
 
     script:
     """
+    export NF_TRAP_SESSION_ID="${workflow.sessionId}"
+    export NF_TRAP_FAILURES_DIR="${workflow.outputDir}/.failures"
+    export NF_TRAP_TASK_HASH="${task.hash}"
+    export NF_TRAP_ATTEMPT=${task.attempt}
+    export NF_TRAP_MAX_RETRIES=${task.maxRetries}
+    export GROUP="${group}"
+    export MAF=${maf}
+    export NQTL="${nqtl}"
+    export EFFECT="${effect}"
+    export H2=${h2}
+    export REP=${rep}
+    export MODE="${mode}"
+    export TYPE="${type}"
+    source ${projectDir}/bin/failure_trap.sh
+
     export R_SOURCE_DIR="${projectDir}/R"
     write_gwa_to_db.R \
         --group ${group} --maf ${maf} --nqtl ${nqtl} --effect ${effect} \
