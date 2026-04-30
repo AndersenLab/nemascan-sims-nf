@@ -180,7 +180,12 @@ workflow {
         log.info ""
     }
 
-
+    // Pre-create the failures directory before any task can launch.
+    // workflow.onStart does not exist in NF v24 — use the workflow body directly.
+    def failuresDir = file("${workflow.outputDir}/.failures")
+    failuresDir.mkdirs()
+    assert failuresDir.exists() :
+        "Failed to create ${failuresDir} — check permissions on the output directory"
 
     // Parse 6-column strainfile and fan out per-row parameters
     ch_strain_sets = Channel.fromPath(strainfile)
