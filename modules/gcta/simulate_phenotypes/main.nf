@@ -26,10 +26,6 @@ process GCTA_SIMULATE_PHENOTYPES {
     script:
     def args = task.ext.args ?: ''
     """
-    if [[ ${rep} -eq 1 ]]; then
-        echo "Forced failure for rep 1 (Check 6 validation)" >&2
-        exit 1
-    fi
 
     gcta64 --bfile CV_TO_SIMS \\
          --simu-qt \\
