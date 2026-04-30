@@ -909,6 +909,45 @@ output {
 
 workflow.onComplete {
 
+    def currentSession = workflow.sessionId.toString()
+    def failuresDir    = file("${workflow.outputDir}/.failures")
+    def failures       = []
+
+    if (failuresDir.exists()) {
+        failuresDir.listFiles().each { f ->
+            if (f.name.endsWith('.json')) {
+                try {
+                    def record = new groovy.json.JsonSlurper().parse(f)
+                    if (record.session == currentSession) {
+                        failures << record
+                    }
+                } catch (Exception e) {
+                    log.warn "Could not parse failure record ${f.name}: ${e.message} — skipping"
+                }
+            }
+        }
+    }
+
+    // Step 8 will append SIGKILL'd entries here, BEFORE the writer below.
+
+    if (failures) {
+        def lines = new StringBuilder()
+        lines << "group\trep\tmaf\tnqtl\teffect\th2\tmode\ttype\tattempt\texit\n"
+        failures.each { r ->
+            lines << "${r.group}\t${r.rep}\t${r.maf}\t${r.nqtl}\t${r.effect}\t${r.h2}\t${r.mode}\t${r.type}\t${r.attempt}\t${r.exit}\n"
+        }
+        def tsvTmp = file("${workflow.outputDir}/replay.tsv.tmp")
+        def tsv    = file("${workflow.outputDir}/replay.tsv")
+        tsvTmp.text = lines.toString()
+        tsvTmp.renameTo(tsv)
+
+        def byExit  = failures.groupBy { it.exit }
+        def summary = byExit.collect { exit, list -> "${list.size()} × exit ${exit}" }.join(', ')
+        log.warn "Replay manifest written: ${failures.size()} failed slots (${summary}) → ${tsv}"
+    } else {
+        log.info "No failures recorded — replay.tsv not written."
+    }
+
     summary = """
     Pipeline execution summary
     ---------------------------
