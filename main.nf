@@ -4,6 +4,7 @@ nextflow.preview.output = true
 // import the subworkflows
 include { LOCAL_GET_CONTIG_INFO           } from './modules/local/get_contig_info/main'
 include { LOCAL_COMPILE_EIGENS            } from './modules/local/compile_eigens/main'
+include { VALIDATE_REPLICATION_COMPLETE   } from './modules/local/validate_replication_complete/main'
 include { BCFTOOLS_RENAME_CHROMS          } from './modules/bcftools/rename_chroms/main'
 include { BCFTOOLS_EXTRACT_STRAINS        } from './modules/bcftools/extract_strains/main'
 include { BCFTOOLS_CREATE_GENOTYPE_MATRIX } from './modules/bcftools/create_genotype_matrix/main'
@@ -802,6 +803,22 @@ workflow {
 
     ch_db_assessment_pub = DB_MIGRATION_ASSESS_SIMS.out.assessment.collectFile(
         name: "db_simulation_assessment_results.tsv", sort: false
+    )
+
+    // ── REPLICATION VALIDATION ─────────────────────────────────────────
+    // Runs after all DB writes have settled. Exits non-zero and writes
+    // REPLAY_REQUIRED if any parameter cell is short of params.reps
+    // replications or any data.parquet file is unreadable.
+    def ch_validate_trigger = DB_MIGRATION_WRITE_GWA_TO_DB.out.done
+        .mix(DB_MIGRATION_WRITE_TRAIT_DATA.out.done)
+        .mix(DB_MIGRATION_WRITE_GENOTYPE_MATRIX.out.done)
+        .mix(DB_MIGRATION_AGGREGATE_METADATA.out.summary)
+        .collect()
+
+    VALIDATE_REPLICATION_COMPLETE(
+        ch_validate_trigger,
+        db_output_dir,
+        params.reps
     )
 
     // ── LEGACY ASSESSMENT PATH (optional, --legacy_assess) ────────────
