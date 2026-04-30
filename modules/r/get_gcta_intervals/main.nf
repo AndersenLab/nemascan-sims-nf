@@ -1,7 +1,7 @@
 process R_GET_GCTA_INTERVALS {
 
     label 'r_get_gcta_intervals'
-    tag "${threshold} ${nqtl} ${rep} ${h2} ${effect} ${mode} ${type} ${group}_${maf}"
+    tag "${group}_${maf}_${nqtl}_${effect}_${h2}_${rep}_${mode}_${type}"
 
     input:
     tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(mode), val(suffix), val(type), val(threshold)
@@ -28,6 +28,21 @@ process R_GET_GCTA_INTERVALS {
     script:
     def args = task.ext.args ?: ''
     """
+    export NF_TRAP_SESSION_ID="${workflow.sessionId}"
+    export NF_TRAP_FAILURES_DIR="${workflow.outputDir}/.failures"
+    export NF_TRAP_TASK_HASH="${task.hash}"
+    export NF_TRAP_ATTEMPT=${task.attempt}
+    export NF_TRAP_MAX_RETRIES=${task.maxRetries}
+    export GROUP="${group}"
+    export MAF=${maf}
+    export NQTL="${nqtl}"
+    export EFFECT="${effect}"
+    export H2=${h2}
+    export REP=${rep}
+    export MODE="${mode}"
+    export TYPE="${type}"
+    source ${projectDir}/templates/failure_trap.sh
+
     Rscript --vanilla ${find_gcta_intervals} ${gm} ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_lmm-exact_${mode}_${type}.${suffix} \\
         ${n_indep_tests} ${nqtl} ${rep} ${qtl_group_size} ${qtl_ci_size} ${h2} ${threshold} ${group} ${maf} ${effect} ${mode}_${type} ${alpha}
     
