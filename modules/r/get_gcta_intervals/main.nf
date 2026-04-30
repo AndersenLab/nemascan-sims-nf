@@ -41,7 +41,7 @@ process R_GET_GCTA_INTERVALS {
     export REP=${rep}
     export MODE="${mode}"
     export TYPE="${type}"
-    source ${projectDir}/templates/failure_trap.sh
+    source ${projectDir}/bin/failure_trap.sh
 
     Rscript --vanilla ${find_gcta_intervals} ${gm} ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno ${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_lmm-exact_${mode}_${type}.${suffix} \\
         ${n_indep_tests} ${nqtl} ${rep} ${qtl_group_size} ${qtl_ci_size} ${h2} ${threshold} ${group} ${maf} ${effect} ${mode}_${type} ${alpha}
