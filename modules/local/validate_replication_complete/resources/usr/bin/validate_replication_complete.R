@@ -87,7 +87,20 @@ write_outcome <- function(ok, marker, report, expected_reps) {
 
 # --- main ---
 
-con         <- open_mapping_db(opts$db_root)
+con <- open_mapping_db(opts$db_root)
+
+if (!DBI::dbExistsTable(con, "metadata")) {
+    message("ERROR: metadata view missing — mappings_metadata.parquet was never written.")
+    message("This indicates all upstream mapping tasks failed. Treating all replication cells as incomplete.")
+    marker <- fs::path(opts$output_dir, "REPLAY_REQUIRED")
+    writeLines(c(
+        "metadata view missing — no mapping data written to database.",
+        "All upstream tasks may have failed with errorStrategy='ignore'.",
+        glue::glue("Run with --replay {opts$output_dir}/replay.tsv -resume to recover, then re-validate.")
+    ), marker)
+    quit(status = 1L)
+}
+
 short_cells <- find_short_cells(con, opts$expected_reps)
 corrupt     <- find_corrupt_parquet(opts$db_root)
 
