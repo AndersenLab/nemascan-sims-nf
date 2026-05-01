@@ -977,9 +977,11 @@ workflow.onComplete {
     // Pre-capture git properties — accessing workflow.repository/revision/commitId
     // inside a GString via $workflow.xxx triggers infinite recursion in
     // WorkflowMetadata.get() in NF 24.10.x (Groovy dynamic dispatch loop).
-    def gitRepo     = workflow.repository ?: 'N/A'
-    def gitRevision = workflow.revision   ?: 'N/A'
-    def gitCommit   = workflow.commitId   ?: 'N/A'
+    // Fall back to local `git` commands for local runs (workflow fields are null
+    // when the pipeline is launched from a directory rather than a GitHub URL).
+    def gitRepo     = workflow.repository ?: ("git remote get-url origin".execute().text.trim() ?: 'N/A')
+    def gitRevision = workflow.revision   ?: ("git rev-parse --abbrev-ref HEAD".execute().text.trim() ?: 'N/A')
+    def gitCommit   = workflow.commitId   ?: ("git rev-parse HEAD".execute().text.trim() ?: 'N/A')
 
     summary = """
     Pipeline execution summary
