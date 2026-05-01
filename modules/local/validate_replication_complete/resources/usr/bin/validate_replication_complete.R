@@ -17,10 +17,10 @@ source(file.path(r_source_dir, "queries.R"))
 #' Query parameter cells with fewer distinct reps than expected
 find_short_cells <- function(con, expected_reps) {
     DBI::dbGetQuery(con, "
-        SELECT group_, maf, nqtl, effect, h2, mode, type,
+        SELECT population, maf, nqtl, effect, h2, algorithm, pca,
                COUNT(DISTINCT rep) AS rep_count
-        FROM   mappings_metadata
-        GROUP  BY group_, maf, nqtl, effect, h2, mode, type
+        FROM   metadata
+        GROUP  BY population, maf, nqtl, effect, h2, algorithm, pca
         HAVING rep_count <> ?
     ", params = list(expected_reps)) |>
         tibble::as_tibble()
