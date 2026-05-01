@@ -945,42 +945,16 @@ workflow.onComplete {
         }
     }
 
-    // SIGKILL safety net — any FAILED task with no .json on disk likely got
-    // SIGKILLed (SLURM walltime); reconstruct what we can from workflow.trace.
-    workflow.trace?.findAll { it.status == 'FAILED' }?.each { record ->
-        def hashFile = file("${workflow.outputDir}/.failures/${record.hash}.json")
-        if (hashFile.exists()) return  // trap already wrote it
-
-        log.warn "Task ${record.hash} (${record.name}) FAILED with no .failure.json — likely SIGKILL"
-
-        def parts = record.tag?.tokenize('_')
-        if (parts && parts.size() == 8) {
-            def synth = [
-                session : currentSession,
-                group   : parts[0],
-                maf     : parts[1],
-                nqtl    : parts[2],
-                effect  : parts[3],
-                h2      : parts[4],
-                rep     : parts[5],
-                mode    : parts[6],
-                type    : parts[7],
-                attempt : record.attempt ?: 'unknown',
-                exit    : record.exit ?: 'sigkill'
-            ]
-            failures << synth
-
-            // Persist the synthesised record for cross-session recovery (NF review M-ancestor).
-            try {
-                def synthFile = file("${workflow.outputDir}/.failures/${record.hash}.json")
-                synthFile.text = groovy.json.JsonOutput.toJson(synth)
-            } catch (Exception e) {
-                log.error "Failed to persist synthesised manifest entry for ${record.name}: ${e.message}"
-            }
-        } else {
-            log.error "Cannot synthesise manifest entry for ${record.name}: tag missing or malformed (${record.tag})"
-        }
-    }
+    // NOTE: workflow.trace is NOT a declared property of WorkflowMetadata in
+    // NF 24.10.x. Accessing it calls WorkflowMetadata.get("trace") →
+    // InvokerHelper.getProperty(this,"trace") → no getTrace() getter found →
+    // falls back to GroovyObject.getProperty → InvokerHelper again → infinite
+    // recursion → StackOverflowError (an Error, not Exception, so it escapes
+    // invokeOnComplete's catch block and crashes the session).
+    //
+    // The SIGKILL safety net (synthesising replay.tsv entries for walltime-killed
+    // tasks) must be implemented via a TraceObserver, not workflow.trace. Until
+    // that is in place, SIGKILLed tasks will not appear in replay.tsv.
 
     if (failures) {
         def lines = new StringBuilder()
@@ -993,12 +967,19 @@ workflow.onComplete {
         tsvTmp.text = lines.toString()
         tsvTmp.renameTo(tsv)
 
-        def byExit  = failures.groupBy { it.exit }
-        def summary = byExit.collect { exit, list -> "${list.size()} × exit ${exit}" }.join(', ')
-        log.warn "Replay manifest written: ${failures.size()} failed slots (${summary}) → ${tsv}"
+        def byExit   = failures.groupBy { it.exit }
+        def exitSummary = byExit.collect { exit, list -> "${list.size()} × exit ${exit}" }.join(', ')
+        log.warn "Replay manifest written: ${failures.size()} failed slots (${exitSummary}) → ${tsv}"
     } else {
         log.info "No failures recorded — replay.tsv not written."
     }
+
+    // Pre-capture git properties — accessing workflow.repository/revision/commitId
+    // inside a GString via $workflow.xxx triggers infinite recursion in
+    // WorkflowMetadata.get() in NF 24.10.x (Groovy dynamic dispatch loop).
+    def gitRepo     = workflow.repository ?: 'N/A'
+    def gitRevision = workflow.revision   ?: 'N/A'
+    def gitCommit   = workflow.commitId   ?: 'N/A'
 
     summary = """
     Pipeline execution summary
@@ -1009,7 +990,7 @@ workflow.onComplete {
     workDir     : ${workflow.workDir}
     exit status : ${workflow.exitStatus}
     Error report: ${workflow.errorReport ?: '-'}
-    Git info: $workflow.repository - $workflow.revision [$workflow.commitId]
+    Git info: ${gitRepo} - ${gitRevision} [${gitCommit}]
 
     { Parameters }
     ---------------------------
