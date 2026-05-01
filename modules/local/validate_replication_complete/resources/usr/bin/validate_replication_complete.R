@@ -85,33 +85,56 @@ write_outcome <- function(ok, marker, report, expected_reps) {
     }
 }
 
-# --- main ---
-
-con <- open_mapping_db(opts$db_root)
-
-if (!DBI::dbExistsTable(con, "metadata")) {
-    message("ERROR: metadata view missing — mappings_metadata.parquet was never written.")
-    message("This indicates all upstream mapping tasks failed. Treating all replication cells as incomplete.")
-    marker <- fs::path(opts$output_dir, "REPLAY_REQUIRED")
-
-    # Branch the recovery hint on whether replay.tsv was actually produced.
-    # If the failure trap didn't fire for any task (e.g. early-exit before
-    # `source failure_trap.sh`), replay.tsv won't exist and a `--replay`
-    # invocation pointing at it would be unactionable.
-    replay_tsv <- fs::path(opts$output_dir, "replay.tsv")
-    recovery_hint <- if (fs::file_exists(replay_tsv)) {
+#' Build the recovery hint shown in REPLAY_REQUIRED when the DB is empty/absent.
+#' Branches on whether replay.tsv was actually produced — pointing `--replay` at
+#' a non-existent manifest is unactionable.
+build_recovery_hint <- function(output_dir) {
+    replay_tsv <- fs::path(output_dir, "replay.tsv")
+    if (fs::file_exists(replay_tsv)) {
         glue::glue("Run with --replay {replay_tsv} -resume to recover, then re-validate.")
     } else {
         paste(
             "No replay manifest was produced — `.failures/` is empty.",
-            glue::glue("Inspect upstream task logs in {opts$output_dir}/.command.* (or the workdir under workflow.workDir) to determine why the failure trap did not fire.")
+            glue::glue("Inspect upstream task logs in {output_dir}/.command.* (or the workdir under workflow.workDir) to determine why the failure trap did not fire.")
         )
     }
+}
 
+# --- main ---
+
+# Guard: open_mapping_db() raises "Database directory not found" if db_root is
+# missing — opaque to the user. The directory is genuinely absent when every
+# upstream task fails before any DB write completes (e.g. all
+# GCTA_SIMULATE_PHENOTYPES tasks failing with errorStrategy='ignore', leaving
+# no path to WRITE_GWA_TO_DB / WRITE_TRAIT_DATA / AGGREGATE_METADATA), or when
+# a resumed run with cleared output finds no published artifacts. Treat this
+# the same as the metadata-table-missing case below.
+if (!fs::dir_exists(opts$db_root)) {
+    hint <- build_recovery_hint(opts$output_dir)
+    message(glue::glue("ERROR: database directory not found: {opts$db_root}"))
+    message("No DB writes occurred — likely all upstream tasks failed before any data could be written.")
+    message(hint)
+    marker <- fs::path(opts$output_dir, "REPLAY_REQUIRED")
+    writeLines(c(
+        glue::glue("Database directory not found: {opts$db_root}"),
+        "No DB writes occurred — all upstream tasks may have failed before any marker/trait/mapping data could be written.",
+        hint
+    ), marker)
+    quit(status = 1L)
+}
+
+con <- open_mapping_db(opts$db_root)
+
+if (!DBI::dbExistsTable(con, "metadata")) {
+    hint <- build_recovery_hint(opts$output_dir)
+    message("ERROR: metadata view missing — mappings_metadata.parquet was never written.")
+    message("This indicates all upstream mapping tasks failed. Treating all replication cells as incomplete.")
+    message(hint)
+    marker <- fs::path(opts$output_dir, "REPLAY_REQUIRED")
     writeLines(c(
         "metadata view missing — no mapping data written to database.",
         "All upstream tasks may have failed with errorStrategy='ignore'.",
-        recovery_hint
+        hint
     ), marker)
     quit(status = 1L)
 }
