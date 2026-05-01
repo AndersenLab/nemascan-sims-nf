@@ -26,6 +26,20 @@ process GCTA_SIMULATE_PHENOTYPES {
     script:
     def args = task.ext.args ?: ''
     """
+    export NF_TRAP_SESSION_ID="${workflow.sessionId}"
+    export NF_TRAP_FAILURES_DIR="${params.output_dir}/.failures"
+    export NF_TRAP_TASK_HASH="${task.hash}"
+    export NF_TRAP_ATTEMPT=${task.attempt}
+    export NF_TRAP_MAX_RETRIES=${task.maxRetries}
+    export GROUP="${group}"
+    export MAF=${maf}
+    export NQTL="${nqtl}"
+    export EFFECT="${effect}"
+    export H2=${h2}
+    export REP=${rep}
+    export MODE="NA"
+    export TYPE="NA"
+    source ${projectDir}/bin/failure_trap.sh
 
     gcta64 --bfile CV_TO_SIMS \\
          --simu-qt \\
