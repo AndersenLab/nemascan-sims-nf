@@ -221,13 +221,29 @@ workflow {
                          "the CV pool is a strict subset of the marker SNP set. " +
                          "This is likely unintentional."
             }
-            marker_set_params: [meta.id, ms_maf, species, extractVcfReleaseId(vcf), ms_ld, strains, strainfile]
-            vcf_per_group:     [meta, species, vcf, strains]
-            ms_maf_vals:       [meta, ms_maf]
-            ms_ld_vals:        [meta, ms_ld]
-            cv_maf_vals:       [meta, cv_maf_eff]
+            marker_set_params:  [meta.id, ms_maf, species, extractVcfReleaseId(vcf), ms_ld, strains, strainfile]
+            vcf_per_group:      [meta, species, vcf, strains]
+            ms_maf_vals:        [meta, ms_maf]
+            ms_ld_vals:         [meta, ms_ld]
+            cv_maf_vals:        [meta, cv_maf_eff]
+            species_per_group:  [meta.id, species]
         }
         .set { ch_sf }
+
+    // Fork species_per_group for every post-fanout consumer that combines it
+    // onto a per-cell tuple at the call site (for failure-trap cell keys).
+    // Each .tap{} produces an independent broadcast copy so consumers don't
+    // race on the queue channel.
+    //
+    // Consumers that get species transitively via an upstream process's output
+    // (R_ASSESS_SIMS via R_GET_GCTA_INTERVALS.out.params, DB_MIGRATION_ASSESS_SIMS
+    // via DB_MIGRATION_ANALYZE_QTL.out.params) do NOT need their own .tap{}.
+    ch_sf.species_per_group
+        .tap { ch_species_for_sim }
+        .tap { ch_species_for_gwa }
+        .tap { ch_species_for_intervals }
+        .tap { ch_species_for_db_gwa }
+        .set { ch_species_for_db_qtl }
 
     // G1: Fork cv_maf_vals for four consumers: PLINK_RECODE_CV_VCF, write_trait_data,
     // analysis params, and write_gwa_to_db. A single multiMap sub-channel cannot be
@@ -404,11 +420,17 @@ workflow {
             tuple(group, maf, nqtl, effect, rep, h2, geno_file)
         }
 
+    // Combine species onto the per-cell tuple so the failure trap can include it
+    // in the cell key. ch_sim_phenos shape: (group, maf, nqtl, effect, rep, causal).
+    // After combine(by:0): (group, maf, nqtl, effect, rep, causal, species).
+    ch_sim_phenos_with_species = ch_sim_phenos
+        .combine(ch_species_for_sim, by: 0)
+
     // Simulate phenotypes using the CV binary (--bfile CV_TO_SIMS) so GCTA can locate
     // non-marker causal variant genotypes. The MS binary (ch_sim_plink) passes through
     // to downstream GWA mapping unchanged.
     GCTA_SIMULATE_PHENOTYPES(
-        ch_sim_phenos,
+        ch_sim_phenos_with_species,
         ch_sim_cv_plink,   // CV binary — used as --bfile for GCTA simulation
         ch_sim_plink,      // MS binary — passed through to downstream GWA
         Channel.fromPath("${h2_file}")
@@ -564,8 +586,15 @@ workflow {
         }
         .set { ch_gwa }
 
+    // Combine species onto the params tuple at the call site so the failure trap
+    // can include it in the cell key. ch_gwa.params shape:
+    //   (group, maf, nqtl, effect, rep, h2, mode, suffix, type)
+    // After combine(by:0): same + species at position 9.
+    ch_gwa_params_with_species = ch_gwa.params
+        .combine(ch_species_for_gwa, by: 0)
+
     GCTA_PERFORM_GWA(
-        ch_gwa.params,
+        ch_gwa_params_with_species,
         ch_gwa.grm,
         ch_gwa.plink,
         ch_gwa.pheno,
@@ -720,7 +749,8 @@ workflow {
         .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type, cv_maf_eff ->
             tuple(group, maf, nqtl, effect, rep, h2, mode, type, cv_maf_eff, cv_ld)
         }
-    // Result: tuple(group, maf, nqtl, effect, rep, h2, mode, type, cv_maf_effective, cv_ld)
+        .combine(ch_species_for_db_gwa, by: 0)
+    // Result: tuple(group, maf, nqtl, effect, rep, h2, mode, type, cv_maf_effective, cv_ld, species)
 
     DB_MIGRATION_WRITE_GWA_TO_DB(
         ch_gwa_db_inputs,
@@ -770,10 +800,12 @@ workflow {
         }
         .combine(ch_cv_maf_keyed_for_analysis, by: 0)
         // → [group, maf, ..., pheno, par, threshold, cv_maf_eff]
+        .combine(ch_species_for_db_qtl, by: 0)
+        // → [group, maf, ..., pheno, par, threshold, cv_maf_eff, species]
         .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
-                    pheno, par, threshold, cv_maf_eff ->
+                    pheno, par, threshold, cv_maf_eff, species ->
             params: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type,
-                          threshold, cv_maf_eff, cv_ld)
+                          threshold, cv_maf_eff, cv_ld, species)
             pheno:  tuple(pheno, par)
         }
         .set { ch_db_analysis }
@@ -853,8 +885,14 @@ workflow {
             }
             .set { ch_intervals }
 
+        // Combine species onto the params tuple at the call site.
+        // ch_intervals.params shape: (group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold)
+        // After combine(by:0): same + species at position 10.
+        ch_intervals_params_with_species = ch_intervals.params
+            .combine(ch_species_for_intervals, by: 0)
+
         R_GET_GCTA_INTERVALS(
-            ch_intervals.params,
+            ch_intervals_params_with_species,
             ch_intervals.grm,
             ch_intervals.plink,
             ch_intervals.pheno,
@@ -957,10 +995,27 @@ workflow.onComplete {
     // that is in place, SIGKILLed tasks will not appear in replay.tsv.
 
     if (failures) {
+        // Derive replay.tsv schema from the union of JSON keys across all failure
+        // records. New fanout variables (e.g. species, future rep-disambiguators)
+        // automatically appear as new columns without editing main.nf — adding a
+        // field to NF_TRAP_PAYLOAD in any process flows through to replay.tsv.
+        //
+        // Column ordering: stable across runs. Fields present in any record but
+        // missing from a particular record render as empty cells.
+        def columnOrder = [
+            'session', 'task_hash', 'attempt', 'max_retries',
+            'species', 'group', 'maf', 'nqtl', 'effect', 'h2', 'rep', 'mode', 'type',
+            'exit'
+        ]
+        def discoveredKeys = failures.collectMany { it.keySet() as List }.unique()
+        def orderedKnown   = columnOrder.findAll { it in discoveredKeys }
+        def extras         = (discoveredKeys - columnOrder).sort()
+        def headerCols     = orderedKnown + extras
+
         def lines = new StringBuilder()
-        lines << "group\trep\tmaf\tnqtl\teffect\th2\tmode\ttype\tattempt\texit\n"
+        lines << headerCols.join('\t') << '\n'
         failures.each { r ->
-            lines << "${r.group}\t${r.rep}\t${r.maf}\t${r.nqtl}\t${r.effect}\t${r.h2}\t${r.mode}\t${r.type}\t${r.attempt}\t${r.exit}\n"
+            lines << headerCols.collect { col -> r.containsKey(col) ? r[col] : '' }.join('\t') << '\n'
         }
         def tsvTmp = file("${workflow.outputDir}/replay.tsv.tmp")
         def tsv    = file("${workflow.outputDir}/replay.tsv")

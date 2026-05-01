@@ -1,46 +1,58 @@
-# templates/failure_trap.sh
+# bin/failure_trap.sh
 #
 # Sourced by every post-fanout process script after exporting the required
-# tuple env vars. Installs an EXIT trap that, on the FINAL retry attempt only,
-# atomically writes a JSON failure record into the shared .failures/ directory.
+# env vars. Installs an EXIT trap that writes a JSON failure record into the
+# shared .failures/ directory on every failed exit, and deletes that record
+# on a successful exit. The file remaining in .failures/ at workflow end is
+# therefore the most recent state — failed cells stay, retry-recovered cells
+# are cleaned up.
+#
+# Why no maxRetries gate: dynamic errorStrategy callbacks (e.g. the rockfish
+# config's `task.attempt <= N ? 'retry' : 'ignore'`) can return 'ignore'
+# before maxRetries is reached. The previous gate `attempt > maxRetries`
+# would silently skip those final-attempt failures. Per-cell keying with
+# success-cleanup is independent of retry semantics.
 #
 # Required env vars (process script must export before sourcing):
-#   NF_TRAP_SESSION_ID    — workflow.sessionId, baked at script-render time
-#   NF_TRAP_FAILURES_DIR  — ${workflow.outputDir}/.failures
-#   NF_TRAP_TASK_HASH     — ${task.hash}
-#   NF_TRAP_ATTEMPT       — ${task.attempt}
-#   NF_TRAP_MAX_RETRIES   — ${task.maxRetries}
-#   GROUP, MAF, NQTL, EFFECT, H2, REP, MODE, TYPE — eight-tuple
+#   NF_TRAP_FAILURES_DIR   — ${workflow.outputDir}/.failures
+#   NF_TRAP_CELL_KEY       — process-built filename-safe string that uniquely
+#                            identifies the cell at this DAG position. Must
+#                            include every fanout variable in scope so that
+#                            sibling tasks of this process never collide.
+#   NF_TRAP_PAYLOAD        — process-built JSON body, MUST end in `}`. The
+#                            trap appends an `,"exit":N` field by stripping
+#                            the trailing `}` and re-closing.
+#
+# Forward-compat contract:
+#   When a new fanout variable is added (e.g. species, future rep-disambiguators),
+#   include it in BOTH NF_TRAP_CELL_KEY (so cell-key uniqueness scales) and
+#   NF_TRAP_PAYLOAD (so replay.tsv gets it). NO edit to this script is needed.
+#
+# WARNING for test-injection:
+#   Any synthetic failure injection (e.g. `exit 1` for Check 6) MUST be placed
+#   AFTER the `source ... failure_trap.sh` line. Placing it earlier bypasses
+#   trap registration and produces empty .failures/.
 
-: "${NF_TRAP_SESSION_ID:?NF_TRAP_SESSION_ID must be set before sourcing failure_trap.sh}"
 : "${NF_TRAP_FAILURES_DIR:?NF_TRAP_FAILURES_DIR must be set before sourcing failure_trap.sh}"
-: "${NF_TRAP_TASK_HASH:?NF_TRAP_TASK_HASH must be set before sourcing failure_trap.sh}"
-: "${NF_TRAP_ATTEMPT:?NF_TRAP_ATTEMPT must be set before sourcing failure_trap.sh}"
-: "${NF_TRAP_MAX_RETRIES:?NF_TRAP_MAX_RETRIES must be set before sourcing failure_trap.sh}"
-: "${GROUP:?GROUP must be set before sourcing failure_trap.sh}"
-: "${MAF:?MAF must be set before sourcing failure_trap.sh}"
-: "${NQTL:?NQTL must be set before sourcing failure_trap.sh}"
-: "${EFFECT:?EFFECT must be set before sourcing failure_trap.sh}"
-: "${H2:?H2 must be set before sourcing failure_trap.sh}"
-: "${REP:?REP must be set before sourcing failure_trap.sh}"
-: "${MODE:?MODE must be set before sourcing failure_trap.sh}"
-: "${TYPE:?TYPE must be set before sourcing failure_trap.sh}"
+: "${NF_TRAP_CELL_KEY:?NF_TRAP_CELL_KEY must be set before sourcing failure_trap.sh}"
+: "${NF_TRAP_PAYLOAD:?NF_TRAP_PAYLOAD must be set before sourcing failure_trap.sh}"
 
-_record_failure() {
+_handle_exit() {
     local rc=$?
-    [ "$rc" -ne 0 ] || return 0
-    [ "$NF_TRAP_ATTEMPT" -gt "$NF_TRAP_MAX_RETRIES" ] || return 0
+    local final="${NF_TRAP_FAILURES_DIR}/${NF_TRAP_CELL_KEY}.json"
 
-    local tmp="${NF_TRAP_FAILURES_DIR}/${NF_TRAP_TASK_HASH}.json.tmp"
-    local final="${NF_TRAP_FAILURES_DIR}/${NF_TRAP_TASK_HASH}.json"
+    if [ "$rc" -eq 0 ]; then
+        rm -f "$final" 2>/dev/null || true
+        return 0
+    fi
 
-    printf '{"session":"%s","group":"%s","maf":%s,"nqtl":"%s","effect":"%s","h2":%s,"rep":%s,"mode":"%s","type":"%s","attempt":%s,"exit":%s}\n' \
-        "$NF_TRAP_SESSION_ID" \
-        "$GROUP" "$MAF" "$NQTL" "$EFFECT" "$H2" "$REP" "$MODE" "$TYPE" \
-        "$NF_TRAP_ATTEMPT" "$rc" \
+    local tmp="${final}.tmp"
+    # Splice exit code into payload: strip trailing `}` and append `,"exit":N}`.
+    local body_sans_close="${NF_TRAP_PAYLOAD%\}}"
+    printf '%s,"exit":%s}\n' "$body_sans_close" "$rc" \
         > "$tmp" 2>/dev/null \
         && mv "$tmp" "$final" 2>/dev/null \
         || true
 }
 
-trap _record_failure EXIT
+trap _handle_exit EXIT

@@ -93,10 +93,25 @@ if (!DBI::dbExistsTable(con, "metadata")) {
     message("ERROR: metadata view missing — mappings_metadata.parquet was never written.")
     message("This indicates all upstream mapping tasks failed. Treating all replication cells as incomplete.")
     marker <- fs::path(opts$output_dir, "REPLAY_REQUIRED")
+
+    # Branch the recovery hint on whether replay.tsv was actually produced.
+    # If the failure trap didn't fire for any task (e.g. early-exit before
+    # `source failure_trap.sh`), replay.tsv won't exist and a `--replay`
+    # invocation pointing at it would be unactionable.
+    replay_tsv <- fs::path(opts$output_dir, "replay.tsv")
+    recovery_hint <- if (fs::file_exists(replay_tsv)) {
+        glue::glue("Run with --replay {replay_tsv} -resume to recover, then re-validate.")
+    } else {
+        paste(
+            "No replay manifest was produced — `.failures/` is empty.",
+            glue::glue("Inspect upstream task logs in {opts$output_dir}/.command.* (or the workdir under workflow.workDir) to determine why the failure trap did not fire.")
+        )
+    }
+
     writeLines(c(
         "metadata view missing — no mapping data written to database.",
         "All upstream tasks may have failed with errorStrategy='ignore'.",
-        glue::glue("Run with --replay {opts$output_dir}/replay.tsv -resume to recover, then re-validate.")
+        recovery_hint
     ), marker)
     quit(status = 1L)
 }
