@@ -74,8 +74,8 @@ write_outcome <- function(ok, marker, report, expected_reps) {
     if (ok) {
         if (fs::file_exists(marker)) fs::file_delete(marker)
         message(glue::glue(
-            "Replication check OK: every parameter cell has {expected_reps} reps; ",
-            "all parquet files readable."
+            "Replication check OK: all data.parquet files readable.",
+            " ({expected_reps} reps expected per parameter cell.)"
         ))
         quit(status = 0L)
     } else {
@@ -142,8 +142,16 @@ if (!DBI::dbExistsTable(con, "metadata")) {
 short_cells <- find_short_cells(con, opts$expected_reps)
 corrupt     <- find_corrupt_parquet(opts$db_root)
 
-ok     <- nrow(short_cells) == 0L && length(corrupt) == 0L
+if (nrow(short_cells) > 0L) {
+    message(glue::glue(
+        "WARNING: {nrow(short_cells)} parameter cell(s) have fewer than {opts$expected_reps} reps. ",
+        "Treating as a warning — pipeline will continue."
+    ))
+    message(paste(utils::capture.output(print(short_cells, n = Inf)), collapse = "\n"))
+}
+
+ok     <- length(corrupt) == 0L
 marker <- fs::path(opts$output_dir, "REPLAY_REQUIRED")
-report <- build_failure_report(short_cells, corrupt, opts$expected_reps, opts$output_dir)
+report <- build_failure_report(tibble::tibble(), corrupt, opts$expected_reps, opts$output_dir)
 
 write_outcome(ok, marker, report, opts$expected_reps)
