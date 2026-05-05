@@ -4,19 +4,17 @@ process PYTHON_SIMULATE_EFFECTS_GLOBAL {
   tag "${nqtl} ${rep} ${effect}${group}_${maf}"
 
   input:
-  tuple val(group), val(maf),
+  tuple val(species), val(group), val(maf),
+        val(nqtl), val(effect), val(h2), val(rep),
         path("TO_SIMS.bed"),    path("TO_SIMS.bim"),     path("TO_SIMS.fam"),
         path("TO_SIMS.map"),    path("TO_SIMS.nosex"),   path("TO_SIMS.ped"),   path("TO_SIMS.log"),
         path(gm), path(n_indep_tests),
         path("CV_TO_SIMS.bed"), path("CV_TO_SIMS.bim"),  path("CV_TO_SIMS.fam"),
         path("CV_TO_SIMS.map"), path("CV_TO_SIMS.nosex"), path("CV_TO_SIMS.ped"), path("CV_TO_SIMS.log")
   path create_causal_qtls
-  each rep
-  each nqtl
-  each effect
 
   output:
-  tuple val(group), val(maf), val(nqtl), val(effect), val(rep),
+  tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2),
         path("causal.variants.sim.${nqtl}.${rep}.txt"),
         emit: causal
   tuple val(group), val(maf),
@@ -27,7 +25,7 @@ process PYTHON_SIMULATE_EFFECTS_GLOBAL {
         path("CV_TO_SIMS.bed"),  path("CV_TO_SIMS.bim"),  path("CV_TO_SIMS.fam"),
         path("CV_TO_SIMS.map"),  path("CV_TO_SIMS.nosex"), path("CV_TO_SIMS.ped"), path("CV_TO_SIMS.log"),
         emit: cv_plink
-  tuple val(group), val(maf), val(nqtl), val(effect), val(rep),
+  tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2),
         path("causal_genotypes.sim.${nqtl}.${rep}.tsv"),
         emit: causal_genotypes
   path "versions.yml", emit: versions

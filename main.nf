@@ -304,6 +304,7 @@ workflow {
     // (R_ASSESS_SIMS via R_GET_GCTA_INTERVALS.out.params, DB_MIGRATION_ASSESS_SIMS
     // via DB_MIGRATION_ANALYZE_QTL.out.params) do NOT need their own .tap{}.
     ch_sf.species_per_group
+        .tap { ch_species_for_grid }      // → pre-process sim grid (Step 11)
         .tap { ch_species_for_sim }
         .tap { ch_species_for_gwa }
         .tap { ch_species_for_intervals }
@@ -456,18 +457,42 @@ workflow {
     //     ch_sim_phenos = R_SIMULATE_EFFECTS_LOCAL.out.causal
     //     ch_sim_plink = R_SIMULATE_EFFECTS_LOCAL.out.plink
     // } else {
+
+    // Predicate for replay filtering. Applied to ch_sim_grid before the process.
+    // Tuple index map: 0=species 1=group 2=maf 3=nqtl 4=effect 5=h2 6=rep [7..]=files
+    // maf is absorbed by *_ — it is 1:1 with group so excluding it loses no filter precision.
+    def replay_predicate = { species, group, maf, nqtl, effect, h2, rep, *_ ->
+        replay_set.contains([species, group, nqtl, effect, h2, rep])
+    }
+
+    // Build the full (species, group, maf, nqtl, effect, h2, rep, ...files...) grid
+    // at channel level before PYTHON_SIMULATE_EFFECTS_GLOBAL.
+    // Replaces: each rep (inside process), each nqtl (inside process), each effect (inside process).
+    // GCTA_SIMULATE_PHENOTYPES will also lose each h2 — h2 flows through via the causal output.
+    // ch_sim_plink / ch_sim_cv_plink are NOT filtered — keyed only on (group, maf).
+    ch_sim_grid = ch_plink_genomat_eigen
+        .combine(ch_species_for_grid, by: 0)
+        // → (group, maf, ms_bed…ms_log, gm, n_indep_tests, cv_bed…cv_log, species)
+        .combine(Channel.fromPath(nqtl_file).splitCsv().map { it[0] })
+        .combine(Channel.fromPath(effect_file).splitCsv().map { it[0] })
+        .combine(Channel.fromPath(h2_file).splitCsv().map { it[0] })
+        .combine(Channel.of(1..params.reps))
+        // → reorder to canonical (species, group, maf, nqtl, effect, h2, rep, ...files...)
+        .map { group, maf,
+               ms_bed, ms_bim, ms_fam, ms_map, ms_nosex, ms_ped, ms_log,
+               gm, n_indep_tests,
+               cv_bed, cv_bim, cv_fam, cv_map, cv_nosex, cv_ped, cv_log,
+               species, nqtl, effect, h2, rep ->
+            tuple(species, group, maf, nqtl, effect, h2 as Float, rep,
+                  ms_bed, ms_bim, ms_fam, ms_map, ms_nosex, ms_ped, ms_log,
+                  gm, n_indep_tests,
+                  cv_bed, cv_bim, cv_fam, cv_map, cv_nosex, cv_ped, cv_log)
+        }
+        .filter { params.replay ? replay_predicate(*it) : true }
+
     PYTHON_SIMULATE_EFFECTS_GLOBAL(
-        ch_plink_genomat_eigen,
-        Channel.fromPath("${workflow.projectDir}/bin/create_causal_vars.py").first(),
-        Channel.of(1..params.reps).toSortedList(),
-        Channel.fromPath(nqtl_file)
-            .splitCsv()
-            .map{ it: it[0] }
-            .toSortedList(),
-        Channel.fromPath(effect_file)
-            .splitCsv()
-            .map{ it: it[0] }
-            .toSortedList() 
+        ch_sim_grid,
+        Channel.fromPath("${workflow.projectDir}/bin/create_causal_vars.py").first()
         )
     ch_versions = ch_versions.mix(PYTHON_SIMULATE_EFFECTS_GLOBAL.out.versions)
     ch_sim_phenos    = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.causal
@@ -475,33 +500,25 @@ workflow {
     ch_sim_cv_plink  = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.cv_plink
     // }
 
-    // G2: Fan causal_genotypes across h2 to match GCTA_SIMULATE_PHENOTYPES cardinality.
-    // causal_genotypes emits once per (group, maf, nqtl, effect, rep) — before h2 expansion.
-    // Each geno file must be paired with every h2 value so the merge chain join (G3) can
-    // align per (group, maf, nqtl, effect, rep, h2).
+    // G2: causal_genotypes emits (group, maf, nqtl, effect, rep, h2, geno_file) — h2 is already
+    // in the tuple (fanned out at channel level before the process). No .combine(h2) needed.
+    // The join by [0,1,2,3,4,5] in the merge chain (G3) keys on (group, maf, nqtl, effect, rep, h2).
     ch_causal_geno_fanned = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.causal_genotypes
-        .combine(Channel.fromPath(h2_file).splitCsv().map { it[0] })
-        .map { group, maf, nqtl, effect, rep, geno_file, h2 ->
-            tuple(group, maf, nqtl, effect, rep, h2, geno_file)
-        }
 
     // Combine species onto the per-cell tuple so the failure trap can include it
-    // in the cell key. ch_sim_phenos shape: (group, maf, nqtl, effect, rep, causal).
-    // After combine(by:0): (group, maf, nqtl, effect, rep, causal, species).
+    // in the cell key. ch_sim_phenos shape: (group, maf, nqtl, effect, rep, h2, causal_file).
+    // After combine(by:0): (group, maf, nqtl, effect, rep, h2, causal_file, species).
     ch_sim_phenos_with_species = ch_sim_phenos
         .combine(ch_species_for_sim, by: 0)
 
     // Simulate phenotypes using the CV binary (--bfile CV_TO_SIMS) so GCTA can locate
     // non-marker causal variant genotypes. The MS binary (ch_sim_plink) passes through
     // to downstream GWA mapping unchanged.
+    // h2 arrives from the input tuple (ch_sim_phenos_with_species contains h2 at index 5).
     GCTA_SIMULATE_PHENOTYPES(
         ch_sim_phenos_with_species,
         ch_sim_cv_plink,   // CV binary — used as --bfile for GCTA simulation
-        ch_sim_plink,      // MS binary — passed through to downstream GWA
-        Channel.fromPath("${h2_file}")
-            .splitCsv()
-            .map{ it: it[0] }
-            .toSortedList()
+        ch_sim_plink       // MS binary — passed through to downstream GWA
         )
     ch_versions = ch_versions.mix(GCTA_SIMULATE_PHENOTYPES.out.versions)
 
