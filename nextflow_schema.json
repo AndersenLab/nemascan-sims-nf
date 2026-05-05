@@ -25,6 +25,13 @@
                     "type": "string",
                     "description": "Absolute path for the Parquet database directory. Defaults to '{output_dir}/db' when null.",
                     "default": null
+                },
+                "replay": {
+                    "type": ["string", "null"],
+                    "default": null,
+                    "description": "Path to a replay.tsv emitted by a previous run. Restricts execution to the failed slots listed in the manifest. Always pair with -resume so successful tasks serve from cache.",
+                    "format": "file-path",
+                    "fa_icon": "fas fa-redo"
                 }
             }
         },
