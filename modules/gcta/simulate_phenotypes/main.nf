@@ -31,6 +31,11 @@ process GCTA_SIMULATE_PHENOTYPES {
     export NF_TRAP_PAYLOAD='{"session":"${workflow.sessionId}","task_hash":"${task.hash}","attempt":${task.attempt},"max_retries":${task.maxRetries},"species":"${species}","group":"${group}","maf":${maf},"nqtl":"${nqtl}","effect":"${effect}","h2":${h2},"rep":${rep},"mode":"NA","type":"NA"}'
     source ${projectDir}/bin/failure_trap.sh
 
+    if [[ "${rep}" == "1" ]]; then                                                                                                                           
+      echo "CHECK 6 INJECTION: forcing exit 1 for rep==${rep}" >&2                                                                                         
+      exit 1
+    fi
+
     gcta64 --bfile CV_TO_SIMS \\
          --simu-qt \\
          --simu-causal-loci ${causal_variants} \\
