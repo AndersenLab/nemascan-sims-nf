@@ -67,6 +67,36 @@ def resolveVcf(String vcf, String species, String projectDir) {
     return vcf  // absolute path passthrough
 }
 
+// =====================================================================
+// parseManifestTuple — single source of truth for replay manifest types.
+//
+// The returned 6-tuple MUST match the channel-tuple types produced by
+// the pre-process grid construction in main.nf. Mismatched types cause
+// Set.contains() to return false for every tuple, silently emptying the
+// replay filter and producing a no-op replay run.
+//
+// maf is intentionally excluded: it is 1:1 with group in the strainfile
+// schema, so group alone identifies the marker set. maf still appears as
+// a column in replay.tsv and in the channel tuple (it is used in output
+// filenames across the pipeline), but it is not part of the Set key.
+//
+// If a source expression in main.nf changes its emitted type, update this
+// helper in the same commit. The runtime assertions in the replay_set
+// block will surface drift loudly on the next replay run.
+//
+// Index map:  0=species  1=group  2=nqtl  3=effect  4=h2  5=rep
+// =====================================================================
+def parseManifestTuple(Map cols) {
+    [
+        cols.species,        // String  — matches NF_TRAP_PAYLOAD "species" field
+        cols.group,          // String  — matches cleanRow.group
+        cols.nqtl,           // String  — matches splitCsv().map { it[0] }
+        cols.effect,         // String  — matches splitCsv().map { it[0] }
+        cols.h2 as Float,    // Float   — matches h2 channel value after .combine()
+        cols.rep as Integer  // Integer — matches Channel.of(1..params.reps)
+    ]
+}
+
 workflow {
     main:
     ch_versions = Channel.empty()
@@ -187,6 +217,41 @@ workflow {
     failuresDir.mkdirs()
     assert failuresDir.exists() :
         "Failed to create ${failuresDir} — check permissions on the output directory"
+
+    // Replay mode: parse the manifest once at workflow start, build a typed Set.
+    // null when --replay is not set (normal runs — no filtering applied).
+    def replay_set = params.replay
+        ? {
+              def lines = file(params.replay).readLines()
+              assert lines && lines[0].startsWith('session\t') :
+                  "replay.tsv header does not start with 'session\\t' — file may be malformed or missing its header"
+              def header = lines[0].split('\t')
+              def required = ['species', 'group', 'nqtl', 'effect', 'h2', 'rep'] as Set
+              assert required.every { header.contains(it) } :
+                  "replay.tsv header is missing required columns; found: ${header.toList()} — need: ${required}"
+              def tuples = lines.drop(1).collect { line ->
+                  def fields = line.split('\t')
+                  assert fields.size() == header.size() :
+                      "row tokenization failure — column count mismatch: ${line}"
+                  def row = [header, fields].transpose().collectEntries()
+                  parseManifestTuple(row)
+              }.toSet()
+
+              // Cheap type-alignment assertions — surface coercion drift before the filter runs.
+              // Tuple index map: 0=species 1=group 2=nqtl 3=effect 4=h2 5=rep
+              if (tuples) {
+                  def s = tuples.first()
+                  assert s[0].class == String  : "replay_set species type is ${s[0].class} — expected String; check parseManifestTuple vs main.nf param-grid"
+                  assert s[1].class == String  : "replay_set group type is ${s[1].class} — expected String; check parseManifestTuple vs main.nf param-grid"
+                  assert s[2].class == String  : "replay_set nqtl type is ${s[2].class} — expected String; check parseManifestTuple vs main.nf param-grid"
+                  assert s[4].class == Float   : "replay_set h2 type is ${s[4].class} — expected Float; check parseManifestTuple vs main.nf param-grid"
+                  assert s[5].class == Integer : "replay_set rep type is ${s[5].class} — expected Integer; check parseManifestTuple vs main.nf param-grid"
+              }
+
+              log.info "Replay mode: filtering channels to ${tuples.size()} slot(s) from ${params.replay}"
+              tuples
+          }()
+        : null
 
     // Parse 6-column strainfile and fan out per-row parameters
     ch_strain_sets = Channel.fromPath(strainfile)
