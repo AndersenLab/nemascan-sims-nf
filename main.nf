@@ -5,6 +5,7 @@ nextflow.preview.output = true
 include { LOCAL_GET_CONTIG_INFO           } from './modules/local/get_contig_info/main'
 include { LOCAL_COMPILE_EIGENS            } from './modules/local/compile_eigens/main'
 include { VALIDATE_REPLICATION_COMPLETE   } from './modules/local/validate_replication_complete/main'
+include { DB_CLEAN_REPLAY_SLOTS           } from './modules/local/db_clean_replay_slots/main'
 include { BCFTOOLS_RENAME_CHROMS          } from './modules/bcftools/rename_chroms/main'
 include { BCFTOOLS_EXTRACT_STRAINS        } from './modules/bcftools/extract_strains/main'
 include { BCFTOOLS_CREATE_GENOTYPE_MATRIX } from './modules/bcftools/create_genotype_matrix/main'
@@ -505,6 +506,25 @@ workflow {
     // The join by [0,1,2,3,4,5] in the merge chain (G3) keys on (group, maf, nqtl, effect, rep, h2).
     ch_causal_geno_fanned = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.causal_genotypes
 
+    // Cleanup gate — deletes failed-slot DB files before any trait-simulation task launches.
+    // DB_CLEAN_REPLAY_SLOTS runs once per --replay invocation; its done sentinel is a value
+    // channel (.first()) so it broadcasts to every downstream tuple rather than consuming once.
+    // ch_sim_plink / ch_sim_cv_plink are gated here even though they are not filtered (their
+    // keys are group/maf only), to prevent any GWA write from starting before cleanup finishes.
+    def db_output_dir = params.db_output
+        ? file(params.db_output).toAbsolutePath().toString()
+        : file("${workflow.outputDir}/db").toAbsolutePath().toString()
+    log.info "Database output directory: ${db_output_dir}"
+
+    def ch_cleanup_done = params.replay
+        ? DB_CLEAN_REPLAY_SLOTS(file(params.replay), db_output_dir)
+            .out.done.first()
+        : Channel.value('no_cleanup_needed')
+
+    ch_sim_phenos   = ch_sim_phenos.combine(ch_cleanup_done).map   { tup, _s -> tup }
+    ch_sim_plink    = ch_sim_plink.combine(ch_cleanup_done).map    { tup, _s -> tup }
+    ch_sim_cv_plink = ch_sim_cv_plink.combine(ch_cleanup_done).map { tup, _s -> tup }
+
     // Combine species onto the per-cell tuple so the failure trap can include it
     // in the cell key. ch_sim_phenos shape: (group, maf, nqtl, effect, rep, h2, causal_file).
     // After combine(by:0): (group, maf, nqtl, effect, rep, h2, causal_file, species).
@@ -540,14 +560,6 @@ workflow {
     GCTA_SIMULATE_PHENOTYPES.out.plink
         .tap { ch_gcta_plink_for_trait }
         .set { ch_gcta_plink_for_plink }
-
-    // Resolve db_output to absolute path so SLURM tasks write to the correct
-    // shared filesystem location, not relative to their work directory.
-    // Default: {outputDir}/db (computed from workflow.outputDir when params.db_output is null)
-    def db_output_dir = params.db_output
-        ? file(params.db_output).toAbsolutePath().toString()
-        : file("${workflow.outputDir}/db").toAbsolutePath().toString()
-    log.info "Database output directory: ${db_output_dir}"
 
     // -- TRAIT DATA WRITES -------------------------------------------------------
     // Source: GCTA_SIMULATE_PHENOTYPES (pre-upscaled phenotype, pre-mode-crossing)
