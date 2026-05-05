@@ -1,10 +1,10 @@
 process GCTA_SIMULATE_PHENOTYPES {
 
     label 'gcta_simulate_phenotypes'
-    tag "${nqtl} ${rep} ${h2} ${effect} ${group}_${maf}"
+    tag "${species}_${group}_${maf}_${nqtl}_${effect}_${h2}_${rep}"
 
     input:
-    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), path(causal_variants)
+    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), path(causal_variants), val(species)
     tuple val(group), val(maf),
           path("CV_TO_SIMS.bed"),  path("CV_TO_SIMS.bim"),  path("CV_TO_SIMS.fam"),
           path("CV_TO_SIMS.map"),  path("CV_TO_SIMS.nosex"), path("CV_TO_SIMS.ped"), path("CV_TO_SIMS.log")
@@ -26,20 +26,15 @@ process GCTA_SIMULATE_PHENOTYPES {
     script:
     def args = task.ext.args ?: ''
     """
-    export NF_TRAP_SESSION_ID="${workflow.sessionId}"
-    export NF_TRAP_FAILURES_DIR="${params.output_dir}/.failures"
-    export NF_TRAP_TASK_HASH="${task.hash}"
-    export NF_TRAP_ATTEMPT=${task.attempt}
-    export NF_TRAP_MAX_RETRIES=${task.maxRetries}
-    export GROUP="${group}"
-    export MAF=${maf}
-    export NQTL="${nqtl}"
-    export EFFECT="${effect}"
-    export H2=${h2}
-    export REP=${rep}
-    export MODE="NA"
-    export TYPE="NA"
+    export NF_TRAP_FAILURES_DIR="${workflow.outputDir}/.failures"
+    export NF_TRAP_CELL_KEY="${species}__${group}__${maf}__${nqtl}__${effect}__${rep}__${h2}__NA__NA"
+    export NF_TRAP_PAYLOAD='{"session":"${workflow.sessionId}","task_hash":"${task.hash}","attempt":${task.attempt},"max_retries":${task.maxRetries},"species":"${species}","group":"${group}","maf":${maf},"nqtl":"${nqtl}","effect":"${effect}","h2":${h2},"rep":${rep},"mode":"NA","type":"NA"}'
     source ${projectDir}/bin/failure_trap.sh
+
+    if [[ "${rep}" == "1" ]]; then                                                                                                                           
+      echo "CHECK 6 INJECTION: forcing exit 1 for rep==${rep}" >&2                                                                                         
+      exit 1
+    fi
 
     gcta64 --bfile CV_TO_SIMS \\
          --simu-qt \\
