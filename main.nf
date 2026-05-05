@@ -512,7 +512,7 @@ workflow {
 
     def ch_cleanup_done
     if (params.replay) {
-        DB_CLEAN_REPLAY_SLOTS(file(params.replay), db_output_dir)
+        DB_CLEAN_REPLAY_SLOTS(file(params.replay), db_output_dir, cv_maf, cv_ld)
         ch_cleanup_done = DB_CLEAN_REPLAY_SLOTS.out.done.first()
     } else {
         ch_cleanup_done = Channel.value('no_cleanup_needed')
