@@ -459,12 +459,7 @@ workflow {
     //     ch_sim_plink = R_SIMULATE_EFFECTS_LOCAL.out.plink
     // } else {
 
-    // Predicate for replay filtering. Applied to ch_sim_grid before the process.
-    // Tuple index map: 0=species 1=group 2=maf 3=nqtl 4=effect 5=h2 6=rep [7..]=files
-    // maf is absorbed by *_ — it is 1:1 with group so excluding it loses no filter precision.
-    def replay_predicate = { species, group, maf, nqtl, effect, h2, rep, *_ ->
-        replay_set.contains([species, group, nqtl, effect, h2, rep])
-    }
+    def replay_predicate = { args -> replay_set.contains([args[0], args[1], args[3], args[4], args[5], args[6]]) }
 
     // Build the full (species, group, maf, nqtl, effect, h2, rep, ...files...) grid
     // at channel level before PYTHON_SIMULATE_EFFECTS_GLOBAL.
@@ -489,7 +484,8 @@ workflow {
                   gm, n_indep_tests,
                   cv_bed, cv_bim, cv_fam, cv_map, cv_nosex, cv_ped, cv_log)
         }
-        .filter { params.replay ? replay_predicate(*it) : true }
+        .filter { params.replay ? replay_predicate(it) : true }
+
 
     PYTHON_SIMULATE_EFFECTS_GLOBAL(
         ch_sim_grid,
@@ -511,19 +507,20 @@ workflow {
     // channel (.first()) so it broadcasts to every downstream tuple rather than consuming once.
     // ch_sim_plink / ch_sim_cv_plink are gated here even though they are not filtered (their
     // keys are group/maf only), to prevent any GWA write from starting before cleanup finishes.
-    def db_output_dir = params.db_output
-        ? file(params.db_output).toAbsolutePath().toString()
-        : file("${workflow.outputDir}/db").toAbsolutePath().toString()
+    def db_output_dir = params.db_output ? file(params.db_output).toAbsolutePath().toString() : file("${workflow.outputDir}/db").toAbsolutePath().toString()
     log.info "Database output directory: ${db_output_dir}"
 
-    def ch_cleanup_done = params.replay
-        ? DB_CLEAN_REPLAY_SLOTS(file(params.replay), db_output_dir)
-            .out.done.first()
-        : Channel.value('no_cleanup_needed')
+    def ch_cleanup_done
+    if (params.replay) {
+        DB_CLEAN_REPLAY_SLOTS(file(params.replay), db_output_dir)
+        ch_cleanup_done = DB_CLEAN_REPLAY_SLOTS.out.done.first()
+    } else {
+        ch_cleanup_done = Channel.value('no_cleanup_needed')
+    }
 
-    ch_sim_phenos   = ch_sim_phenos.combine(ch_cleanup_done).map   { tup, _s -> tup }
-    ch_sim_plink    = ch_sim_plink.combine(ch_cleanup_done).map    { tup, _s -> tup }
-    ch_sim_cv_plink = ch_sim_cv_plink.combine(ch_cleanup_done).map { tup, _s -> tup }
+    ch_sim_phenos   = ch_sim_phenos.combine(ch_cleanup_done).map   { it[0..-2] }
+    ch_sim_plink    = ch_sim_plink.combine(ch_cleanup_done).map    { it[0..-2] }
+    ch_sim_cv_plink = ch_sim_cv_plink.combine(ch_cleanup_done).map { it[0..-2] }
 
     // Combine species onto the per-cell tuple so the failure trap can include it
     // in the cell key. ch_sim_phenos shape: (group, maf, nqtl, effect, rep, h2, causal_file).
