@@ -4,7 +4,10 @@ library(optparse)
 
 opts <- optparse::parse_args(optparse::OptionParser(option_list = list(
     optparse::make_option("--replay_tsv", type = "character"),
-    optparse::make_option("--db_root",    type = "character")
+    optparse::make_option("--db_root",    type = "character"),
+    optparse::make_option("--cv_maf",     type = "double", default = NA_real_,
+        help = "Global cv_maf (NA -> per-group ms_maf from marker_set_metadata)"),
+    optparse::make_option("--cv_ld",      type = "double", default = 0.8)
 )))
 
 R_SOURCE_DIR <- Sys.getenv("R_SOURCE_DIR")
@@ -96,7 +99,8 @@ delete_if_exists <- function(files) {
 #' @param db_root Character. Database root directory.
 #' @param ... Additional manifest columns (ignored).
 #' @return Invisibly returns NULL.
-clean_slot <- function(species, group, rep, maf, nqtl, effect, h2, db_root, ...) {
+clean_slot <- function(species, group, rep, maf, nqtl, effect, h2, db_root,
+                       cv_maf = NA_real_, cv_ld = 0.8, ...) {
     ms_meta <- read_marker_set_metadata(group, maf, base_dir = db_root)
     if (is.null(ms_meta)) {
         stop(glue::glue(
@@ -104,12 +108,25 @@ clean_slot <- function(species, group, rep, maf, nqtl, effect, h2, db_root, ...)
         ))
     }
 
+    cv_maf_effective <- if (is.na(cv_maf)) maf else cv_maf
+
     ids <- build_ids_from_params(
-        params = list(group = group, maf = maf, nqtl = nqtl, effect = effect,
-                      rep = rep, h2 = h2, marker_set_hash = ms_meta$hash),
+        params = list(
+            population        = group,
+            maf               = maf,
+            species           = ms_meta$species,
+            vcf_release_id    = ms_meta$vcf_release_id,
+            ms_ld             = ms_meta$ms_ld,
+            nqtl              = nqtl,
+            effect            = effect,
+            rep               = rep,
+            h2                = h2,
+            cv_maf_effective  = cv_maf_effective,
+            cv_ld             = cv_ld
+        ),
         mode = "inbred", pca = FALSE
     )
-    trait_id <- ids$trait_id
+    trait_id <- ids$trait_id$hash
 
     c(
         trait_files_for_id(db_root, trait_id),
@@ -123,5 +140,6 @@ clean_slot <- function(species, group, rep, maf, nqtl, effect, h2, db_root, ...)
 # --- main ---
 
 manifest <- read_replay_manifest(opts$replay_tsv)
-purrr::pwalk(manifest, clean_slot, db_root = opts$db_root)
+purrr::pwalk(manifest, clean_slot, db_root = opts$db_root,
+             cv_maf = opts$cv_maf, cv_ld = opts$cv_ld)
 message(glue::glue("DB_CLEAN_REPLAY_SLOTS: cleanup complete for {nrow(manifest)} slot(s)."))
