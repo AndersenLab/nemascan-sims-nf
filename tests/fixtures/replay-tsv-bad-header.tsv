@@ -1,0 +1,2 @@
+task_hash	attempt	max_retries	species	group	maf	nqtl	effect	h2	rep	mode	type	exit
+abcd1234	2	3	c_elegans	ce.test	0.05	5	gamma	0.3	1	inbred	pca	1

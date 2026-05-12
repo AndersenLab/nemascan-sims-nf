@@ -18,6 +18,8 @@ website:
         href: database-structure.qmd
       - text: "Cross-Validation"
         href: cross-validation.qmd
+      - text: "Replay & Error Handling"
+        href: error-handling-replay.qmd
       - text: "Development"
         menu:
           - text: "Development Guide"

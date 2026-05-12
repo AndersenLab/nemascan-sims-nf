@@ -1,0 +1,170 @@
+---
+title: "Replay & Error Handling"
+subtitle: "Two-invocation halt-with-replay-manifest model for recovering failed replicates"
+date: last-modified
+format:
+  html:
+    embed-resources: true
+---
+
+## Overview
+
+Failed post-trait simulation fanout replicates no longer terminate the pipeline. A task that
+exhausts its retries is dropped from its downstream channel; the surviving
+reps complete to the database; and `workflow.onComplete` emits a
+`replay.tsv` listing the dropped slots. A second invocation with
+`-profile replay --replay <tsv> -resume` recovers them. The target
+replication is achieved across two runs: the first writes the reps that
+succeed (N − k of N), and the replay fills in the remaining k.
+
+| Component | Role |
+|---|---|
+| `errorStrategy = { workflow.stubRun ? 'retry' : (task.attempt <= task.maxRetries ? 'retry' : 'ignore') }` | Post-fanout processes drop on retry exhaustion. Stub runs preserve retry semantics. (`conf/rockfish.config`) |
+| `bin/failure_trap.sh` | Bash EXIT trap installed by each post-fanout process. Writes `${output_dir}/.failures/<key>.json` on non-zero exit. |
+| `workflow.onComplete` (`main.nf`) | Aggregates the `.failures/` records and writes `${output_dir}/replay.tsv`. |
+| `--replay` filter (`main.nf:462, 487`) | Restricts fanout to the 6-tuple `(species, group, nqtl, effect, h2, rep)` slots listed in the manifest. |
+| `DB_CLEAN_REPLAY_SLOTS` | Deletes the failed slots' partial DB rows (12 files per slot) before the replay rewrites them. |
+| `VALIDATE_REPLICATION_COMPLETE` | Emits a warning if any parameter combination is short. Short replication is **non-fatal** — the validator exits 0. |
+
+Prep-phase processes (`bcftools_*`, `plink_recode_*`,
+`r_find_genotype_matrix_eigen`) stay on `terminate`. A prep-phase failure
+is cone-level (the whole `(group, maf)` subtree fails), not rep-level, so
+per-rep replay is meaningless upstream of fanout — and the trap cannot
+write a valid manifest record there. See
+`nemascan-sims-nf-notes/Development/error-handling/planning/halt-with-replay-manifest.md`
+for the design rationale.
+
+
+## First run
+
+Standard invocation — no replay-specific flags:
+
+```bash
+nextflow run main.nf -profile rockfish \
+    --strainfile strains.tsv \
+    --vcf 20231213 \
+    --output_dir ${OUTPUT}
+```
+
+The pipeline runs to completion regardless of per-rep failures. Exit
+status is **0** under `errorStrategy = 'ignore'`, even when reps were
+dropped (short replication is a warning, not an error). Inspect the run:
+
+```bash
+# Per-failure JSON records (one per failed task, written by the EXIT trap)
+ls ${OUTPUT}/.failures/
+
+# Aggregated manifest (one data row per failed slot)
+cat ${OUTPUT}/replay.tsv
+
+# Columns
+head -1 ${OUTPUT}/replay.tsv | tr '\t' '\n'
+# session, species, group, maf, nqtl, effect, h2, rep, mode, type, attempt, exit
+```
+
+If `replay.tsv` does not exist or has only a header row, every rep
+succeeded and no replay is needed.
+
+::: {.callout-warning}
+
+## Replay run
+
+Canonical recovery command:
+
+```bash
+nextflow run main.nf -profile rockfish,replay \
+    -resume \
+    --output_dir ${OUTPUT} \
+    --replay ${OUTPUT}/replay.tsv
+```
+
+The `replay` profile is defined at `nextflow.config:189–192`; it adds no
+resource overrides today and exists so operators have a single canonical
+spelling.
+
+What the replay run does:
+
+- **Filters fanout** to the 6-tuple `(species, group, nqtl, effect, h2,
+  rep)` slots listed in the manifest (`main.nf:462`).
+- **Filters sibling reps out of the channel before fanout.** Sibling reps
+  in the same parameter combination will **not** appear as `CACHED` in
+  the log — they do not appear at all. The replay-of-replay invocation
+  (running the same manifest a second time with no replay-side failure)
+  is the cache-hit oracle: all tasks report `CACHED`.
+- **Cleans the partial DB rows** for each replayed slot before rewriting
+  them. `DB_CLEAN_REPLAY_SLOTS` deletes 12 files per slot:
+
+  | Count | Path pattern |
+  |---|---|
+  | 1 | `traits/{trait_id}.parquet` |
+  | 1 | `traits/causal_variants/{trait_id}_causal.parquet` |
+  | 1 | `traits/causal_genotypes/{trait_id}_causal_geno.parquet` |
+  | 1 | `traits/phenotypes/{trait_id}_phenotype.parquet` |
+  | 8 | `mappings/population={group}/mapping_id={mid}/{data,meta}.parquet` for each of the 4 `mode × pca` combos |
+
+  Sibling reps, other parameter combinations, `marker_set_metadata/`,
+  and `markers/` are not touched.
+
+- **Runs the replayed slot with a fresh seed.** Causal-variant selection
+  in `bin/create_causal_vars.py` and `bin/Create_Causal_QTLs.R` is
+  intentionally non-deterministic (`np.random.default_rng()` is unseeded;
+  the R script has no `set.seed()` call). The replayed rep is therefore
+  drawn from a different realization than the failed attempt.
+
+
+## Manage `replay.tsv` between runs
+
+After a successful replay, the input `replay.tsv` is **not** archived,
+emptied, or moved. The file persists on disk exactly as the first run
+wrote it. Before any subsequent `-resume` invocation on the same
+`output_dir`, archive or delete it:
+
+```bash
+mv ${OUTPUT}/replay.tsv ${OUTPUT}/replay.tsv.applied.$(date +%F)
+```
+
+Re-running with the same stale manifest is harmful: `DB_CLEAN_REPLAY_SLOTS`
+re-deletes the files the previous replay just rewrote, and Nextflow's
+work-dir cache then serves the downstream producers as `CACHED` — leaving
+the DB with missing files. Treat `replay.tsv` as a one-shot input.
+
+### Replay only within the scratch retention window
+
+The replay relies on Nextflow's `-resume` cache hitting the work
+directories of the first run's successful tasks. If the work dir has
+been evicted from scratch, `-resume` cannot serve the prep-phase tasks
+from cache; the prep phase re-runs, the sibling reps within the
+replayed slot's parameter combination re-run under fresh seeds (because
+causal-variant selection is non-deterministic), and the DB ends up with
+cross-rep RNG inconsistency within that parameter combination.
+
+If the work dir is gone, **do not** use `--replay`. Delete
+`${OUTPUT}/db` and rerun the full pipeline.
+
+### Statistical-validity caveat for replayed reps
+
+Reps recovered via replay are conditioned on "did not trigger the failure
+mode that dropped them." If the failure mode correlates with a
+biologically-meaningful property of the simulation — for example, a low
+MAF causing low Vp that pushes a rep into the
+`GCTA_MAKE_GRM` upscaling failure path — replayed reps are not
+exchangeable with first-run reps for the same parameter combination.
+
+Before running `--replay`, inspect `replay.tsv` and confirm the failures
+are not concentrated within a specific parameter combination of the
+replication regime. If they are, the failure mode is correlated with
+that combination's biology and replaying will bias its per-rep
+statistics. See the same callout in
+[Database Structure](database-structure.qmd) for the per-table
+implication.
+
+## See also
+
+- [Database Structure](database-structure.qmd) — schema-level implication
+  for per-rep aggregations under `--replay`.
+- [Development Guide](development.qmd#testing-failure-handling-locally) —
+  step-by-step recipe for exercising the failure → manifest → replay
+  loop on `-profile test,docker`.
+- `nemascan-sims-nf-notes/Development/error-handling/` — full design
+  history, reviews (DS / NF engineer), and Step 15 V1–V8 validation
+  evidence.
