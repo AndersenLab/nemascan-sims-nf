@@ -131,6 +131,29 @@ All IDs (`marker_set_id`, `trait_id`, `mapping_id`) are 20-char lowercase hex st
 
 `var.exp` was removed from the mappings schema in Phase 5 — it was always `NA` in the DB path. Raw data for offline variance-explained estimation is now in `traits/`, `traits/causal_variants/`, `traits/causal_genotypes/`, and `traits/phenotypes/`.
 
+## Error handling and replay
+
+Post-fanout processes drop on retry exhaustion (`errorStrategy = 'ignore'` in `conf/rockfish.config`) instead of terminating the pipeline. A bash EXIT trap (`bin/failure_trap.sh`) writes `${output_dir}/.failures/<key>.json` for each dropped task; `workflow.onComplete` aggregates these into `${output_dir}/replay.tsv`. The pipeline exits 0 even when reps were dropped — `VALIDATE_REPLICATION_COMPLETE` warns on short replication but does not fail the run.
+
+Recover dropped reps with a second invocation:
+
+```
+nextflow run main.nf -profile rockfish,replay -resume \
+    --output_dir ${output_dir} --replay ${output_dir}/replay.tsv
+```
+
+The replay filter is keyed on the 6-tuple `(species, group, nqtl, effect, h2, rep)` at `main.nf:462`. Sibling reps are filtered out of the channel before fanout — they do **not** appear as `CACHED` in the log. `DB_CLEAN_REPLAY_SLOTS` deletes 12 partial-write files per replayed slot (4 trait + 8 mapping) before the replay rewrites them.
+
+Operator rules:
+- Place `--output_dir` inside the project root under Docker — Nextflow does not auto-bind arbitrary paths like `/tmp/...`, and DB writes are silently lost on container exit.
+- Rotate `replay.tsv` manually between runs: `mv replay.tsv replay.tsv.applied.$(date +%F)`. No auto-archival.
+- Replay only within the scratch retention window. After eviction, delete `${output_dir}/db` and start fresh — `-resume` cache misses will re-run sibling reps under fresh seeds, producing within-cell RNG inconsistency.
+- Prep-phase processes (`bcftools_*`, `plink_recode_*`, `r_find_genotype_matrix_eigen`) stay on `terminate` — a prep-phase failure is cone-level, not rep-level.
+
+Known limitations (not yet implemented): `replay.tsv.run-<sessionId>` archival on success, auto-cleanup of `replay.tsv` on no-failure runs, SIGKILL safety net via `workflow.trace` (NF 24.10 recursion), `REPLAY_REQUIRED` flag file, and the `task_hash` field in `.failures/<key>.json` is the literal string `"null"` (do not key off it).
+
+Full operator runbook: `docs/error-handling-replay.qmd`. Statistical caveat for replayed reps (heteroskedastic per-cell sample sizes): `docs/database-structure.qmd` callout.
+
 ## Key Parameters
 
 | Parameter | Description | Default |

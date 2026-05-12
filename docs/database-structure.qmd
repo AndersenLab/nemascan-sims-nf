@@ -48,6 +48,32 @@ time via DuckDB. The database contains five data domains:
 All Parquet files use Snappy compression. Schemas are defined as Arrow schema
 objects in `R/database.R`.
 
+::: {.callout-warning}
+## Replayed reps can bias the replication regime
+
+Reps recovered by `--replay` are not a random sample of the
+replication regime; they are the ones that hit a transient
+failure on the first run. When the failure mode correlates with the
+biology of a particular parameter combination, replaying produces
+replicates that are not exchangeable with the first-run replicates for
+that combination.
+
+**Example.** Some causal variants are more likely to produce a low
+phenotypic variance, which can trip the GCTA Vp-too-small error and
+drop the rep. If those reps are then replayed, the surviving first-run
+reps over-represent higher-MAF draws and the replayed reps
+over-represent lower-MAF draws for the same parameter combination.
+
+**How to avoid it.** Before running `--replay`, inspect `replay.tsv`
+and confirm the failures are not concentrated within a specific
+parameter combination of the replication regime. If they are, the
+failure mode is correlated with that combination's biology and
+replaying will bias its per-rep statistics.
+
+See [Replay & Error Handling](error-handling-replay.qmd) for the full
+operator workflow.
+:::
+
 
 ## Marker Sets
 
