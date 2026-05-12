@@ -11,6 +11,31 @@ All notable changes to `nemascan-sims-nf` are recorded here. The project does
 not use version tags; entries are organized by development phase and date.
 
 
+## [Unreleased] — May 2026
+
+### Changed
+- **Halt-with-replay-manifest error handling** (`fix/error-handling`,
+  2026-05-12): Post-fanout processes now drop on retry exhaustion via
+  `errorStrategy = 'ignore'` instead of terminating the pipeline. Failed
+  slots are recorded to `${output_dir}/.failures/<key>.json` by a bash
+  EXIT trap (`bin/failure_trap.sh`), aggregated to
+  `${output_dir}/replay.tsv` in `workflow.onComplete`, and recovered by a
+  second invocation: `-profile replay --replay <tsv> -resume`.
+  `DB_CLEAN_REPLAY_SLOTS` removes the 12 partial-write files per replayed
+  slot (4 trait + 8 mapping) before the replay rewrites them.
+  `VALIDATE_REPLICATION_COMPLETE` warns on short replication but does not
+  fail the run — the pipeline exits 0 even when reps were dropped.
+  Prep-phase processes (`bcftools_*`, `plink_recode_*`,
+  `r_find_genotype_matrix_eigen`) stay on `terminate` (a prep-phase
+  failure is cone-level, not rep-level). See
+  [Replay & Error Handling](error-handling-replay.qmd) for the operator
+  runbook, operational constraints (output_dir bind-mount, manual
+  `replay.tsv` rotation, scratch retention window), the statistical
+  caveat for replayed reps, and known limitations (`replay.tsv` archival,
+  SIGKILL safety net, and `REPLAY_REQUIRED` flag file are not yet
+  implemented).
+
+
 ## [Unreleased] — April 2026
 
 ### Removed
