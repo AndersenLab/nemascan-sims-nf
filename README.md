@@ -25,6 +25,23 @@ Optional arguments (General):
     --simulate_qtlloc Boolean            Whether to simulate QTLs in specific genomic regions (Default: false)
     --output_dir      String             Output directory name (Default: Analysis_Results-{date}).
                                          Also settable via Nextflow's native -output-dir flag.
+    --replay          File               Path to a `replay.tsv` emitted by a previous run. Restricts execution to
+                                         the failed slots listed in the manifest. Pair with `-profile replay` and
+                                         `-resume`. See docs/error-handling-replay.qmd.
+
+## Recovering Failed Replicates
+
+Failed post-fanout replicates no longer terminate the pipeline; the surviving reps complete and a
+`${output_dir}/replay.tsv` manifest is written for the dropped slots. Recover them with a second
+invocation:
+
+```
+nextflow run main.nf -profile rockfish,replay -resume \
+    --output_dir ${output_dir} --replay ${output_dir}/replay.tsv
+```
+
+See [docs/error-handling-replay.qmd](docs/error-handling-replay.qmd) for the full two-invocation
+model, operator workflow, and statistical caveats.
 
 ## Strainfile Format
 

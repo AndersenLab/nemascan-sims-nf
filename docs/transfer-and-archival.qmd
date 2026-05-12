@@ -1,0 +1,282 @@
+---
+title: "Transfer & Archival"
+subtitle: "Moving simulation outputs from Rockfish to a local workstation"
+date: last-modified
+format:
+  html:
+    embed-resources: true
+---
+
+::: {.callout-tip}
+## When to use this page
+
+After a production pipeline run completes on Rockfish and the outputs
+are verified in place, use this workflow to move the results to another analysis or long term storage env. The procedure is safe (full SHA-256
+verification on both ends), efficient (a single `tar.zst` instead of
+thousands of small Parquet files), and auditable (reproducible archive
+hashes plus run-level provenance metadata). **Do not clean up the
+`/scratch4/` work directory until every step in Phase C reports `OK`.**
+:::
+
+The pipeline writes a Parquet database at `{outputDir}/db/` plus one or
+two top-level assessment TSVs. A production three-species run is several GB (~11 GB based on current tests)
+and contains thousands of small Parquet files — a shape that punishes
+naive `rsync` of the directory tree. This page documents the archive-first
+workflow implemented by `pretransfer_manifest.sh` at the repo root.
+
+```{mermaid}
+%%{init: {'themeVariables': {'fontSize': '16px'}}}%%
+flowchart TD
+    classDef step fill:#9b59b6,stroke:#6c3483,color:#fff
+    classDef data fill:#f5f5f5,stroke:#999,color:#333
+
+    STAGE["pretransfer_manifest.sh RUN<br/>(on Rockfish)"]:::step
+    ARCHIVE(["RUN.tar.zst + .sha256 + manifest + metadata"]):::data
+    RSYNC["rsync -avP --partial<br/>(from local)"]:::step
+    LOCAL(["Four sidecar files on local disk"]):::data
+    VERIFY1["sha256sum -c RUN.tar.zst.sha256"]:::step
+    EXTRACT["tar -I zstd -xvf RUN.tar.zst"]:::step
+    VERIFY2["sha256sum -c RUN.sha256"]:::step
+    DONE(["Browsable db/ tree<br/>(all files OK)"]):::data
+    CLEAN["rm -rf /scratch4/.../nf-work-*<br/>(on Rockfish)"]:::step
+
+    STAGE --> ARCHIVE --> RSYNC --> LOCAL --> VERIFY1 --> EXTRACT --> VERIFY2 --> DONE --> CLEAN
+```
+
+## What you get
+
+For an output directory named `<RUN>/` (e.g.
+`Sims_ce-cb-ct_nqtl1-50_h2grid_50reps/`), the staging step produces four
+sidecar files in the parent directory:
+
+| File | Purpose |
+|------|---------|
+| `<RUN>.tar.zst` | The compressed archive payload. |
+| `<RUN>.tar.zst.sha256` | Single-line SHA-256 of the archive. Used as a fast atomic integrity check before extracting. |
+| `<RUN>.sha256` | SHA-256 of every file inside `<RUN>/`, with paths relative to the parent directory. Used after extraction to verify every file byte-for-byte. |
+| `<RUN>.manifest.txt` | Human-readable `key: value` metadata: created_at, hostname, user, pipeline git commit, file count, source bytes, archive bytes, tool versions. |
+
+Two integrity layers, by design: the archive hash catches transit
+problems (truncated transfer, bit flips, wrong archive moved into place),
+and the per-file manifest catches storage problems (bit rot, partial
+extraction, accidental edits of extracted files). Both are needed — see
+`issues/pretransfer-manifest-archive/design.md` for the full rationale.
+
+## Phase A — Stage on Rockfish
+
+::: {.callout-warning}
+## Do not run staging on the login node
+
+The staging step runs `tar --sort=name | zstd -T0 -9` plus a per-file
+SHA-256 walk over the entire output directory. For a production-sized
+run (~11 GB) this **pins every allocated core for several minutes** and
+does ~20 GB of read+write I/O against `/vast`. That profile is not
+appropriate for a shared login node. Run it on a compute node via
+`sbatch` (preferred, non-interactive) or `srun` (for an interactive
+session).
+:::
+
+### Option 1 — Submit as a batch job (recommended)
+
+The repo ships a small SLURM wrapper that allocates 8 cores / 8 GB /
+1 hour and forwards all arguments to `pretransfer_manifest.sh`:
+
+```bash
+ssh <user>@<rockfish-host>
+cd /vast/eande106/<user>/nemascan-sims-nf
+
+sbatch scripts/stage_transfer.sbatch Sims_ce-cb-ct_nqtl1-50_h2grid_50reps
+```
+
+Output and error logs land in `stage_transfer_<jobid>.out` / `.err` in
+the submission directory. When the job finishes, read the `.out` file —
+the tail contains the archive path, SHA-256, and the copy-pasteable
+Phase B/C commands.
+
+Override SLURM defaults on the command line if needed (e.g. different
+account or more cores):
+
+```bash
+sbatch --account=myaccount --cpus-per-task=16 --time=2:00:00 \
+  scripts/stage_transfer.sbatch Sims_ce-cb-ct_nqtl1-50_h2grid_50reps
+```
+
+### Option 2 — Interactive compute node via `srun`
+
+For a one-off or when you want to watch the progress live, grab a short
+interactive allocation and run the script directly:
+
+```bash
+srun -A eande106 -p parallel -N1 -n1 -c 8 --mem=8G -t 0:30:00 --pty bash
+# now on a compute node
+cd /vast/eande106/<user>/nemascan-sims-nf
+bash pretransfer_manifest.sh Sims_ce-cb-ct_nqtl1-50_h2grid_50reps
+exit
+```
+
+Either option prints (on success) the archive path, file count, archive
+SHA-256, and a copy-pasteable block of commands for Phase B and C.
+
+### Optional arguments
+
+Both the batch wrapper and the direct script accept the same arguments:
+
+```bash
+# Stage into a specific directory instead of the parent of <RUN>
+sbatch scripts/stage_transfer.sbatch \
+  /vast/eande106/<user>/Sims_... \
+  /vast/eande106/<user>/transfers
+
+# Force regeneration of staging artifacts (bypasses idempotency guard)
+sbatch scripts/stage_transfer.sbatch \
+  Sims_ce-cb-ct_nqtl1-50_h2grid_50reps --force
+```
+
+The script is idempotent: re-running it against unchanged source prints
+`staging is current` and exits 0 without redoing the work, so re-submitting
+the sbatch job is safe.
+
+## Phase B — Transfer to local
+
+Open a terminal on your **local workstation** (not Rockfish) and pull
+the four sidecar files with a single `rsync` call. The `--partial` flag
+preserves interrupted byte streams so dropped SSH sessions resume
+cleanly.
+
+```bash
+rsync -avP --partial \
+  <user>@<rockfish-host>:/vast/eande106/<user>/Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.tar.zst \
+  <user>@<rockfish-host>:/vast/eande106/<user>/Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.tar.zst.sha256 \
+  <user>@<rockfish-host>:/vast/eande106/<user>/Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.sha256 \
+  <user>@<rockfish-host>:/vast/eande106/<user>/Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.manifest.txt \
+  ./
+```
+
+A ~9 GB archive transfers in 5–20 minutes over a campus network; YMMV
+on home connections.
+
+## Phase C — Verify and extract
+
+Still on the local machine, in the directory where you pulled the four
+files, run three commands in order. All three must succeed before the
+transfer is considered complete.
+
+```bash
+# 1. Archive integrity — fast, catches transit corruption
+sha256sum -c Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.tar.zst.sha256
+
+# 2. Extract (macOS: brew install zstd if not present)
+tar -I zstd -xvf Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.tar.zst
+
+# 3. Per-file audit — catches bit rot, partial extraction, accidental edits
+sha256sum -c Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.sha256
+```
+
+Step 1 finishes in seconds. Step 2 runs at roughly 200–400 MB/s on a
+modern laptop. Step 3 reads every file back off disk and hashes it, so
+it takes about as long as step 2.
+
+Every line from step 3 should end with `: OK`. Any `FAILED` line means
+that specific file does not match what was staged on Rockfish; re-run
+`rsync` and re-extract, or investigate local disk health.
+
+## What's in the archive
+
+The archive contains the output directory exactly as it looks after the
+pipeline finishes:
+
+- `<RUN>/db/` — the full Parquet database (see
+  [Database Structure](database-structure.qmd) for schema details)
+- `<RUN>/db_simulation_assessment_results.tsv` — the main assessment
+  results file (always present)
+- `<RUN>/simulation_assessment_results.tsv` — legacy R-based assessment
+  (only if `--legacy_assess` was used; see
+  [QTL Detection & Assessment](qtl-detection-assessment.qmd))
+
+Scratch work-directory artifacts (GRM binaries, intermediate PLINK files,
+VCF subsets) are **not** included — they live under `/scratch4/` and are
+intentionally cleaned up after transfer.
+
+## Phase D — Clean up scratch (Rockfish)
+
+After Phase C reports `OK` for every file, it is safe to remove the
+Nextflow work directory on Rockfish. The work dir for a production run
+is 100+ GB of intermediate files that are no longer needed.
+
+```bash
+ssh <user>@<rockfish-host>
+rm -rf /scratch4/eande106/<user>/nf-work-*
+```
+
+The scratch directory default is defined in
+[`conf/rockfish.config`](https://github.com/AndersenLab/nemascan-sims-nf/blob/main/conf/rockfish.config)
+(`params.scratch_dir = /scratch4/eande106`).
+
+::: {.callout-warning}
+## Never clean scratch before Phase C is green
+
+If `sha256sum -c` on the per-file manifest reports any mismatch, **stop**
+and re-run Phase B / Phase C before deleting anything. Intermediate
+scratch files are your only path to re-running the pipeline without
+re-computing from the input VCFs.
+:::
+
+## Troubleshooting
+
+**Staging step: "GNU tar (>= 1.28) is required"**. The script hard-depends
+on GNU tar flags (`--sort=name`, `--mtime`, `--owner`, `--group`,
+`--numeric-owner`) that BSD tar does not support. On Rockfish, `tar` is
+already GNU tar. On macOS for local testing, run
+`brew install gnu-tar` — the script finds it as `gtar`.
+
+**Staging step: "too many open files"**. Rare, but if you see it during
+the per-file manifest step, raise the open-file limit inside the
+allocation before invoking the script:
+
+```bash
+ulimit -n 8192
+bash pretransfer_manifest.sh ...
+```
+
+If you used `sbatch scripts/stage_transfer.sbatch`, edit the wrapper to
+add `ulimit -n 8192` before the `exec` line and re-submit.
+
+**Phase B: SSH disconnects mid-transfer**. The `--partial` flag in
+`rsync` preserves the in-progress archive file. Re-run the same `rsync`
+command and it resumes from where it left off.
+
+**Phase C step 1: archive SHA mismatch**. The archive was corrupted in
+transit. Re-run Phase B with `--checksum` added to force rsync to
+verify every block:
+
+```bash
+rsync -avP --partial --checksum ...
+```
+
+**Phase C step 3: per-file SHA mismatch**. Identify the bad file(s) from
+the `FAILED` lines. If only a handful fail, re-run `rsync` on the single
+archive and re-extract. If many fail, check local disk health
+(`diskutil verifyVolume` on macOS, `smartctl -a` on Linux).
+
+**"Why are two staging runs producing different archive hashes?"** The
+script bakes `--mtime='UTC 2020-01-01'` and `--owner=0 --group=0
+--numeric-owner` into the tar invocation precisely so unchanged source
+produces identical archive bytes. If you see drift, check that (a)
+your `tar` is GNU tar ≥ 1.28 (`tar --version`), and (b) no background
+process is touching the source directory between runs.
+
+## Reference
+
+- `pretransfer_manifest.sh` — the staging tool (repo root).
+- `scripts/stage_transfer.sbatch` — SLURM wrapper for running the
+  staging tool on a compute node (8 cores / 8 GB / 1 h defaults).
+- `issues/pretransfer-manifest-archive/design.md` — architecture, file
+  inventory, integrity model, alternatives considered.
+- `issues/pretransfer-manifest-archive/feature_request.md` — motivation
+  and scope.
+- [Database Structure](database-structure.qmd) — what's inside the
+  `db/` tree.
+- [QTL Detection & Assessment](qtl-detection-assessment.qmd) — schema of
+  the top-level assessment TSVs.
+- [HPC End-to-End Testing](testing-hpc.qmd) — broader HPC workflow,
+  including pipeline runs and scratch management.
