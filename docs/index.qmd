@@ -69,6 +69,10 @@ flowchart LR
 - [Assessment Cross-Validation](cross-validation.qmd) — How to run and
   interpret the cross-validation analysis comparing DB-path and legacy-path
   assessment outputs.
+- [Replay & Error Handling](error-handling-replay.qmd) — Two-invocation
+  halt-with-replay-manifest model: first run drops failed reps, replay
+  recovers them. Covers operator commands, `replay.tsv` lifecycle,
+  statistical caveats, and known limitations.
 - [Verifying Simulation Outputs](verifying-outputs.qmd) — How to check
   Parquet database completeness after a run using `bin/verify_db.R`.
   Covers expectation vs discovery mode, non-failing semantics, plot helpers,
