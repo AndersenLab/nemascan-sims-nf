@@ -4,6 +4,8 @@ nextflow.preview.output = true
 // import the subworkflows
 include { LOCAL_GET_CONTIG_INFO           } from './modules/local/get_contig_info/main'
 include { LOCAL_COMPILE_EIGENS            } from './modules/local/compile_eigens/main'
+include { VALIDATE_REPLICATION_COMPLETE   } from './modules/local/validate_replication_complete/main'
+include { DB_CLEAN_REPLAY_SLOTS           } from './modules/local/db_clean_replay_slots/main'
 include { BCFTOOLS_RENAME_CHROMS          } from './modules/bcftools/rename_chroms/main'
 include { BCFTOOLS_EXTRACT_STRAINS        } from './modules/bcftools/extract_strains/main'
 include { BCFTOOLS_CREATE_GENOTYPE_MATRIX } from './modules/bcftools/create_genotype_matrix/main'
@@ -64,6 +66,36 @@ def resolveVcf(String vcf, String species, String projectDir) {
         return "${projectDir}/${vcf}"  // relative path → absolute (test profile support)
     }
     return vcf  // absolute path passthrough
+}
+
+// =====================================================================
+// parseManifestTuple — single source of truth for replay manifest types.
+//
+// The returned 6-tuple MUST match the channel-tuple types produced by
+// the pre-process grid construction in main.nf. Mismatched types cause
+// Set.contains() to return false for every tuple, silently emptying the
+// replay filter and producing a no-op replay run.
+//
+// maf is intentionally excluded: it is 1:1 with group in the strainfile
+// schema, so group alone identifies the marker set. maf still appears as
+// a column in replay.tsv and in the channel tuple (it is used in output
+// filenames across the pipeline), but it is not part of the Set key.
+//
+// If a source expression in main.nf changes its emitted type, update this
+// helper in the same commit. The runtime assertions in the replay_set
+// block will surface drift loudly on the next replay run.
+//
+// Index map:  0=species  1=group  2=nqtl  3=effect  4=h2  5=rep
+// =====================================================================
+def parseManifestTuple(Map cols) {
+    [
+        cols.species,        // String  — matches NF_TRAP_PAYLOAD "species" field
+        cols.group,          // String  — matches cleanRow.group
+        cols.nqtl,           // String  — matches splitCsv().map { it[0] }
+        cols.effect,         // String  — matches splitCsv().map { it[0] }
+        cols.h2 as Float,    // Float   — matches h2 channel value after .combine()
+        cols.rep as Integer  // Integer — matches Channel.of(1..params.reps)
+    ]
 }
 
 workflow {
@@ -180,7 +212,47 @@ workflow {
         log.info ""
     }
 
+    // Pre-create the failures directory before any task can launch.
+    // workflow.onStart does not exist in NF v24 — use the workflow body directly.
+    def failuresDir = file("${workflow.outputDir}/.failures")
+    failuresDir.mkdirs()
+    assert failuresDir.exists() :
+        "Failed to create ${failuresDir} — check permissions on the output directory"
 
+    // Replay mode: parse the manifest once at workflow start, build a typed Set.
+    // null when --replay is not set (normal runs — no filtering applied).
+    def replay_set = params.replay
+        ? {
+              def lines = file(params.replay).readLines()
+              assert lines && lines[0].startsWith('session\t') :
+                  "replay.tsv header does not start with 'session\\t' — file may be malformed or missing its header"
+              def header = lines[0].split('\t')
+              def required = ['species', 'group', 'nqtl', 'effect', 'h2', 'rep'] as Set
+              assert required.every { header.contains(it) } :
+                  "replay.tsv header is missing required columns; found: ${header.toList()} — need: ${required}"
+              def tuples = lines.drop(1).collect { line ->
+                  def fields = line.split('\t')
+                  assert fields.size() == header.size() :
+                      "row tokenization failure — column count mismatch: ${line}"
+                  def row = [header, fields].transpose().collectEntries()
+                  parseManifestTuple(row)
+              }.toSet()
+
+              // Cheap type-alignment assertions — surface coercion drift before the filter runs.
+              // Tuple index map: 0=species 1=group 2=nqtl 3=effect 4=h2 5=rep
+              if (tuples) {
+                  def s = tuples.first()
+                  assert s[0].class == String  : "replay_set species type is ${s[0].class} — expected String; check parseManifestTuple vs main.nf param-grid"
+                  assert s[1].class == String  : "replay_set group type is ${s[1].class} — expected String; check parseManifestTuple vs main.nf param-grid"
+                  assert s[2].class == String  : "replay_set nqtl type is ${s[2].class} — expected String; check parseManifestTuple vs main.nf param-grid"
+                  assert s[4].class == Float   : "replay_set h2 type is ${s[4].class} — expected Float; check parseManifestTuple vs main.nf param-grid"
+                  assert s[5].class == Integer : "replay_set rep type is ${s[5].class} — expected Integer; check parseManifestTuple vs main.nf param-grid"
+              }
+
+              log.info "Replay mode: filtering channels to ${tuples.size()} slot(s) from ${params.replay}"
+              tuples
+          }()
+        : null
 
     // Parse 6-column strainfile and fan out per-row parameters
     ch_strain_sets = Channel.fromPath(strainfile)
@@ -215,13 +287,30 @@ workflow {
                          "the CV pool is a strict subset of the marker SNP set. " +
                          "This is likely unintentional."
             }
-            marker_set_params: [meta.id, ms_maf, species, extractVcfReleaseId(vcf), ms_ld, strains, strainfile]
-            vcf_per_group:     [meta, species, vcf, strains]
-            ms_maf_vals:       [meta, ms_maf]
-            ms_ld_vals:        [meta, ms_ld]
-            cv_maf_vals:       [meta, cv_maf_eff]
+            marker_set_params:  [meta.id, ms_maf, species, extractVcfReleaseId(vcf), ms_ld, strains, strainfile]
+            vcf_per_group:      [meta, species, vcf, strains]
+            ms_maf_vals:        [meta, ms_maf]
+            ms_ld_vals:         [meta, ms_ld]
+            cv_maf_vals:        [meta, cv_maf_eff]
+            species_per_group:  [meta.id, species]
         }
         .set { ch_sf }
+
+    // Fork species_per_group for every post-fanout consumer that combines it
+    // onto a per-cell tuple at the call site (for failure-trap cell keys).
+    // Each .tap{} produces an independent broadcast copy so consumers don't
+    // race on the queue channel.
+    //
+    // Consumers that get species transitively via an upstream process's output
+    // (R_ASSESS_SIMS via R_GET_GCTA_INTERVALS.out.params, DB_MIGRATION_ASSESS_SIMS
+    // via DB_MIGRATION_ANALYZE_QTL.out.params) do NOT need their own .tap{}.
+    ch_sf.species_per_group
+        .tap { ch_species_for_grid }      // → pre-process sim grid (Step 11)
+        .tap { ch_species_for_sim }
+        .tap { ch_species_for_gwa }
+        .tap { ch_species_for_intervals }
+        .tap { ch_species_for_db_gwa }
+        .set { ch_species_for_db_qtl }
 
     // G1: Fork cv_maf_vals for four consumers: PLINK_RECODE_CV_VCF, write_trait_data,
     // analysis params, and write_gwa_to_db. A single multiMap sub-channel cannot be
@@ -369,18 +458,38 @@ workflow {
     //     ch_sim_phenos = R_SIMULATE_EFFECTS_LOCAL.out.causal
     //     ch_sim_plink = R_SIMULATE_EFFECTS_LOCAL.out.plink
     // } else {
+
+    def replay_predicate = { args -> replay_set.contains([args[0], args[1], args[3], args[4], args[5], args[6]]) }
+
+    // Build the full (species, group, maf, nqtl, effect, h2, rep, ...files...) grid
+    // at channel level before PYTHON_SIMULATE_EFFECTS_GLOBAL.
+    // Replaces: each rep (inside process), each nqtl (inside process), each effect (inside process).
+    // GCTA_SIMULATE_PHENOTYPES will also lose each h2 — h2 flows through via the causal output.
+    // ch_sim_plink / ch_sim_cv_plink are NOT filtered — keyed only on (group, maf).
+    ch_sim_grid = ch_plink_genomat_eigen
+        .combine(ch_species_for_grid, by: 0)
+        // → (group, maf, ms_bed…ms_log, gm, n_indep_tests, cv_bed…cv_log, species)
+        .combine(Channel.fromPath(nqtl_file).splitCsv().map { it[0] })
+        .combine(Channel.fromPath(effect_file).splitCsv().map { it[0] })
+        .combine(Channel.fromPath(h2_file).splitCsv().map { it[0] })
+        .combine(Channel.of(1..params.reps))
+        // → reorder to canonical (species, group, maf, nqtl, effect, h2, rep, ...files...)
+        .map { group, maf,
+               ms_bed, ms_bim, ms_fam, ms_map, ms_nosex, ms_ped, ms_log,
+               gm, n_indep_tests,
+               cv_bed, cv_bim, cv_fam, cv_map, cv_nosex, cv_ped, cv_log,
+               species, nqtl, effect, h2, rep ->
+            tuple(species, group, maf, nqtl, effect, h2 as Float, rep,
+                  ms_bed, ms_bim, ms_fam, ms_map, ms_nosex, ms_ped, ms_log,
+                  gm, n_indep_tests,
+                  cv_bed, cv_bim, cv_fam, cv_map, cv_nosex, cv_ped, cv_log)
+        }
+        .filter { params.replay ? replay_predicate(it) : true }
+
+
     PYTHON_SIMULATE_EFFECTS_GLOBAL(
-        ch_plink_genomat_eigen,
-        Channel.fromPath("${workflow.projectDir}/bin/create_causal_vars.py").first(),
-        Channel.of(1..params.reps).toSortedList(),
-        Channel.fromPath(nqtl_file)
-            .splitCsv()
-            .map{ it: it[0] }
-            .toSortedList(),
-        Channel.fromPath(effect_file)
-            .splitCsv()
-            .map{ it: it[0] }
-            .toSortedList() 
+        ch_sim_grid,
+        Channel.fromPath("${workflow.projectDir}/bin/create_causal_vars.py").first()
         )
     ch_versions = ch_versions.mix(PYTHON_SIMULATE_EFFECTS_GLOBAL.out.versions)
     ch_sim_phenos    = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.causal
@@ -388,27 +497,45 @@ workflow {
     ch_sim_cv_plink  = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.cv_plink
     // }
 
-    // G2: Fan causal_genotypes across h2 to match GCTA_SIMULATE_PHENOTYPES cardinality.
-    // causal_genotypes emits once per (group, maf, nqtl, effect, rep) — before h2 expansion.
-    // Each geno file must be paired with every h2 value so the merge chain join (G3) can
-    // align per (group, maf, nqtl, effect, rep, h2).
+    // G2: causal_genotypes emits (group, maf, nqtl, effect, rep, h2, geno_file) — h2 is already
+    // in the tuple (fanned out at channel level before the process). No .combine(h2) needed.
+    // The join by [0,1,2,3,4,5] in the merge chain (G3) keys on (group, maf, nqtl, effect, rep, h2).
     ch_causal_geno_fanned = PYTHON_SIMULATE_EFFECTS_GLOBAL.out.causal_genotypes
-        .combine(Channel.fromPath(h2_file).splitCsv().map { it[0] })
-        .map { group, maf, nqtl, effect, rep, geno_file, h2 ->
-            tuple(group, maf, nqtl, effect, rep, h2, geno_file)
-        }
+
+    // Cleanup gate — deletes failed-slot DB files before any trait-simulation task launches.
+    // DB_CLEAN_REPLAY_SLOTS runs once per --replay invocation; its done sentinel is a value
+    // channel (.first()) so it broadcasts to every downstream tuple rather than consuming once.
+    // ch_sim_plink / ch_sim_cv_plink are gated here even though they are not filtered (their
+    // keys are group/maf only), to prevent any GWA write from starting before cleanup finishes.
+    def db_output_dir = params.db_output ? file(params.db_output).toAbsolutePath().toString() : file("${workflow.outputDir}/db").toAbsolutePath().toString()
+    log.info "Database output directory: ${db_output_dir}"
+
+    def ch_cleanup_done
+    if (params.replay) {
+        DB_CLEAN_REPLAY_SLOTS(file(params.replay), db_output_dir, cv_maf, cv_ld)
+        ch_cleanup_done = DB_CLEAN_REPLAY_SLOTS.out.done.first()
+    } else {
+        ch_cleanup_done = Channel.value('no_cleanup_needed')
+    }
+
+    ch_sim_phenos   = ch_sim_phenos.combine(ch_cleanup_done).map   { it[0..-2] }
+    ch_sim_plink    = ch_sim_plink.combine(ch_cleanup_done).map    { it[0..-2] }
+    ch_sim_cv_plink = ch_sim_cv_plink.combine(ch_cleanup_done).map { it[0..-2] }
+
+    // Combine species onto the per-cell tuple so the failure trap can include it
+    // in the cell key. ch_sim_phenos shape: (group, maf, nqtl, effect, rep, h2, causal_file).
+    // After combine(by:0): (group, maf, nqtl, effect, rep, h2, causal_file, species).
+    ch_sim_phenos_with_species = ch_sim_phenos
+        .combine(ch_species_for_sim, by: 0)
 
     // Simulate phenotypes using the CV binary (--bfile CV_TO_SIMS) so GCTA can locate
     // non-marker causal variant genotypes. The MS binary (ch_sim_plink) passes through
     // to downstream GWA mapping unchanged.
+    // h2 arrives from the input tuple (ch_sim_phenos_with_species contains h2 at index 5).
     GCTA_SIMULATE_PHENOTYPES(
-        ch_sim_phenos,
+        ch_sim_phenos_with_species,
         ch_sim_cv_plink,   // CV binary — used as --bfile for GCTA simulation
-        ch_sim_plink,      // MS binary — passed through to downstream GWA
-        Channel.fromPath("${h2_file}")
-            .splitCsv()
-            .map{ it: it[0] }
-            .toSortedList()
+        ch_sim_plink       // MS binary — passed through to downstream GWA
         )
     ch_versions = ch_versions.mix(GCTA_SIMULATE_PHENOTYPES.out.versions)
 
@@ -430,14 +557,6 @@ workflow {
     GCTA_SIMULATE_PHENOTYPES.out.plink
         .tap { ch_gcta_plink_for_trait }
         .set { ch_gcta_plink_for_plink }
-
-    // Resolve db_output to absolute path so SLURM tasks write to the correct
-    // shared filesystem location, not relative to their work directory.
-    // Default: {outputDir}/db (computed from workflow.outputDir when params.db_output is null)
-    def db_output_dir = params.db_output
-        ? file(params.db_output).toAbsolutePath().toString()
-        : file("${workflow.outputDir}/db").toAbsolutePath().toString()
-    log.info "Database output directory: ${db_output_dir}"
 
     // -- TRAIT DATA WRITES -------------------------------------------------------
     // Source: GCTA_SIMULATE_PHENOTYPES (pre-upscaled phenotype, pre-mode-crossing)
@@ -558,8 +677,15 @@ workflow {
         }
         .set { ch_gwa }
 
+    // Combine species onto the params tuple at the call site so the failure trap
+    // can include it in the cell key. ch_gwa.params shape:
+    //   (group, maf, nqtl, effect, rep, h2, mode, suffix, type)
+    // After combine(by:0): same + species at position 9.
+    ch_gwa_params_with_species = ch_gwa.params
+        .combine(ch_species_for_gwa, by: 0)
+
     GCTA_PERFORM_GWA(
-        ch_gwa.params,
+        ch_gwa_params_with_species,
         ch_gwa.grm,
         ch_gwa.plink,
         ch_gwa.pheno,
@@ -714,7 +840,8 @@ workflow {
         .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type, cv_maf_eff ->
             tuple(group, maf, nqtl, effect, rep, h2, mode, type, cv_maf_eff, cv_ld)
         }
-    // Result: tuple(group, maf, nqtl, effect, rep, h2, mode, type, cv_maf_effective, cv_ld)
+        .combine(ch_species_for_db_gwa, by: 0)
+    // Result: tuple(group, maf, nqtl, effect, rep, h2, mode, type, cv_maf_effective, cv_ld, species)
 
     DB_MIGRATION_WRITE_GWA_TO_DB(
         ch_gwa_db_inputs,
@@ -724,7 +851,9 @@ workflow {
     ch_versions = ch_versions.mix(DB_MIGRATION_WRITE_GWA_TO_DB.out.versions)
 
     // ── METADATA AGGREGATION ─────────────────────────────────────────
-    // Runs after ALL WRITE_GWA_TO_DB processes complete.
+    // Trigger: fire-once gate. List may be shorter than the param grid if any
+    // reps were dropped under errorStrategy = 'ignore'. No size: constraint —
+    // AGGREGATE_METADATA scans the filesystem directly; list contents unused.
     // Does NOT block the existing R_GET_GCTA_INTERVALS → R_ASSESS_SIMS chain.
     DB_MIGRATION_AGGREGATE_METADATA(
         DB_MIGRATION_WRITE_GWA_TO_DB.out.done.collect(),
@@ -762,10 +891,12 @@ workflow {
         }
         .combine(ch_cv_maf_keyed_for_analysis, by: 0)
         // → [group, maf, ..., pheno, par, threshold, cv_maf_eff]
+        .combine(ch_species_for_db_qtl, by: 0)
+        // → [group, maf, ..., pheno, par, threshold, cv_maf_eff, species]
         .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
-                    pheno, par, threshold, cv_maf_eff ->
+                    pheno, par, threshold, cv_maf_eff, species ->
             params: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type,
-                          threshold, cv_maf_eff, cv_ld)
+                          threshold, cv_maf_eff, cv_ld, species)
             pheno:  tuple(pheno, par)
         }
         .set { ch_db_analysis }
@@ -795,6 +926,22 @@ workflow {
 
     ch_db_assessment_pub = DB_MIGRATION_ASSESS_SIMS.out.assessment.collectFile(
         name: "db_simulation_assessment_results.tsv", sort: false
+    )
+
+    // ── REPLICATION VALIDATION ─────────────────────────────────────────
+    // Runs after all DB writes have settled. Exits non-zero and writes
+    // REPLAY_REQUIRED if any parameter cell is short of params.reps
+    // replications or any data.parquet file is unreadable.
+    def ch_validate_trigger = DB_MIGRATION_WRITE_GWA_TO_DB.out.done
+        .mix(DB_MIGRATION_WRITE_TRAIT_DATA.out.done)
+        .mix(DB_MIGRATION_WRITE_GENOTYPE_MATRIX.out.done)
+        .mix(DB_MIGRATION_AGGREGATE_METADATA.out.summary)
+        .collect()
+
+    VALIDATE_REPLICATION_COMPLETE(
+        ch_validate_trigger,
+        db_output_dir,
+        params.reps
     )
 
     // ── LEGACY ASSESSMENT PATH (optional, --legacy_assess) ────────────
@@ -829,8 +976,14 @@ workflow {
             }
             .set { ch_intervals }
 
+        // Combine species onto the params tuple at the call site.
+        // ch_intervals.params shape: (group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold)
+        // After combine(by:0): same + species at position 10.
+        ch_intervals_params_with_species = ch_intervals.params
+            .combine(ch_species_for_intervals, by: 0)
+
         R_GET_GCTA_INTERVALS(
-            ch_intervals.params,
+            ch_intervals_params_with_species,
             ch_intervals.grm,
             ch_intervals.plink,
             ch_intervals.pheno,
@@ -902,6 +1055,80 @@ output {
 
 workflow.onComplete {
 
+    def currentSession = workflow.sessionId.toString()
+    def failuresDir    = file("${workflow.outputDir}/.failures")
+    def failures       = []
+
+    if (failuresDir.exists()) {
+        failuresDir.listFiles().each { f ->
+            if (f.name.endsWith('.json')) {
+                try {
+                    def record = new groovy.json.JsonSlurper().parse(f)
+                    if (record.session == currentSession) {
+                        failures << record
+                    }
+                } catch (Exception e) {
+                    log.warn "Could not parse failure record ${f.name}: ${e.message} — skipping"
+                }
+            }
+        }
+    }
+
+    // NOTE: workflow.trace is NOT a declared property of WorkflowMetadata in
+    // NF 24.10.x. Accessing it calls WorkflowMetadata.get("trace") →
+    // InvokerHelper.getProperty(this,"trace") → no getTrace() getter found →
+    // falls back to GroovyObject.getProperty → InvokerHelper again → infinite
+    // recursion → StackOverflowError (an Error, not Exception, so it escapes
+    // invokeOnComplete's catch block and crashes the session).
+    //
+    // The SIGKILL safety net (synthesising replay.tsv entries for walltime-killed
+    // tasks) must be implemented via a TraceObserver, not workflow.trace. Until
+    // that is in place, SIGKILLed tasks will not appear in replay.tsv.
+
+    if (failures) {
+        // Derive replay.tsv schema from the union of JSON keys across all failure
+        // records. New fanout variables (e.g. species, future rep-disambiguators)
+        // automatically appear as new columns without editing main.nf — adding a
+        // field to NF_TRAP_PAYLOAD in any process flows through to replay.tsv.
+        //
+        // Column ordering: stable across runs. Fields present in any record but
+        // missing from a particular record render as empty cells.
+        def columnOrder = [
+            'session', 'task_hash', 'attempt', 'max_retries',
+            'species', 'group', 'maf', 'nqtl', 'effect', 'h2', 'rep', 'mode', 'type',
+            'exit'
+        ]
+        def discoveredKeys = failures.collectMany { it.keySet() as List }.unique()
+        def orderedKnown   = columnOrder.findAll { it in discoveredKeys }
+        def extras         = (discoveredKeys - columnOrder).sort()
+        def headerCols     = orderedKnown + extras
+
+        def lines = new StringBuilder()
+        lines << headerCols.join('\t') << '\n'
+        failures.each { r ->
+            lines << headerCols.collect { col -> r.containsKey(col) ? r[col] : '' }.join('\t') << '\n'
+        }
+        def tsvTmp = file("${workflow.outputDir}/replay.tsv.tmp")
+        def tsv    = file("${workflow.outputDir}/replay.tsv")
+        tsvTmp.text = lines.toString()
+        tsvTmp.renameTo(tsv)
+
+        def byExit   = failures.groupBy { it.exit }
+        def exitSummary = byExit.collect { exit, list -> "${list.size()} × exit ${exit}" }.join(', ')
+        log.warn "Replay manifest written: ${failures.size()} failed slots (${exitSummary}) → ${tsv}"
+    } else {
+        log.info "No failures recorded — replay.tsv not written."
+    }
+
+    // Pre-capture git properties — accessing workflow.repository/revision/commitId
+    // inside a GString via $workflow.xxx triggers infinite recursion in
+    // WorkflowMetadata.get() in NF 24.10.x (Groovy dynamic dispatch loop).
+    // Fall back to local `git` commands for local runs (workflow fields are null
+    // when the pipeline is launched from a directory rather than a GitHub URL).
+    def gitRepo     = workflow.repository ?: ("git remote get-url origin".execute().text.trim() ?: 'N/A')
+    def gitRevision = workflow.revision   ?: ("git rev-parse --abbrev-ref HEAD".execute().text.trim() ?: 'N/A')
+    def gitCommit   = workflow.commitId   ?: ("git rev-parse HEAD".execute().text.trim() ?: 'N/A')
+
     summary = """
     Pipeline execution summary
     ---------------------------
@@ -911,7 +1138,7 @@ workflow.onComplete {
     workDir     : ${workflow.workDir}
     exit status : ${workflow.exitStatus}
     Error report: ${workflow.errorReport ?: '-'}
-    Git info: $workflow.repository - $workflow.revision [$workflow.commitId]
+    Git info: ${gitRepo} - ${gitRevision} [${gitCommit}]
 
     { Parameters }
     ---------------------------

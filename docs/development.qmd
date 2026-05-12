@@ -164,6 +164,83 @@ See [Local Integration Testing](testing-integration.qmd) for the full
 environment variable reference and test inventory.
 
 
+## Testing Failure Handling Locally
+
+To exercise the failure → manifest → replay loop on `-profile test,docker`
+without an HPC allocation, follow the recipe below. This was the protocol
+used to validate Step 15 V1/V2 on `fix/error-handling-pr3` (2026-05-05).
+For the full operator-facing description of the model see
+[Replay & Error Handling](error-handling-replay.qmd).
+
+**1. Inject a deterministic failure.** Open
+`modules/gcta/simulate_phenotypes/main.nf` and add a conditional `exit 1`
+**after** the `source ${projectDir}/bin/failure_trap.sh` line so the EXIT
+trap is registered before the failure fires:
+
+```bash
+# In modules/gcta/simulate_phenotypes/main.nf, just after the
+# `source ${projectDir}/bin/failure_trap.sh` line:
+if [ "${rep}" = "2" ] && [ "${nqtl}" = "5" ]; then exit 1; fi
+```
+
+**2. Run the first invocation with `--reps 4`** so the cell survives a
+single dropped rep:
+
+```bash
+nextflow run main.nf -profile test,docker \
+    --reps 4 \
+    --output_dir ./results/step15-e2e/run
+```
+
+::: {.callout-important}
+`--output_dir` must live inside the project tree under Docker — Nextflow
+does not auto-bind arbitrary paths like `/tmp/...`, and DB writes will be
+silently lost on container exit.
+:::
+
+**3. Inspect the artifacts:**
+
+```bash
+# Per-failure JSON record
+ls ./results/replay-test/run/.failures/
+
+# Manifest — one row for the failed (rep=2, nqtl=5) slot
+cat ./results/replay-test/run/replay.tsv
+
+# DB has 3 of 4 reps for the failed cell
+ls ./results/replay-test/run/db/traits/*.parquet | wc -l
+```
+
+The pipeline exits 0 even though a rep failed.
+
+**4. Revert the injection** before replaying:
+
+```bash
+git checkout -- modules/gcta/simulate_phenotypes/main.nf
+```
+
+**5. Run the replay invocation:**
+
+```bash
+nextflow run main.nf -profile test,docker,replay \
+    -resume \
+    --reps 4 \
+    --output_dir ./results/replay-test/run \
+    --replay ./results/replay-test/run/replay.tsv
+```
+
+**6. Verify the cache pattern with `nextflow log`:**
+
+```bash
+nextflow log -f name,status,hash $(nextflow log -q | tail -1)
+```
+
+The replayed slot's `GCTA_SIMULATE_PHENOTYPES` and downstream tasks
+should report `COMPLETED`; prep-phase tasks should report `CACHED`.
+Sibling reps in the same cell are filtered out before fanout and will
+**not** appear in the log at all. `VALIDATE_REPLICATION_COMPLETE` exits
+0 and the DB contains the full 4 reps.
+
 ## Cleaning Up Nextflow Run Artifacts
 
 After running the pipeline locally, Nextflow leaves behind several directories
