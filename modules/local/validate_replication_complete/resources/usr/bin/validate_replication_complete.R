@@ -28,14 +28,16 @@ find_short_cells <- function(con, expected_reps) {
 
 #' Identify mapping partitions whose data.parquet is missing or empty.
 #'
-#' Glob the expected data.parquet files first, then open the file list as a
-#' single arrow dataset and count rows per (population, mapping_id). Because
-#' dplyr::count() drops empty groups, an empty/missing partition file appears
-#' in the expected glob but not in the counts — anti-join recovers it. This
-#' preserves the legacy per-file semantics ("data.parquet present but empty
-#' → bad") while keeping the single-open performance win of Patch v1.
-#' Excludes meta.parquet sidecars and any stray non-Hive parquet under
-#' mappings/ by globbing for data.parquet only.
+#' Glob the expected data.parquet files and read each Parquet footer's row
+#' count via arrow::ParquetFileReader. The footer is the last few KB of the
+#' file; this avoids materializing any row data, schema unification, or
+#' Dataset object construction. Files with num_rows == 0L (or that fail to
+#' open) are flagged — matches the legacy "data.parquet present but empty
+#' → bad" semantics and returns real file paths. We deliberately bypass
+#' arrow::open_dataset()'s Hive partition parsing because, when called with
+#' a vector of file paths rather than a directory root, R-arrow does not
+#' surface partition columns from the path segments — group_by(population,
+#' mapping_id) then fails with "Column not found" (Patch v2 regression).
 find_corrupt_parquet <- function(db_root) {
     mappings_root <- fs::path(db_root, "mappings")
     if (!fs::dir_exists(mappings_root)) return(character(0))
@@ -45,25 +47,14 @@ find_corrupt_parquet <- function(db_root) {
     ))
     if (length(data_files) == 0L) return(character(0))
 
-    ds <- tryCatch(
-        arrow::open_dataset(data_files, partitioning = arrow::hive_partition()),
-        error = function(e) stop("Could not open mappings: ",
-                                 conditionMessage(e), call. = FALSE)
-    )
-
-    counts <- ds |>
-        dplyr::count(population, mapping_id, name = "n_rows") |>
-        dplyr::collect()
-
-    expected <- tibble::tibble(file = data_files) |>
-        dplyr::mutate(
-            population = sub(".*population=([^/]+)/.*", "\\1", file),
-            mapping_id = sub(".*mapping_id=([^/]+)/.*", "\\1", file)
+    n_rows <- vapply(data_files, function(f) {
+        tryCatch(
+            as.integer(arrow::ParquetFileReader$create(f)$num_rows),
+            error = function(e) 0L
         )
+    }, integer(1))
 
-    expected |>
-        dplyr::anti_join(counts, by = c("population", "mapping_id")) |>
-        dplyr::pull(file)
+    data_files[n_rows == 0L]
 }
 
 #' Format a human-readable failure report
