@@ -769,6 +769,11 @@ workflow {
     // Liveness check only (size > 0), not completeness check (size == 2N).
     // If WRITE_GENOTYPE_MATRIX fails silently, ASSESS_SIMS will fail on read
     // with a descriptive tryCatch message (see assess_sims.R).
+    //
+    // .collect() returns a value channel (DataflowVariable) — it already has
+    // broadcast semantics and is safely consumed by both downstream .combine()
+    // calls (WRITE_TRAIT_DATA gate at line ~787 and WRITE_GWA_TO_DB gate at
+    // line ~819) without a .tap{} fork or .first() conversion.
     ch_marker_barrier = DB_MIGRATION_WRITE_MARKER_SET.out.done
         .mix(DB_MIGRATION_WRITE_GENOTYPE_MATRIX.out.done)
         .collect()
