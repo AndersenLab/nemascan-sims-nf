@@ -26,22 +26,34 @@ find_short_cells <- function(con, expected_reps) {
         tibble::as_tibble()
 }
 
-#' Identify unreadable or empty parquet files under a directory
+#' Identify mapping partitions whose data is unreadable or empty.
+#'
+#' One arrow::open_dataset() over the whole mappings/ Hive tree, then a
+#' grouped count per (population, mapping_id). A partition with zero rows is
+#' "bad"; a dataset-level open failure means the tree itself is unreadable —
+#' surface that as a hard error rather than silently flagging every partition.
 find_corrupt_parquet <- function(db_root) {
-    data_files <- fs::dir_ls(
-        fs::path(db_root, "mappings"),
-        recurse = TRUE,
-        glob    = "*/data.parquet"
+    mappings_root <- fs::path(db_root, "mappings")
+    if (!fs::dir_exists(mappings_root)) return(character(0))
+
+    ds <- tryCatch(
+        arrow::open_dataset(mappings_root, partitioning = arrow::hive_partition()),
+        error = function(e) {
+            stop("Could not open mappings dataset at ", mappings_root, ": ",
+                 conditionMessage(e), call. = FALSE)
+        }
     )
 
-    is_bad <- purrr::map_lgl(data_files, function(f) {
-        tryCatch(
-            nrow(arrow::open_dataset(f)) == 0L,
-            error = function(e) TRUE
-        )
-    })
+    counts <- ds |>
+        dplyr::count(population, mapping_id, name = "n_rows") |>
+        dplyr::collect()
 
-    data_files[is_bad]
+    bad <- counts |> dplyr::filter(n_rows == 0L)
+
+    fs::path(mappings_root,
+             paste0("population=", bad$population),
+             paste0("mapping_id=",  bad$mapping_id)) |>
+        as.character()
 }
 
 #' Format a human-readable failure report
@@ -59,7 +71,7 @@ build_failure_report <- function(short_cells, corrupt, expected_reps, output_dir
     if (length(corrupt) > 0L) {
         msgs <- c(
             msgs,
-            glue::glue("{length(corrupt)} corrupt or empty data.parquet file(s):"),
+            glue::glue("{length(corrupt)} corrupt or empty mapping partition(s):"),
             paste0("  ", corrupt)
         )
     }
