@@ -26,34 +26,44 @@ find_short_cells <- function(con, expected_reps) {
         tibble::as_tibble()
 }
 
-#' Identify mapping partitions whose data is unreadable or empty.
+#' Identify mapping partitions whose data.parquet is missing or empty.
 #'
-#' One arrow::open_dataset() over the whole mappings/ Hive tree, then a
-#' grouped count per (population, mapping_id). A partition with zero rows is
-#' "bad"; a dataset-level open failure means the tree itself is unreadable —
-#' surface that as a hard error rather than silently flagging every partition.
+#' Glob the expected data.parquet files first, then open the file list as a
+#' single arrow dataset and count rows per (population, mapping_id). Because
+#' dplyr::count() drops empty groups, an empty/missing partition file appears
+#' in the expected glob but not in the counts — anti-join recovers it. This
+#' preserves the legacy per-file semantics ("data.parquet present but empty
+#' → bad") while keeping the single-open performance win of Patch v1.
+#' Excludes meta.parquet sidecars and any stray non-Hive parquet under
+#' mappings/ by globbing for data.parquet only.
 find_corrupt_parquet <- function(db_root) {
     mappings_root <- fs::path(db_root, "mappings")
     if (!fs::dir_exists(mappings_root)) return(character(0))
 
+    data_files <- as.character(fs::dir_ls(
+        mappings_root, recurse = TRUE, glob = "*/data.parquet"
+    ))
+    if (length(data_files) == 0L) return(character(0))
+
     ds <- tryCatch(
-        arrow::open_dataset(mappings_root, partitioning = arrow::hive_partition()),
-        error = function(e) {
-            stop("Could not open mappings dataset at ", mappings_root, ": ",
-                 conditionMessage(e), call. = FALSE)
-        }
+        arrow::open_dataset(data_files, partitioning = arrow::hive_partition()),
+        error = function(e) stop("Could not open mappings: ",
+                                 conditionMessage(e), call. = FALSE)
     )
 
     counts <- ds |>
         dplyr::count(population, mapping_id, name = "n_rows") |>
         dplyr::collect()
 
-    bad <- counts |> dplyr::filter(n_rows == 0L)
+    expected <- tibble::tibble(file = data_files) |>
+        dplyr::mutate(
+            population = sub(".*population=([^/]+)/.*", "\\1", file),
+            mapping_id = sub(".*mapping_id=([^/]+)/.*", "\\1", file)
+        )
 
-    fs::path(mappings_root,
-             paste0("population=", bad$population),
-             paste0("mapping_id=",  bad$mapping_id)) |>
-        as.character()
+    expected |>
+        dplyr::anti_join(counts, by = c("population", "mapping_id")) |>
+        dplyr::pull(file)
 }
 
 #' Format a human-readable failure report
