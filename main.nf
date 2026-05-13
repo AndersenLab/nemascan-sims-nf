@@ -19,7 +19,8 @@ include { R_SIMULATE_EFFECTS_GLOBAL       } from './modules/r/simulate_effects_g
 include { R_GET_GCTA_INTERVALS           } from './modules/r/get_gcta_intervals/main'
 include { R_ASSESS_SIMS                   } from './modules/r/assess_sims/main'
 include { GCTA_SIMULATE_PHENOTYPES        } from './modules/gcta/simulate_phenotypes/main'
-include { GCTA_MAKE_GRM                   } from './modules/gcta/make_grm/main'
+include { GCTA_MAKE_GRM_INBRED            } from './modules/gcta/make_grm_inbred/main'
+include { GCTA_MAKE_GRM_LOCO              } from './modules/gcta/make_grm_loco/main'
 include { GCTA_PERFORM_GWA                } from './modules/gcta/perform_gwa/main'
 
 // Database migration modules
@@ -561,9 +562,9 @@ workflow {
     // -- TRAIT DATA WRITES -------------------------------------------------------
     // Source: GCTA_SIMULATE_PHENOTYPES (pre-upscaled phenotype, pre-mode-crossing)
     //
-    // GCTA_SIMULATE_PHENOTYPES runs 1x per trait (before mode crossing at
-    // GCTA_MAKE_GRM line 260). No mode deduplication needed -- each emission
-    // is a unique trait.
+    // GCTA_SIMULATE_PHENOTYPES runs 1x per trait (before mode crossing into
+    // GCTA_MAKE_GRM_INBRED / _LOCO). No mode deduplication needed -- each
+    // emission is a unique trait.
     //
     // Trait data (metadata, causal variants, phenotype, and causal genotypes) are
     // stored in the DB for future analysis. These data are NOT consumed by
@@ -622,49 +623,84 @@ workflow {
     ch_versions = ch_versions.mix(PLINK_UPDATE_BY_H2.out.versions)
 
     // Create genetic relatedness matrix
-    // Merge PLINK_UPDATE_BY_H2 outputs before the mode fan-out (inbred/loco).
-    // The previous wrap-combine-unwrap pattern (.map{[it]}.combine(ch_mode).map{it[0]})
-    // returned the same ArrayList reference for both mode emissions. Under SLURM job
-    // array batching + Singularity, two submission threads iterated the shared list
-    // simultaneously -> ConcurrentModificationException (same mechanism as issue #148).
-    // .merge() aligns by emission order — do not insert reordering operators between
-    // PLINK_UPDATE_BY_H2.out.* and this merge chain.
-    ch_mode = Channel.of(
-        ["inbred", "fastGWA"],
-        ["loco", "mlma"]
-        )
+    //
+    // Issue #175: split GCTA_MAKE_GRM into two processes (INBRED + LOCO) instead
+    // of fanning a single process out over an (inbred, loco) mode channel.
+    //
+    // Why two processes (root cause): NF 24.10.x's TaskArrayCollector groups
+    // submissions sharing the same TaskProcessor identity into one batch under
+    // a single ReentrantLock window. Two sibling TaskRuns (inbred + loco for
+    // the same trait, derived from the same upstream PLINK_UPDATE_BY_H2 tuple)
+    // ended up referencing the same inner List<FileHolder>. When both landed in
+    // one TaskArrayCollector.collect() critical section, two
+    // ForkingDataflowOperatorActor threads iterated the shared inner list
+    // concurrently inside BashWrapperBuilder.createContainerBuilder
+    // (ContainerBuilder.inputFilesToPaths), producing a
+    // ConcurrentModificationException. Splitting into two processes gives each
+    // its own TaskProcessor -> TaskArrayCollector -> ReentrantLock, so the
+    // two siblings can never iterate the inner list inside one collect() window.
+    //
+    // Why a shared `gcta_make_grm` Rockfish label is still safe: the SLURM
+    // job-array `array = N` directive is enforced per-process by NF, not by
+    // label, so the two processes get independent array-batch queues.
+    //
+    // Ordering invariant (load-bearing): each new process emits its four
+    // sub-channels (params, grm, plink, pheno) in lock-step per task. The four
+    // .mix() calls below combine each sub-channel independently from the two
+    // upstream processes — every mixed sub-channel sees the same emission
+    // sequence, so the downstream .merge() chain (ch_make_grm_params.merge(grm)
+    // .merge(plink).merge(pheno).combine(ch_type)) stays aligned. Do NOT
+    // insert reordering operators (.filter(), .map(), .branch(), etc.) between
+    // the GCTA_MAKE_GRM_*.out.* channels and the .merge() chain below — doing
+    // so will silently misalign GRM/plink/pheno files with their params.
     PLINK_UPDATE_BY_H2.out.params
         .merge(PLINK_UPDATE_BY_H2.out.plink)
         .merge(PLINK_UPDATE_BY_H2.out.pheno)
-        .combine(ch_mode)
         .multiMap { group, maf, nqtl, effect, rep, h2,
                     bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
-                    pheno, par, mode, suffix ->
-            params: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix)
-            plink:  tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
-            pheno:  tuple(pheno, par)
+                    pheno, par ->
+            params_inbred: tuple(group, maf, nqtl, effect, rep, h2, 'fastGWA')
+            params_loco:   tuple(group, maf, nqtl, effect, rep, h2, 'mlma')
+            plink:         tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
+            pheno:         tuple(pheno, par)
         }
         .set { ch_grm }
 
-    GCTA_MAKE_GRM(
-        ch_grm.params,
+    GCTA_MAKE_GRM_INBRED(
+        ch_grm.params_inbred,
         ch_grm.plink,
         ch_grm.pheno
         )
-    ch_versions = ch_versions.mix(GCTA_MAKE_GRM.out.versions)
+    GCTA_MAKE_GRM_LOCO(
+        ch_grm.params_loco,
+        ch_grm.plink,
+        ch_grm.pheno
+        )
+    ch_versions = ch_versions
+        .mix(GCTA_MAKE_GRM_INBRED.out.versions)
+        .mix(GCTA_MAKE_GRM_LOCO.out.versions)
 
-    // Simulate GWA using output from GCTA_MAKE_GRM
-    // Same fix: merge all GCTA_MAKE_GRM outputs before the type fan-out (pca/nopca).
-    // .merge() aligns by emission order — do not insert reordering operators between
-    // GCTA_MAKE_GRM.out.* and this merge chain.
+    // Mix the two processes' outputs per sub-channel. Each process emits
+    // params/grm/plink/pheno in lock-step, so every mixed sub-channel sees the
+    // same emission order — preserving the .merge() alignment contract below.
+    ch_make_grm_params = GCTA_MAKE_GRM_INBRED.out.params.mix(GCTA_MAKE_GRM_LOCO.out.params)
+    ch_make_grm_grm    = GCTA_MAKE_GRM_INBRED.out.grm.mix(GCTA_MAKE_GRM_LOCO.out.grm)
+    ch_make_grm_plink  = GCTA_MAKE_GRM_INBRED.out.plink.mix(GCTA_MAKE_GRM_LOCO.out.plink)
+    ch_make_grm_pheno  = GCTA_MAKE_GRM_INBRED.out.pheno.mix(GCTA_MAKE_GRM_LOCO.out.pheno)
+
+    // Simulate GWA using output from GCTA_MAKE_GRM_INBRED / _LOCO
+    // Merge all mixed GRM outputs before the type fan-out (pca/nopca).
+    // .merge() aligns by emission order — do not insert reordering operators
+    // between the GCTA_MAKE_GRM_*.out.* channels (or the .mix() outputs above)
+    // and this merge chain.
     ch_type = Channel.of(
         "pca",
         "nopca"
         )
-    GCTA_MAKE_GRM.out.params
-        .merge(GCTA_MAKE_GRM.out.grm)
-        .merge(GCTA_MAKE_GRM.out.plink)
-        .merge(GCTA_MAKE_GRM.out.pheno)
+    ch_make_grm_params
+        .merge(ch_make_grm_grm)
+        .merge(ch_make_grm_plink)
+        .merge(ch_make_grm_pheno)
         .combine(ch_type)
         .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix,
                     grm_bin, grm_n, grm_id,
