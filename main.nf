@@ -47,6 +47,11 @@ include { DB_MIGRATION_WRITE_TRAIT_DATA       } from './modules/db_migration/wri
 
 // extractVcfReleaseId: normalizes the strainfile vcf column to a stable 8-digit CaeNDR release date.
 // Called from inside a .multiMap{} closure — uses throw, not the NXF error keyword.
+// Canonical species allowlist. Single source of truth for both strainfile
+// validation and CaeNDR URL construction. Mirrored by .SUPPORTED_SPECIES in
+// R/database.R — keep in sync when adding species.
+SUPPORTED_SPECIES = ['c_elegans', 'c_briggsae', 'c_tropicalis'] as Set
+
 def extractVcfReleaseId(String vcf) {
     if (vcf ==~ /^\d{8}$/) return vcf
     def matcher = new File(vcf).name =~ /(\d{8})/
@@ -65,15 +70,16 @@ def extractVcfReleaseId(String vcf) {
 // Called during channel construction (head-node phase) — errors surface before SLURM submission.
 def resolveVcf(String vcf, String species, String projectDir) {
     if (vcf ==~ /^\d{8}$/) {
+        if (!SUPPORTED_SPECIES.contains(species)) {
+            throw new IllegalArgumentException(
+                "Unrecognized species '${species}' for CaeNDR URL construction. " +
+                "Supported: ${SUPPORTED_SPECIES}"
+            )
+        }
         switch (species) {
             case 'c_elegans':    return "https://caendr.org/download/WI.${vcf}.hard-filter.isotype.vcf.gz"
             case 'c_briggsae':   return "https://caendr.org/download/CB.${vcf}.hard-filter.isotype.vcf.gz"
             case 'c_tropicalis': return "https://caendr.org/download/CT.${vcf}.hard-filter.isotype.vcf.gz"
-            default:
-                throw new IllegalArgumentException(
-                    "Unrecognized species '${species}' for CaeNDR URL construction. " +
-                    "Use 'c_elegans', 'c_briggsae', or 'c_tropicalis'."
-                )
         }
     }
     if (!vcf.startsWith('/') && !vcf.startsWith('http')) {
@@ -289,14 +295,21 @@ workflow {
           }()
         : null
 
-    // Parse 6-column strainfile and fan out per-row parameters
+    // Parse 6-column strainfile and fan out per-row parameters.
+    //
+    // Species is normalized (lowercased + trimmed) and validated against
+    // SUPPORTED_SPECIES once, here. From this point on the canonical species
+    // value lives in `meta.species` and is propagated through every per-group
+    // sub-channel. No downstream code should re-read or re-normalize species
+    // from the strainfile row.
     ch_strain_sets = Channel.fromPath(strainfile)
         .splitCsv(sep: "\t", header: true)
         .map { row ->
             // M8 fix: normalize whitespace to handle Windows CRLF line endings
             def cleanRow = row.collectEntries { k, v -> [k.trim(), v?.trim()] }
-            if (!(cleanRow.species in ['c_elegans', 'c_briggsae', 'c_tropicalis'])) {
-                error "Unknown species '${cleanRow.species}' in strainfile row for group '${cleanRow.group}'"
+            def speciesNorm = cleanRow.species?.toLowerCase()
+            if (!SUPPORTED_SPECIES.contains(speciesNorm)) {
+                error "Unknown species '${cleanRow.species}' in strainfile row for group '${cleanRow.group}' — supported: ${SUPPORTED_SPECIES}"
             }
             if (cleanRow.ms_maf.toFloat() <= 0 || cleanRow.ms_maf.toFloat() > 0.5) {
                 error "ms_maf '${cleanRow.ms_maf}' out of range (0, 0.5] in group '${cleanRow.group}' — values above 0.5 are major allele frequency, not MAF"
@@ -305,8 +318,7 @@ workflow {
                 error "ms_ld '${cleanRow.ms_ld}' out of range (0, 1) in group '${cleanRow.group}'"
             }
             [
-                [id: cleanRow.group],
-                cleanRow.species,
+                [id: cleanRow.group, species: speciesNorm],
                 cleanRow.vcf,
                 cleanRow.ms_maf.toFloat(),
                 cleanRow.ms_ld.toFloat(),
@@ -315,19 +327,19 @@ workflow {
         }
 
     ch_strain_sets
-        .multiMap { meta, species, vcf, ms_maf, ms_ld, strains ->
+        .multiMap { meta, vcf, ms_maf, ms_ld, strains ->
             def cv_maf_eff = cv_maf != null ? cv_maf : ms_maf
             if (cv_maf != null && cv_maf > ms_maf) {
                 log.warn "cv_maf (${cv_maf}) > ms_maf (${ms_maf}) for group ${meta.id}: " +
                          "the CV pool is a strict subset of the marker SNP set. " +
                          "This is likely unintentional."
             }
-            marker_set_params:  [meta.id, ms_maf, species, extractVcfReleaseId(vcf), ms_ld, strains, strainfile]
-            vcf_per_group:      [meta, species, vcf, strains]
+            marker_set_params:  [meta.id, ms_maf, meta.species, extractVcfReleaseId(vcf), ms_ld, strains, strainfile]
+            vcf_per_group:      [meta, vcf, strains]
             ms_maf_vals:        [meta, ms_maf]
             ms_ld_vals:         [meta, ms_ld]
             cv_maf_vals:        [meta, cv_maf_eff]
-            species_per_group:  [meta.id, species]
+            species_per_group:  [meta.id, meta.species]
         }
         .set { ch_sf }
 
@@ -373,8 +385,8 @@ workflow {
         .set { ch_marker_set_params_for_gm }
 
     ch_vcf_per_group = ch_sf.vcf_per_group
-        .map { meta, species, vcf, strains ->
-            def vcf_path = resolveVcf(vcf, species, workflow.projectDir.toString())
+        .map { meta, vcf, strains ->
+            def vcf_path = resolveVcf(vcf, meta.species, workflow.projectDir.toString())
             [meta, file(vcf_path), file("${vcf_path}.tbi"), strains]
         }
 
