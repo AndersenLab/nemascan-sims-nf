@@ -50,6 +50,28 @@ library(glue)
 # Default database location
 .default_base_dir <- "data/db"
 
+# Canonical species allowlist. Mirror of SUPPORTED_SPECIES in main.nf —
+# keep in sync when adding species. Defense-in-depth: catches malformed
+# parquet rows or rogue test fixtures before they reach generate_marker_set_id().
+.SUPPORTED_SPECIES <- c("c_elegans", "c_briggsae", "c_tropicalis")
+
+#' Validate a species value against the canonical allowlist
+#'
+#' Normalizes (lower + trim) then checks membership. Called from
+#' build_ids_from_params() so any code path that hashes via the canonical
+#' entry point is guarded.
+#'
+#' @param species Character scalar; species name from strainfile or metadata.
+#' @return Normalized species string (lowercased, trimmed).
+validate_species <- function(species) {
+  s <- tolower(trimws(species))
+  if (!(s %in% .SUPPORTED_SPECIES)) {
+    stop(sprintf("Unsupported species '%s' — supported: %s",
+                 species, paste(.SUPPORTED_SPECIES, collapse = ", ")))
+  }
+  s
+}
+
 #' Construct full database config from base_dir
 #'
 #' @param base_dir Database root directory
@@ -444,7 +466,7 @@ generate_marker_set_id <- function(population, maf, species, vcf_release_id, ms_
     stop("Package 'digest' is required for generate_marker_set_id()")
   }
   population     <- tolower(trimws(population))
-  species        <- tolower(trimws(species))
+  species        <- validate_species(species)
   hash_string    <- paste0(
     "v=2|population=",      population,
     "|maf=",                sprintf("%.10f", as.numeric(maf)),
