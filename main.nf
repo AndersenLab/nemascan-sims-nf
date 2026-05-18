@@ -343,21 +343,16 @@ workflow {
         }
         .set { ch_sf }
 
-    // Fork species_per_group for every post-fanout consumer that combines it
-    // onto a per-cell tuple at the call site (for failure-trap cell keys).
-    // Each .tap{} produces an independent broadcast copy so consumers don't
-    // race on the queue channel.
+    // Single attachment point for species: combined onto the per-cell sim grid
+    // exactly once. From PYTHON_SIMULATE_EFFECTS_GLOBAL onward, species rides
+    // along inside each process's params output tuple, so downstream consumers
+    // get species "for free" without additional forks or combines.
     //
-    // Consumers that get species transitively via an upstream process's output
-    // (R_ASSESS_SIMS via R_GET_GCTA_INTERVALS.out.params, DB_MIGRATION_ASSESS_SIMS
-    // via DB_MIGRATION_ANALYZE_QTL.out.params) do NOT need their own .tap{}.
+    // ch_sf.species_per_group is consumed exactly once, here. If you ever need
+    // another standalone copy elsewhere, restore a .tap{} fork — do not consume
+    // the queue channel twice directly.
     ch_sf.species_per_group
-        .tap { ch_species_for_grid }      // → pre-process sim grid (Step 11)
-        .tap { ch_species_for_sim }
-        .tap { ch_species_for_gwa }
-        .tap { ch_species_for_intervals }
-        .tap { ch_species_for_db_gwa }
-        .set { ch_species_for_db_qtl }
+        .set { ch_species_for_grid }
 
     // G1: Fork cv_maf_vals for four consumers: PLINK_RECODE_CV_VCF, write_trait_data,
     // analysis params, and write_gwa_to_db. A single multiMap sub-channel cannot be
@@ -569,18 +564,16 @@ workflow {
     ch_sim_plink    = ch_sim_plink.combine(ch_cleanup_done).map    { it[0..-2] }
     ch_sim_cv_plink = ch_sim_cv_plink.combine(ch_cleanup_done).map { it[0..-2] }
 
-    // Combine species onto the per-cell tuple so the failure trap can include it
-    // in the cell key. ch_sim_phenos shape: (group, maf, nqtl, effect, rep, h2, causal_file).
-    // After combine(by:0): (group, maf, nqtl, effect, rep, h2, causal_file, species).
-    ch_sim_phenos_with_species = ch_sim_phenos
-        .combine(ch_species_for_sim, by: 0)
-
+    // PYTHON_SIMULATE_EFFECTS_GLOBAL emits species at the end of its .causal
+    // tuple (see modules/python/simulate_effects_global/main.nf). ch_sim_phenos
+    // shape: (group, maf, nqtl, effect, rep, h2, causal_file, species) —
+    // matches GCTA_SIMULATE_PHENOTYPES input directly. No combine needed.
+    //
     // Simulate phenotypes using the CV binary (--bfile CV_TO_SIMS) so GCTA can locate
     // non-marker causal variant genotypes. The MS binary (ch_sim_plink) passes through
     // to downstream GWA mapping unchanged.
-    // h2 arrives from the input tuple (ch_sim_phenos_with_species contains h2 at index 5).
     GCTA_SIMULATE_PHENOTYPES(
-        ch_sim_phenos_with_species,
+        ch_sim_phenos,
         ch_sim_cv_plink,   // CV binary — used as --bfile for GCTA simulation
         ch_sim_plink       // MS binary — passed through to downstream GWA
         )
@@ -619,8 +612,8 @@ workflow {
     // G3: Combine with cv_maf and join with causal genotypes before multiMap so that
     // write_pheno/write_par stay emission-order-aligned with write_params.
     //
-    // After .combine(ch_cv_maf_keyed_for_trait, by: 0): 20-element tuple (cv_maf_eff at [19])
-    // After .join(ch_causal_geno_fanned, by: [0..5]):   21-element tuple (geno_file at [20])
+    // After .combine(ch_cv_maf_keyed_for_trait, by: 0): 21-element tuple (cv_maf_eff at [20])
+    // After .join(ch_causal_geno_fanned, by: [0..5]):   22-element tuple (geno_file at [21])
     //
     // WARNING: .merge() aligns channels by emission order, NOT by key matching.
     // Do NOT insert .filter(), .map(), .branch(), or any reordering operator
@@ -630,12 +623,19 @@ workflow {
     // .combine(by:0) and .join(by:[0..5]) are key-based (order-preserving) and
     // therefore safe per the CLAUDE.md merge ordering constraint.
     //
-    // Merged tuple structure (21 elements):
+    // Merged tuple structure (22 elements):
     //   [0-5]   params:   group, maf, nqtl, effect, rep, h2
-    //   [6-7]   pheno:    phen_path, par_path
-    //   [8-18]  plink:    group, maf, bed, bim, fam, map, nosex, ped, log, gm, n_indep_tests
-    //   [19]    cv_maf:   cv_maf_effective (from combine)
-    //   [20]    geno:     causal_genotypes TSV path (from join)
+    //   [6]     params:   species  (forwarded from GCTA_SIMULATE_PHENOTYPES.out.params)
+    //   [7-8]   pheno:    phen_path, par_path
+    //   [9-19]  plink:    group, maf, bed, bim, fam, map, nosex, ped, log, gm, n_indep_tests
+    //   [20]    cv_maf:   cv_maf_effective (from combine)
+    //   [21]    geno:     causal_genotypes TSV path (from join)
+    //
+    // write_trait_data.R reads species from marker_set_metadata.parquet at
+    // runtime; the species value in this tuple is not consumed by the trait
+    // write — it's forwarded only so downstream processes that DO need it
+    // (PLINK_UPDATE_BY_H2 → GCTA_MAKE_GRM → GCTA_PERFORM_GWA) can read it
+    // from ch_gcta_params_for_plink without a fresh combine.
     //
     // IMPORTANT: If GCTA_SIMULATE_PHENOTYPES output channels change, update
     // these indices.
@@ -645,14 +645,14 @@ workflow {
         .combine(ch_cv_maf_keyed_for_trait, by: 0)
         .join(ch_causal_geno_fanned, by: [0, 1, 2, 3, 4, 5])
         .multiMap { it ->
-            assert it.size() == 21 : "Expected 21-element tuple, got ${it.size()}. First elements: ${it.take(6)}. Check output channels in modules/gcta/simulate_phenotypes/main.nf"
+            assert it.size() == 22 : "Expected 22-element tuple, got ${it.size()}. First elements: ${it.take(7)}. Check output channels in modules/gcta/simulate_phenotypes/main.nf"
             // trait_id is computed in R by write_trait_data.R via generate_trait_id()
             // — no cross-language hash computation (addresses review B2)
             write_params:  tuple(it[0], it[1], it[2], it[3], it[4], it[5])
-            write_pheno:   it[6]   // pre-upscaled .phen file
-            write_par:     it[7]   // causal variant .par file
-            cv_maf:        it[19]  // cv_maf_effective (from combine with ch_cv_maf_keyed_for_trait)
-            causal_geno:   it[20]  // causal genotype TSV (from join with ch_causal_geno_fanned)
+            write_pheno:   it[7]   // pre-upscaled .phen file
+            write_par:     it[8]   // causal variant .par file
+            cv_maf:        it[20]  // cv_maf_effective (from combine with ch_cv_maf_keyed_for_trait)
+            causal_geno:   it[21]  // causal genotype TSV (from join with ch_causal_geno_fanned)
         }
         .set { ch_trait }
 
@@ -682,21 +682,30 @@ workflow {
     // symlink collisions). Do not refactor back to .combine() or remove the
     // file(p.toString()) round-trip without verifying the race at scale.
     // See issues/175-gcta-concurrent-mod-exception/.
+    // PLINK_UPDATE_BY_H2.out.out tuple shape (18 elements):
+    //   group, maf, nqtl, effect, rep, h2,
+    //   bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
+    //   pheno, par,
+    //   species  (appended in modules/plink/update_by_h2/main.nf)
+    //
+    // Species rides at the end of the upstream tuple; we destructure it and
+    // include it in the params slot for GCTA_MAKE_GRM (which expects species
+    // at the end of its params input).
     PLINK_UPDATE_BY_H2.out.out
         .flatMap { group, maf, nqtl, effect, rep, h2,
                    bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
-                   pheno, par ->
-            def meta        = [group, maf, nqtl, effect, rep, h2]
+                   pheno, par, species ->
             def plink_files = [bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests]
             def pheno_files = [pheno, par]
+            def prefix      = [group, maf, nqtl, effect, rep, h2]
             [
                 // Call freshFiles() SEPARATELY for each arm — sharing a single
                 // freshFiles() result list across arms reintroduces the race.
-                meta + ["inbred", "fastGWA"] + freshFiles(plink_files) + freshFiles(pheno_files),
-                meta + ["loco",   "mlma"]    + freshFiles(plink_files) + freshFiles(pheno_files)
+                prefix + ["inbred", "fastGWA", species] + freshFiles(plink_files) + freshFiles(pheno_files),
+                prefix + ["loco",   "mlma",    species] + freshFiles(plink_files) + freshFiles(pheno_files)
             ]
         }
-        .branch { group, maf, nqtl, effect, rep, h2, mode, suffix,
+        .branch { group, maf, nqtl, effect, rep, h2, mode, suffix, species,
                   bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
                   pheno, par ->
             inbred: mode == "inbred"
@@ -705,20 +714,20 @@ workflow {
         .set { ch_grm_routed }
 
     ch_grm_routed.inbred
-        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix,
+        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, species,
                     bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
                     pheno, par ->
-            params:    tuple(group, maf, nqtl, effect, rep, h2, mode, suffix)
+            params:    tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, species)
             plink:     tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
             pheno_in:  tuple(pheno, par)
         }
         .set { ch_grm_inbred }
 
     ch_grm_routed.loco
-        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix,
+        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, species,
                     bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
                     pheno, par ->
-            params:    tuple(group, maf, nqtl, effect, rep, h2, mode, suffix)
+            params:    tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, species)
             plink:     tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
             pheno_in:  tuple(pheno, par)
         }
@@ -742,16 +751,23 @@ workflow {
     //
     // Strategy: per-alias merge (params + grm + plink + pheno) preserves
     // within-task alignment, then mix the two GRM-alias streams to obtain a
-    // single source for the species combine. Species attaches once on the
-    // mixed stream (key = group), then a flatMap with freshFiles fans out
-    // pca/nopca arms — same race-defense rewrap as the inbred/loco fanout.
-    // The branch routes each (mode, type) tuple to its own multiMap+alias
-    // invocation, producing four distinct GCTA_PERFORM_GWA TaskRun streams.
+    // single source. Species rides inside GCTA_MAKE_GRM.out.params (appended
+    // at the end), so no separate combine is needed — it flows forward into
+    // GCTA_PERFORM_GWA via the same merge chain.
+    //
+    // A flatMap with freshFiles fans out pca/nopca arms — same race-defense
+    // rewrap as the inbred/loco fanout. The branch routes each (mode, type)
+    // tuple to its own multiMap+alias invocation, producing four distinct
+    // GCTA_PERFORM_GWA TaskRun streams.
     //
     // freshFiles() is REQUIRED here for the pca/nopca arms — both arms
     // would otherwise share FileHolder references to the same GRM-alias
     // output paths (grm + plink + pheno), reintroducing the SLURM-array
     // staging race that motivated this aliasing.
+    //
+    // GCTA_MAKE_GRM.out.params shape (9 vals):
+    //   group, maf, nqtl, effect, rep, h2, mode, suffix, species
+    // Merged stream shape (23 elements): params + 3 grm + 9 plink + 2 pheno
     ch_grm_inbred_out = GCTA_MAKE_GRM_INBRED.out.params
         .merge(GCTA_MAKE_GRM_INBRED.out.grm)
         .merge(GCTA_MAKE_GRM_INBRED.out.plink)
@@ -761,37 +777,29 @@ workflow {
         .merge(GCTA_MAKE_GRM_LOCO.out.plink)
         .merge(GCTA_MAKE_GRM_LOCO.out.pheno)
 
-    // Mixed GRM stream + species (combined once, key = group).
-    // Tuple shape after combine(by: 0):
-    //   (group, maf, nqtl, effect, rep, h2, mode, suffix,
-    //    grm_bin, grm_n, grm_id,
-    //    bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
-    //    pheno, par,
-    //    species)  — 23 elements
-    ch_grm_merged_with_species = ch_grm_inbred_out
+    ch_grm_inbred_out
         .mix(ch_grm_loco_out)
-        .combine(ch_species_for_gwa, by: 0)
-
-    ch_grm_merged_with_species
-        .flatMap { group, maf, nqtl, effect, rep, h2, mode, suffix,
+        .flatMap { group, maf, nqtl, effect, rep, h2, mode, suffix, species,
                    grm_bin, grm_n, grm_id,
                    bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
-                   pheno, par, species ->
-            def meta        = [group, maf, nqtl, effect, rep, h2, mode, suffix]
+                   pheno, par ->
+            def prefix      = [group, maf, nqtl, effect, rep, h2, mode, suffix]
             def grm_files   = [grm_bin, grm_n, grm_id]
             def plink_files = [bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests]
             def pheno_files = [pheno, par]
             [
                 // freshFiles() called SEPARATELY per arm — sharing a single
                 // result list across arms reintroduces the race.
-                meta + ["pca"]   + freshFiles(grm_files) + freshFiles(plink_files) + freshFiles(pheno_files) + [species],
-                meta + ["nopca"] + freshFiles(grm_files) + freshFiles(plink_files) + freshFiles(pheno_files) + [species]
+                // Species emitted twice (once per pca/nopca arm) — each arm
+                // is an independent task with its own input tuple.
+                prefix + ["pca", species]   + freshFiles(grm_files) + freshFiles(plink_files) + freshFiles(pheno_files),
+                prefix + ["nopca", species] + freshFiles(grm_files) + freshFiles(plink_files) + freshFiles(pheno_files)
             ]
         }
-        .branch { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+        .branch { group, maf, nqtl, effect, rep, h2, mode, suffix, type, species,
                   grm_bin, grm_n, grm_id,
                   bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
-                  pheno, par, species ->
+                  pheno, par ->
             inbred_pca:   mode == "inbred" && type == "pca"
             inbred_nopca: mode == "inbred" && type == "nopca"
             loco_pca:     mode == "loco"   && type == "pca"
@@ -803,10 +811,10 @@ workflow {
     // `.pheno` channel name. Each multiMap constructs fresh tuple() values so
     // sibling alias TaskRuns do not share outer ArrayList references.
     ch_gwa_routed.inbred_pca
-        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type, species,
                     grm_bin, grm_n, grm_id,
                     bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
-                    pheno, par, species ->
+                    pheno, par ->
             params:    tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, species)
             grm:       tuple(grm_bin, grm_n, grm_id)
             plink:     tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
@@ -815,10 +823,10 @@ workflow {
         .set { ch_gwa_inbred_pca }
 
     ch_gwa_routed.inbred_nopca
-        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type, species,
                     grm_bin, grm_n, grm_id,
                     bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
-                    pheno, par, species ->
+                    pheno, par ->
             params:    tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, species)
             grm:       tuple(grm_bin, grm_n, grm_id)
             plink:     tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
@@ -827,10 +835,10 @@ workflow {
         .set { ch_gwa_inbred_nopca }
 
     ch_gwa_routed.loco_pca
-        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type, species,
                     grm_bin, grm_n, grm_id,
                     bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
-                    pheno, par, species ->
+                    pheno, par ->
             params:    tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, species)
             grm:       tuple(grm_bin, grm_n, grm_id)
             plink:     tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
@@ -839,10 +847,10 @@ workflow {
         .set { ch_gwa_loco_pca }
 
     ch_gwa_routed.loco_nopca
-        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type, species,
                     grm_bin, grm_n, grm_id,
                     bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
-                    pheno, par, species ->
+                    pheno, par ->
             params:    tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, species)
             grm:       tuple(grm_bin, grm_n, grm_id)
             plink:     tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
@@ -913,15 +921,20 @@ workflow {
         .merge(GCTA_PERFORM_GWA_LOCO_NOPCA.out.pheno)
         .merge(GCTA_PERFORM_GWA_LOCO_NOPCA.out.gwa)
 
+    // GCTA_PERFORM_GWA.out.params now emits species at the end (10 vals);
+    // the per-alias merge then concatenates grm/plink/pheno/gwa, giving a
+    // 25-element tuple (was 24 pre-species). Species rides at position 9
+    // in the merged stream and is forwarded into the params sub-channel
+    // for every downstream consumer (DB write, DB analyze, legacy intervals).
     ch_inbred_pca_out
         .mix(ch_inbred_nopca_out)
         .mix(ch_loco_pca_out)
         .mix(ch_loco_nopca_out)
-        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type, species,
                     grm_bin, grm_n, grm_id,
                     bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
                     pheno, par, gwa ->
-            params: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type)
+            params: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, species)
             grm:    tuple(grm_bin, grm_n, grm_id)
             plink:  tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
             pheno:  tuple(pheno, par)
@@ -1046,17 +1059,17 @@ workflow {
     // waits for its corresponding params element via Nextflow's implicit
     // emission-order synchronization.
     //
-    // GCTA_PERFORM_GWA.out.params emits:
+    // GCTA_PERFORM_GWA.out.params emits (10 vals):
     //   tuple val(group), val(maf), val(nqtl), val(effect), val(rep),
-    //         val(h2), val(mode), val(suffix), val(type)
+    //         val(h2), val(mode), val(suffix), val(type), val(species)
     //
     // The DB write path intercepts GCTA_PERFORM_GWA.out BEFORE the
     // threshold expansion (Channel.of("BF", "EIGEN")). WRITE_GWA_TO_DB
     // runs once per (mode, type) combination, NOT once per threshold.
     ch_db_params = ch_gwa_params_for_db
         .combine(ch_marker_barrier)
-        .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type, _barrier ->
-            tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type)
+        .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type, species, _barrier ->
+            tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, species)
         }
 
     // GCTA_PERFORM_GWA.out.gwa emits a single path per invocation.
@@ -1064,21 +1077,22 @@ workflow {
     // No barrier gating needed on gwa — the params gate is sufficient.
     //
     // write_gwa_to_db.R reads species/vcf_release_id/ms_ld from marker_set_metadata.parquet
-    // at runtime (via read_marker_set_metadata()). The ch_marker_barrier gate on ch_db_params
-    // (above) guarantees DB_MIGRATION_WRITE_MARKER_SET has completed and
-    // marker_set_metadata.parquet exists before any WRITE_GWA_TO_DB task starts.
-    // If this barrier is ever weakened or removed, write_gwa_to_db.R will fail
-    // with "Marker set metadata not found" errors.
+    // at runtime (via read_marker_set_metadata()). Species is still passed through the
+    // channel tuple for the process tag and NF_TRAP_CELL_KEY — it's not used for ID
+    // computation. The ch_marker_barrier gate on ch_db_params (above) guarantees
+    // DB_MIGRATION_WRITE_MARKER_SET has completed and marker_set_metadata.parquet
+    // exists before any WRITE_GWA_TO_DB task starts. If this barrier is ever weakened
+    // or removed, write_gwa_to_db.R will fail with "Marker set metadata not found".
     //
-    // ch_db_params: (group, maf, nqtl, effect, rep, h2, mode, suffix, type) — 9 elements
-    // After combine(by:0) with cv_maf_keyed: adds cv_maf_eff → 10 total.
+    // ch_db_params: (group, maf, nqtl, effect, rep, h2, mode, suffix, type, species) — 10 elements
+    // After combine(by:0) with cv_maf_keyed: adds cv_maf_eff → 11 total.
     // suffix is destructured explicitly (positional correctness) then discarded from output.
+    // Species rides through from GCTA_PERFORM_GWA.out.params — no separate combine.
     ch_gwa_db_inputs = ch_db_params
         .combine(ch_cv_maf_keyed_for_gwa_write, by: 0)
-        .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type, cv_maf_eff ->
-            tuple(group, maf, nqtl, effect, rep, h2, mode, type, cv_maf_eff, cv_ld)
+        .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type, species, cv_maf_eff ->
+            tuple(group, maf, nqtl, effect, rep, h2, mode, type, cv_maf_eff, cv_ld, species)
         }
-        .combine(ch_species_for_db_gwa, by: 0)
     // Result: tuple(group, maf, nqtl, effect, rep, h2, mode, type, cv_maf_effective, cv_ld, species)
 
     DB_MIGRATION_WRITE_GWA_TO_DB(
@@ -1116,23 +1130,24 @@ workflow {
     // splits into synchronized sub-channels — paired by construction, not
     // emission-index coincidence. This also prevents the shared-ArrayList
     // ConcurrentModificationException from the old wrap-unwrap pattern.
+    // ch_gwa_params_for_analysis carries species at position 9 (from
+    // GCTA_PERFORM_GWA.out.params). No separate species combine needed —
+    // species rides through forward.
     ch_db_sthresh = Channel.of("BF", "EIGEN")
     ch_gwa_params_for_analysis
         .merge(ch_gwa_pheno_for_analysis)
-        // → [group, maf, nqtl, effect, rep, h2, mode, suffix, type, pheno, par]
+        // → [group, maf, nqtl, effect, rep, h2, mode, suffix, type, species, pheno, par]
         .combine(ch_db_sthresh)
         .combine(ch_db_analysis_barrier)
-        .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+        .map { group, maf, nqtl, effect, rep, h2, mode, suffix, type, species,
                pheno, par, threshold, _barrier ->
-            tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+            tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, species,
                   pheno, par, threshold)
         }
         .combine(ch_cv_maf_keyed_for_analysis, by: 0)
-        // → [group, maf, ..., pheno, par, threshold, cv_maf_eff]
-        .combine(ch_species_for_db_qtl, by: 0)
-        // → [group, maf, ..., pheno, par, threshold, cv_maf_eff, species]
-        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
-                    pheno, par, threshold, cv_maf_eff, species ->
+        // → [group, maf, ..., species, pheno, par, threshold, cv_maf_eff]
+        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type, species,
+                    pheno, par, threshold, cv_maf_eff ->
             params: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type,
                           threshold, cv_maf_eff, cv_ld, species)
             pheno:  tuple(pheno, par)
@@ -1195,22 +1210,24 @@ workflow {
         // ch_perform_gwa sub-channels — these stay aligned with the other
         // forks (.params, .pheno, .gwa) because they all emit in lockstep
         // from the same multiMap source tuple.
+        // ch_gwa_params_for_legacy carries species at position 9 (from
+        // GCTA_PERFORM_GWA.out.params). No separate species combine needed.
         ch_intervals_sthresh = Channel.of("BF", "EIGEN")
-        ch_gwa_params_for_legacy                          // 9 vals
+        ch_gwa_params_for_legacy                          // 10 vals (incl. species)
             .merge(ch_perform_gwa.grm)                    // + 3 paths (grm)
             .merge(ch_perform_gwa.plink)                  // + 9 paths (plink)
             .merge(ch_gwa_pheno_for_legacy)               // + 2 paths (pheno)
             .merge(ch_gwa_gwa_for_legacy)                 // + 1 path  (gwa)
-            // → 24-element tuple
+            // → 25-element tuple
             .combine(ch_intervals_sthresh)
-            // → 25 elements (+ threshold)
-            .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+            // → 26 elements (+ threshold)
+            .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type, species,
                         grm_bin, grm_n, grm_id,
                         bed, bim, fam, map_f, nosex, ped, log_f, gm, n_indep,
                         pheno, par,
                         gwa,
                         threshold ->
-                params: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold)
+                params: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold, species)
                 grm:    tuple(grm_bin, grm_n, grm_id)
                 plink:  tuple(bed, bim, fam, map_f, nosex, ped, log_f, gm, n_indep)
                 pheno:  tuple(pheno, par)
@@ -1218,14 +1235,8 @@ workflow {
             }
             .set { ch_intervals }
 
-        // Combine species onto the params tuple at the call site.
-        // ch_intervals.params shape: (group, maf, nqtl, effect, rep, h2, mode, suffix, type, threshold)
-        // After combine(by:0): same + species at position 10.
-        ch_intervals_params_with_species = ch_intervals.params
-            .combine(ch_species_for_intervals, by: 0)
-
         R_GET_GCTA_INTERVALS(
-            ch_intervals_params_with_species,
+            ch_intervals.params,
             ch_intervals.grm,
             ch_intervals.plink,
             ch_intervals.pheno,

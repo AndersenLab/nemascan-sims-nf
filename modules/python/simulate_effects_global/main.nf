@@ -15,7 +15,7 @@ process PYTHON_SIMULATE_EFFECTS_GLOBAL {
 
   output:
   tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2),
-        path("causal.variants.sim.${nqtl}.${rep}.txt"),
+        path("causal.variants.sim.${nqtl}.${rep}.txt"), val(species),
         emit: causal
   tuple val(group), val(maf),
         path("TO_SIMS.bed"), path("TO_SIMS.bim"), path("TO_SIMS.fam"), path("TO_SIMS.map"),
