@@ -621,21 +621,17 @@ workflow {
         )
     ch_versions = ch_versions.mix(PLINK_UPDATE_BY_H2.out.versions)
 
-    // Create genetic relatedness matrix
-    // Merge PLINK_UPDATE_BY_H2 outputs before the mode fan-out (inbred/loco).
-    // The previous wrap-combine-unwrap pattern (.map{[it]}.combine(ch_mode).map{it[0]})
-    // returned the same ArrayList reference for both mode emissions. Under SLURM job
-    // array batching + Singularity, two submission threads iterated the shared list
-    // simultaneously -> ConcurrentModificationException (same mechanism as issue #148).
-    // .merge() aligns by emission order — do not insert reordering operators between
-    // PLINK_UPDATE_BY_H2.out.* and this merge chain.
+    // Create genetic relatedness matrix.
+    // PLINK_UPDATE_BY_H2 emits a single combined tuple (params + plink + pheno)
+    // per task. We fan out across mode (inbred/loco) with .combine, then multiMap
+    // rebuilds the three sub-channels GCTA_MAKE_GRM expects. Each multiMap
+    // emission constructs fresh tuple() values, so sibling tasks do not share
+    // outer ArrayList references at the DSL operator layer.
     ch_mode = Channel.of(
         ["inbred", "fastGWA"],
         ["loco", "mlma"]
         )
-    PLINK_UPDATE_BY_H2.out.params
-        .merge(PLINK_UPDATE_BY_H2.out.plink)
-        .merge(PLINK_UPDATE_BY_H2.out.pheno)
+    PLINK_UPDATE_BY_H2.out.out
         .combine(ch_mode)
         .multiMap { group, maf, nqtl, effect, rep, h2,
                     bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
