@@ -14,6 +14,31 @@ not use version tags; entries are organized by development phase and date.
 ## [Unreleased] — May 2026
 
 ### Changed
+- **In-pipeline QTL detection + assessment fanout is now opt-in via
+  `--run_postprocess`** (`fix/perform-gwa-concurrent-mod-exception`,
+  2026-05-18): The `DB_MIGRATION_ANALYZE_QTL` +
+  `DB_MIGRATION_ASSESS_SIMS` fanout and the
+  `db_simulation_assessment_results.tsv` `collectFile` are now wrapped
+  in `if (params.run_postprocess) { … }`. The default is `false`, which
+  is a **behavior change**: out-of-repo callers (CaeNDR production,
+  user scripts) that do not pass the flag will no longer see the
+  assessment TSV at the end of a run. The Parquet DB itself is
+  unchanged — it is always written, regardless of the flag — so
+  offline analysis against the populated DB remains possible. A
+  `log.info` reminder is emitted at pipeline start whenever
+  `run_postprocess = false` to mitigate silent surprise.
+  `DB_MIGRATION_AGGREGATE_METADATA` is intentionally **not** gated: it
+  feeds `ch_db_analysis_barrier` and the
+  `VALIDATE_REPLICATION_COMPLETE` trigger, both of which must remain
+  unconditional. `ch_db_assessment_pub` is initialized to
+  `Channel.empty()` outside the gate so the `publish` stanza at the
+  bottom of `main.nf` continues to compile when the gate is closed —
+  publishing an empty channel is a no-op. The flag was introduced
+  alongside the ConcurrentModificationException fix in
+  `GCTA_PERFORM_GWA` so that the downstream analyze/assess processes
+  (susceptible to similar channel-recombination races) can be held
+  offline until they receive an equivalent fix.
+
 - **Halt-with-replay-manifest error handling** (`fix/error-handling`,
   2026-05-12): Post-fanout processes now drop on retry exhaustion via
   `errorStrategy = 'ignore'` instead of terminating the pipeline. Failed
