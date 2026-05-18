@@ -9,9 +9,18 @@ process PLINK_UPDATE_BY_H2 {
     tuple path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"), path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par")
 
     output:
-    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), emit: params
-    tuple path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bed"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bim"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.fam"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.map"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.nosex"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.ped"), path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.log"), path(gm), path(n_indep_tests), emit: plink
-    tuple path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"), path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par"), emit: pheno
+    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2),
+          path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bed"),
+          path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.bim"),
+          path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.fam"),
+          path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.map"),
+          path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.nosex"),
+          path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.ped"),
+          path("TO_SIMS_${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}.log"),
+          path(gm), path(n_indep_tests),
+          path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"),
+          path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par"),
+          emit: out
     path "versions.yml", emit: versions
 
     when:
