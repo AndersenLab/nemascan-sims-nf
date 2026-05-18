@@ -253,6 +253,10 @@ workflow {
         log.info ""
     }
 
+    if (!params.run_postprocess) {
+        log.info "[postprocess] --run_postprocess=false — skipping in-pipeline QTL detection + assessment fanout. Use nemascanSims::run_postprocess() on the populated DB for offline analysis."
+    }
+
     // Pre-create the failures directory before any task can launch.
     // workflow.onStart does not exist in NF v24 — use the workflow body directly.
     def failuresDir = file("${workflow.outputDir}/.failures")
@@ -1133,32 +1137,35 @@ workflow {
         }
         .set { ch_db_analysis }
 
-    // Step 1: Analyze QTL (pheno is pass-through for Step 2)
-    DB_MIGRATION_ANALYZE_QTL(
-        ch_db_analysis.params,
-        ch_db_analysis.pheno,
-        db_output_dir,
-        params.ci_size,
-        params.group_qtl,
-        params.alpha
-    )
-    ch_versions = ch_versions.mix(DB_MIGRATION_ANALYZE_QTL.out.versions)
+    ch_db_assessment_pub = Channel.empty()
+    if (params.run_postprocess) {
+        // Step 1: Analyze QTL (pheno is pass-through for Step 2)
+        DB_MIGRATION_ANALYZE_QTL(
+            ch_db_analysis.params,
+            ch_db_analysis.pheno,
+            db_output_dir,
+            params.ci_size,
+            params.group_qtl,
+            params.alpha
+        )
+        ch_versions = ch_versions.mix(DB_MIGRATION_ANALYZE_QTL.out.versions)
 
-    // Step 2: Assess Sims (consumes ANALYZE_QTL outputs — correctly paired via pass-through)
-    DB_MIGRATION_ASSESS_SIMS(
-        DB_MIGRATION_ANALYZE_QTL.out.params,
-        DB_MIGRATION_ANALYZE_QTL.out.regions,
-        DB_MIGRATION_ANALYZE_QTL.out.pheno,
-        db_output_dir,
-        params.ci_size,
-        params.group_qtl,
-        params.alpha
-    )
-    ch_versions = ch_versions.mix(DB_MIGRATION_ASSESS_SIMS.out.versions)
+        // Step 2: Assess Sims (consumes ANALYZE_QTL outputs — correctly paired via pass-through)
+        DB_MIGRATION_ASSESS_SIMS(
+            DB_MIGRATION_ANALYZE_QTL.out.params,
+            DB_MIGRATION_ANALYZE_QTL.out.regions,
+            DB_MIGRATION_ANALYZE_QTL.out.pheno,
+            db_output_dir,
+            params.ci_size,
+            params.group_qtl,
+            params.alpha
+        )
+        ch_versions = ch_versions.mix(DB_MIGRATION_ASSESS_SIMS.out.versions)
 
-    ch_db_assessment_pub = DB_MIGRATION_ASSESS_SIMS.out.assessment.collectFile(
-        name: "db_simulation_assessment_results.tsv", sort: false
-    )
+        ch_db_assessment_pub = DB_MIGRATION_ASSESS_SIMS.out.assessment.collectFile(
+            name: "db_simulation_assessment_results.tsv", sort: false
+        )
+    }
 
     // ── REPLICATION VALIDATION ─────────────────────────────────────────
     // Runs after all DB writes have settled. Exits non-zero and writes
