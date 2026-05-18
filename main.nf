@@ -19,8 +19,22 @@ include { R_SIMULATE_EFFECTS_GLOBAL       } from './modules/r/simulate_effects_g
 include { R_GET_GCTA_INTERVALS           } from './modules/r/get_gcta_intervals/main'
 include { R_ASSESS_SIMS                   } from './modules/r/assess_sims/main'
 include { GCTA_SIMULATE_PHENOTYPES        } from './modules/gcta/simulate_phenotypes/main'
-include { GCTA_MAKE_GRM                   } from './modules/gcta/make_grm/main'
-include { GCTA_PERFORM_GWA                } from './modules/gcta/perform_gwa/main'
+// Named aliases for each fanout arm of GCTA_MAKE_GRM. Each alias is a distinct
+// process instance in the DAG with its own work dir, logs, and (importantly)
+// its own DataflowBroadcast output channels — preventing shared-reference
+// issues for further downstream consumers (see ch_grm fanout below).
+include { GCTA_MAKE_GRM as GCTA_MAKE_GRM_INBRED } from './modules/gcta/make_grm/main'
+include { GCTA_MAKE_GRM as GCTA_MAKE_GRM_LOCO     } from './modules/gcta/make_grm/main'
+// Named aliases for the 4-way (mode × type) fanout of GCTA_PERFORM_GWA. Each
+// alias is a distinct process instance in the DAG with its own work dir, logs,
+// and DataflowBroadcast output channels — preventing shared-FileHolder issues
+// at the pca/nopca fanout (same hazard class as the inbred/loco fanout that
+// drove the GCTA_MAKE_GRM aliasing above). Outputs are re-mixed at the next
+// consumer.
+include { GCTA_PERFORM_GWA as GCTA_PERFORM_GWA_INBRED_PCA   } from './modules/gcta/perform_gwa/main'
+include { GCTA_PERFORM_GWA as GCTA_PERFORM_GWA_INBRED_NOPCA } from './modules/gcta/perform_gwa/main'
+include { GCTA_PERFORM_GWA as GCTA_PERFORM_GWA_LOCO_PCA     } from './modules/gcta/perform_gwa/main'
+include { GCTA_PERFORM_GWA as GCTA_PERFORM_GWA_LOCO_NOPCA   } from './modules/gcta/perform_gwa/main'
 
 // Database migration modules
 include { DB_MIGRATION_WRITE_MARKER_SET       } from './modules/db_migration/write_marker_set/main'
@@ -96,6 +110,27 @@ def parseManifestTuple(Map cols) {
         cols.h2 as Float,    // Float   — matches h2 channel value after .combine()
         cols.rep as Integer  // Integer — matches Channel.of(1..params.reps)
     ]
+}
+
+// Rewrap paths to force fresh FileHolder allocation per arm.
+// REQUIRED to avoid race conditions when sibling TaskRuns stage the same
+// upstream files concurrently under SLURM array execution. NF caches
+// FileHolder instances keyed by Path object identity; sharing a Path
+// reference across tuples causes shared FileHolder allocation, which races
+// under concurrent staging (NoSuchFileException / truncated stage-ins /
+// symlink collisions in work/stage-*). The string round-trip forces
+// FileHelper.asPath() to construct a fresh Path per arm.
+// Do not remove or simplify without verifying the race no longer occurs at
+// scale. Tested with Nextflow 24.10.x (manifest.nextflowVersion guard).
+def freshFiles = { paths ->
+    if (paths == null) return []
+    paths.collect { p ->
+        if (p == null) return null
+        if (p instanceof List || p instanceof Collection) {
+            return p.collect { file(it.toString()) }
+        }
+        return file(p.toString())
+    }
 }
 
 workflow {
@@ -623,87 +658,282 @@ workflow {
 
     // Create genetic relatedness matrix.
     // PLINK_UPDATE_BY_H2 emits a single combined tuple (params + plink + pheno)
-    // per task. We fan out across mode (inbred/loco) with .combine, then multiMap
-    // rebuilds the three sub-channels GCTA_MAKE_GRM expects. Each multiMap
-    // emission constructs fresh tuple() values, so sibling tasks do not share
-    // outer ArrayList references at the DSL operator layer.
-    ch_mode = Channel.of(
-        ["inbred", "fastGWA"],
-        ["loco", "mlma"]
-        )
+    // per task. We fan out across mode (inbred/loco) via flatMap, rewrapping each
+    // path with freshFiles() to force NF to allocate independent FileHolder
+    // instances per arm. Each arm is then routed to its own named alias of
+    // GCTA_MAKE_GRM (GCTA_MAKE_GRM_INBRED / GCTA_MAKE_GRM_LOCO) so
+    // sibling TaskRuns land in distinct work-dir subtrees with distinguishable
+    // process names in `nextflow log` and traces.
+    //
+    // freshFiles() rewrapping is REQUIRED — forces fresh FileHolder per arm to
+    // avoid SLURM-array staging race (NoSuchFileException, truncated stage-ins,
+    // symlink collisions). Do not refactor back to .combine() or remove the
+    // file(p.toString()) round-trip without verifying the race at scale.
+    // See issues/175-gcta-concurrent-mod-exception/.
     PLINK_UPDATE_BY_H2.out.out
-        .combine(ch_mode)
-        .multiMap { group, maf, nqtl, effect, rep, h2,
-                    bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
-                    pheno, par, mode, suffix ->
-            params: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix)
-            plink:  tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
-            pheno:  tuple(pheno, par)
+        .flatMap { group, maf, nqtl, effect, rep, h2,
+                   bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
+                   pheno, par ->
+            def meta        = [group, maf, nqtl, effect, rep, h2]
+            def plink_files = [bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests]
+            def pheno_files = [pheno, par]
+            [
+                // Call freshFiles() SEPARATELY for each arm — sharing a single
+                // freshFiles() result list across arms reintroduces the race.
+                meta + ["inbred", "fastGWA"] + freshFiles(plink_files) + freshFiles(pheno_files),
+                meta + ["loco",   "mlma"]    + freshFiles(plink_files) + freshFiles(pheno_files)
+            ]
         }
-        .set { ch_grm }
+        .branch { group, maf, nqtl, effect, rep, h2, mode, suffix,
+                  bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
+                  pheno, par ->
+            inbred: mode == "inbred"
+            loco:   mode == "loco"
+        }
+        .set { ch_grm_routed }
 
-    GCTA_MAKE_GRM(
-        ch_grm.params,
-        ch_grm.plink,
-        ch_grm.pheno
-        )
-    ch_versions = ch_versions.mix(GCTA_MAKE_GRM.out.versions)
-
-    // Simulate GWA using output from GCTA_MAKE_GRM
-    // Same fix: merge all GCTA_MAKE_GRM outputs before the type fan-out (pca/nopca).
-    // .merge() aligns by emission order — do not insert reordering operators between
-    // GCTA_MAKE_GRM.out.* and this merge chain.
-    ch_type = Channel.of(
-        "pca",
-        "nopca"
-        )
-    GCTA_MAKE_GRM.out.params
-        .merge(GCTA_MAKE_GRM.out.grm)
-        .merge(GCTA_MAKE_GRM.out.plink)
-        .merge(GCTA_MAKE_GRM.out.pheno)
-        .combine(ch_type)
+    ch_grm_routed.inbred
         .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix,
+                    bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
+                    pheno, par ->
+            params:    tuple(group, maf, nqtl, effect, rep, h2, mode, suffix)
+            plink:     tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
+            pheno_in:  tuple(pheno, par)
+        }
+        .set { ch_grm_inbred }
+
+    ch_grm_routed.loco
+        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix,
+                    bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
+                    pheno, par ->
+            params:    tuple(group, maf, nqtl, effect, rep, h2, mode, suffix)
+            plink:     tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
+            pheno_in:  tuple(pheno, par)
+        }
+        .set { ch_grm_loco }
+
+    GCTA_MAKE_GRM_INBRED(
+        ch_grm_inbred.params,
+        ch_grm_inbred.plink,
+        ch_grm_inbred.pheno_in
+        )
+    GCTA_MAKE_GRM_LOCO(
+        ch_grm_loco.params,
+        ch_grm_loco.plink,
+        ch_grm_loco.pheno_in
+        )
+    ch_versions = ch_versions
+        .mix(GCTA_MAKE_GRM_INBRED.out.versions)
+        .mix(GCTA_MAKE_GRM_LOCO.out.versions)
+
+    // Simulate GWA using output from GCTA_MAKE_GRM.
+    //
+    // Strategy: per-alias merge (params + grm + plink + pheno) preserves
+    // within-task alignment, then mix the two GRM-alias streams to obtain a
+    // single source for the species combine. Species attaches once on the
+    // mixed stream (key = group), then a flatMap with freshFiles fans out
+    // pca/nopca arms — same race-defense rewrap as the inbred/loco fanout.
+    // The branch routes each (mode, type) tuple to its own multiMap+alias
+    // invocation, producing four distinct GCTA_PERFORM_GWA TaskRun streams.
+    //
+    // freshFiles() is REQUIRED here for the pca/nopca arms — both arms
+    // would otherwise share FileHolder references to the same GRM-alias
+    // output paths (grm + plink + pheno), reintroducing the SLURM-array
+    // staging race that motivated this aliasing.
+    ch_grm_inbred_out = GCTA_MAKE_GRM_INBRED.out.params
+        .merge(GCTA_MAKE_GRM_INBRED.out.grm)
+        .merge(GCTA_MAKE_GRM_INBRED.out.plink)
+        .merge(GCTA_MAKE_GRM_INBRED.out.pheno)
+    ch_grm_loco_out = GCTA_MAKE_GRM_LOCO.out.params
+        .merge(GCTA_MAKE_GRM_LOCO.out.grm)
+        .merge(GCTA_MAKE_GRM_LOCO.out.plink)
+        .merge(GCTA_MAKE_GRM_LOCO.out.pheno)
+
+    // Mixed GRM stream + species (combined once, key = group).
+    // Tuple shape after combine(by: 0):
+    //   (group, maf, nqtl, effect, rep, h2, mode, suffix,
+    //    grm_bin, grm_n, grm_id,
+    //    bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
+    //    pheno, par,
+    //    species)  — 23 elements
+    ch_grm_merged_with_species = ch_grm_inbred_out
+        .mix(ch_grm_loco_out)
+        .combine(ch_species_for_gwa, by: 0)
+
+    ch_grm_merged_with_species
+        .flatMap { group, maf, nqtl, effect, rep, h2, mode, suffix,
+                   grm_bin, grm_n, grm_id,
+                   bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
+                   pheno, par, species ->
+            def meta        = [group, maf, nqtl, effect, rep, h2, mode, suffix]
+            def grm_files   = [grm_bin, grm_n, grm_id]
+            def plink_files = [bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests]
+            def pheno_files = [pheno, par]
+            [
+                // freshFiles() called SEPARATELY per arm — sharing a single
+                // result list across arms reintroduces the race.
+                meta + ["pca"]   + freshFiles(grm_files) + freshFiles(plink_files) + freshFiles(pheno_files) + [species],
+                meta + ["nopca"] + freshFiles(grm_files) + freshFiles(plink_files) + freshFiles(pheno_files) + [species]
+            ]
+        }
+        .branch { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+                  grm_bin, grm_n, grm_id,
+                  bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
+                  pheno, par, species ->
+            inbred_pca:   mode == "inbred" && type == "pca"
+            inbred_nopca: mode == "inbred" && type == "nopca"
+            loco_pca:     mode == "loco"   && type == "pca"
+            loco_nopca:   mode == "loco"   && type == "nopca"
+        }
+        .set { ch_gwa_routed }
+
+    // Per-arm multiMap — sub-channel `pheno_in` to disambiguate from upstream
+    // `.pheno` channel name. Each multiMap constructs fresh tuple() values so
+    // sibling alias TaskRuns do not share outer ArrayList references.
+    ch_gwa_routed.inbred_pca
+        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
                     grm_bin, grm_n, grm_id,
                     bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
-                    pheno, par, type ->
+                    pheno, par, species ->
+            params:    tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, species)
+            grm:       tuple(grm_bin, grm_n, grm_id)
+            plink:     tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
+            pheno_in:  tuple(pheno, par)
+        }
+        .set { ch_gwa_inbred_pca }
+
+    ch_gwa_routed.inbred_nopca
+        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+                    grm_bin, grm_n, grm_id,
+                    bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
+                    pheno, par, species ->
+            params:    tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, species)
+            grm:       tuple(grm_bin, grm_n, grm_id)
+            plink:     tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
+            pheno_in:  tuple(pheno, par)
+        }
+        .set { ch_gwa_inbred_nopca }
+
+    ch_gwa_routed.loco_pca
+        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+                    grm_bin, grm_n, grm_id,
+                    bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
+                    pheno, par, species ->
+            params:    tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, species)
+            grm:       tuple(grm_bin, grm_n, grm_id)
+            plink:     tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
+            pheno_in:  tuple(pheno, par)
+        }
+        .set { ch_gwa_loco_pca }
+
+    ch_gwa_routed.loco_nopca
+        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+                    grm_bin, grm_n, grm_id,
+                    bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
+                    pheno, par, species ->
+            params:    tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type, species)
+            grm:       tuple(grm_bin, grm_n, grm_id)
+            plink:     tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
+            pheno_in:  tuple(pheno, par)
+        }
+        .set { ch_gwa_loco_nopca }
+
+    GCTA_PERFORM_GWA_INBRED_PCA(
+        ch_gwa_inbred_pca.params,
+        ch_gwa_inbred_pca.grm,
+        ch_gwa_inbred_pca.plink,
+        ch_gwa_inbred_pca.pheno_in,
+        params.sparse_cut
+        )
+    GCTA_PERFORM_GWA_INBRED_NOPCA(
+        ch_gwa_inbred_nopca.params,
+        ch_gwa_inbred_nopca.grm,
+        ch_gwa_inbred_nopca.plink,
+        ch_gwa_inbred_nopca.pheno_in,
+        params.sparse_cut
+        )
+    GCTA_PERFORM_GWA_LOCO_PCA(
+        ch_gwa_loco_pca.params,
+        ch_gwa_loco_pca.grm,
+        ch_gwa_loco_pca.plink,
+        ch_gwa_loco_pca.pheno_in,
+        params.sparse_cut
+        )
+    GCTA_PERFORM_GWA_LOCO_NOPCA(
+        ch_gwa_loco_nopca.params,
+        ch_gwa_loco_nopca.grm,
+        ch_gwa_loco_nopca.plink,
+        ch_gwa_loco_nopca.pheno_in,
+        params.sparse_cut
+        )
+    ch_versions = ch_versions
+        .mix(GCTA_PERFORM_GWA_INBRED_PCA.out.versions)
+        .mix(GCTA_PERFORM_GWA_INBRED_NOPCA.out.versions)
+        .mix(GCTA_PERFORM_GWA_LOCO_PCA.out.versions)
+        .mix(GCTA_PERFORM_GWA_LOCO_NOPCA.out.versions)
+
+    // ── RE-MIX AT THE NEXT CONSUMER ──────────────────────────────────────
+    // Per-alias merge of (params + grm + plink + pheno + gwa) preserves within-
+    // task alignment. Mix across the 4 aliases collapses the streams into a
+    // single 24-element tuple stream, then multiMap breaks out the named sub-
+    // channels (params, grm, plink, pheno, gwa) that downstream consumers
+    // expect. Because multiMap emits all sub-channels from the same source
+    // tuple in lockstep, any downstream .merge(...) across these sub-channels
+    // remains correctly aligned even after the alias split.
+    ch_inbred_pca_out   = GCTA_PERFORM_GWA_INBRED_PCA.out.params
+        .merge(GCTA_PERFORM_GWA_INBRED_PCA.out.grm)
+        .merge(GCTA_PERFORM_GWA_INBRED_PCA.out.plink)
+        .merge(GCTA_PERFORM_GWA_INBRED_PCA.out.pheno)
+        .merge(GCTA_PERFORM_GWA_INBRED_PCA.out.gwa)
+    ch_inbred_nopca_out = GCTA_PERFORM_GWA_INBRED_NOPCA.out.params
+        .merge(GCTA_PERFORM_GWA_INBRED_NOPCA.out.grm)
+        .merge(GCTA_PERFORM_GWA_INBRED_NOPCA.out.plink)
+        .merge(GCTA_PERFORM_GWA_INBRED_NOPCA.out.pheno)
+        .merge(GCTA_PERFORM_GWA_INBRED_NOPCA.out.gwa)
+    ch_loco_pca_out     = GCTA_PERFORM_GWA_LOCO_PCA.out.params
+        .merge(GCTA_PERFORM_GWA_LOCO_PCA.out.grm)
+        .merge(GCTA_PERFORM_GWA_LOCO_PCA.out.plink)
+        .merge(GCTA_PERFORM_GWA_LOCO_PCA.out.pheno)
+        .merge(GCTA_PERFORM_GWA_LOCO_PCA.out.gwa)
+    ch_loco_nopca_out   = GCTA_PERFORM_GWA_LOCO_NOPCA.out.params
+        .merge(GCTA_PERFORM_GWA_LOCO_NOPCA.out.grm)
+        .merge(GCTA_PERFORM_GWA_LOCO_NOPCA.out.plink)
+        .merge(GCTA_PERFORM_GWA_LOCO_NOPCA.out.pheno)
+        .merge(GCTA_PERFORM_GWA_LOCO_NOPCA.out.gwa)
+
+    ch_inbred_pca_out
+        .mix(ch_inbred_nopca_out)
+        .mix(ch_loco_pca_out)
+        .mix(ch_loco_nopca_out)
+        .multiMap { group, maf, nqtl, effect, rep, h2, mode, suffix, type,
+                    grm_bin, grm_n, grm_id,
+                    bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests,
+                    pheno, par, gwa ->
             params: tuple(group, maf, nqtl, effect, rep, h2, mode, suffix, type)
             grm:    tuple(grm_bin, grm_n, grm_id)
             plink:  tuple(bed, bim, fam, plink_map, nosex, ped, plink_log, gm, n_indep_tests)
             pheno:  tuple(pheno, par)
+            gwa:    gwa
         }
-        .set { ch_gwa }
-
-    // Combine species onto the params tuple at the call site so the failure trap
-    // can include it in the cell key. ch_gwa.params shape:
-    //   (group, maf, nqtl, effect, rep, h2, mode, suffix, type)
-    // After combine(by:0): same + species at position 9.
-    ch_gwa_params_with_species = ch_gwa.params
-        .combine(ch_species_for_gwa, by: 0)
-
-    GCTA_PERFORM_GWA(
-        ch_gwa_params_with_species,
-        ch_gwa.grm,
-        ch_gwa.plink,
-        ch_gwa.pheno,
-        params.sparse_cut
-        )
-    ch_versions = ch_versions.mix(GCTA_PERFORM_GWA.out.versions)
+        .set { ch_perform_gwa }
 
     // Fork GCTA_PERFORM_GWA outputs for multiple consumers:
-    //   .out.params → DB write path, DB analysis path, [legacy intervals path]
-    //   .out.gwa    → DB write path, [legacy intervals path]
-    //   .out.pheno  → DB analysis path, [legacy intervals path]
+    //   .params → DB write path, DB analysis path, [legacy intervals path]
+    //   .gwa    → DB write path, [legacy intervals path]
+    //   .pheno  → DB analysis path, [legacy intervals path]
+    //   .grm    → [legacy intervals path only]
+    //   .plink  → [legacy intervals path only]
     // Same ConcurrentModificationException prevention as GCTA_SIMULATE_PHENOTYPES forks.
-    GCTA_PERFORM_GWA.out.params
+    ch_perform_gwa.params
         .tap { ch_gwa_params_for_db }
         .tap { ch_gwa_params_for_analysis }
         .set { ch_gwa_params_for_legacy }
 
-    GCTA_PERFORM_GWA.out.gwa
+    ch_perform_gwa.gwa
         .tap { ch_gwa_gwa_for_db }
         .set { ch_gwa_gwa_for_legacy }
 
-    GCTA_PERFORM_GWA.out.pheno
+    ch_perform_gwa.pheno
         .tap { ch_gwa_pheno_for_analysis }
         .set { ch_gwa_pheno_for_legacy }
 
@@ -949,10 +1179,14 @@ workflow {
         // the threshold expansion. multiMap splits into synchronized
         // sub-channels — same pattern as the DB analysis path above.
         // All originate from GCTA_PERFORM_GWA outputs (lock-step emission order).
+        // After 4-alias fanout, .grm/.plink come from the multiMap-derived
+        // ch_perform_gwa sub-channels — these stay aligned with the other
+        // forks (.params, .pheno, .gwa) because they all emit in lockstep
+        // from the same multiMap source tuple.
         ch_intervals_sthresh = Channel.of("BF", "EIGEN")
         ch_gwa_params_for_legacy                          // 9 vals
-            .merge(GCTA_PERFORM_GWA.out.grm)              // + 3 paths (grm)
-            .merge(GCTA_PERFORM_GWA.out.plink)            // + 9 paths (plink)
+            .merge(ch_perform_gwa.grm)                    // + 3 paths (grm)
+            .merge(ch_perform_gwa.plink)                  // + 9 paths (plink)
             .merge(ch_gwa_pheno_for_legacy)               // + 2 paths (pheno)
             .merge(ch_gwa_gwa_for_legacy)                 // + 1 path  (gwa)
             // → 24-element tuple
