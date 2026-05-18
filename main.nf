@@ -749,11 +749,10 @@ workflow {
 
     // Simulate GWA using output from GCTA_MAKE_GRM.
     //
-    // Strategy: per-alias merge (params + grm + plink + pheno) preserves
-    // within-task alignment, then mix the two GRM-alias streams to obtain a
-    // single source. Species rides inside GCTA_MAKE_GRM.out.params (appended
-    // at the end), so no separate combine is needed — it flows forward into
-    // GCTA_PERFORM_GWA via the same merge chain.
+    // Strategy: each alias emits a single combined output tuple, so the two
+    // GRM-alias streams are mixed directly — no per-alias reassembly needed.
+    // Species rides inside GCTA_MAKE_GRM.out.combined at position [8], so no
+    // separate combine is needed — it flows forward into GCTA_PERFORM_GWA.
     //
     // A flatMap with freshFiles fans out pca/nopca arms — same race-defense
     // rewrap as the inbred/loco fanout. The branch routes each (mode, type)
@@ -765,17 +764,13 @@ workflow {
     // output paths (grm + plink + pheno), reintroducing the SLURM-array
     // staging race that motivated this aliasing.
     //
-    // GCTA_MAKE_GRM.out.params shape (9 vals):
-    //   group, maf, nqtl, effect, rep, h2, mode, suffix, species
-    // Merged stream shape (23 elements): params + 3 grm + 9 plink + 2 pheno
-    ch_grm_inbred_out = GCTA_MAKE_GRM_INBRED.out.params
-        .merge(GCTA_MAKE_GRM_INBRED.out.grm)
-        .merge(GCTA_MAKE_GRM_INBRED.out.plink)
-        .merge(GCTA_MAKE_GRM_INBRED.out.pheno)
-    ch_grm_loco_out = GCTA_MAKE_GRM_LOCO.out.params
-        .merge(GCTA_MAKE_GRM_LOCO.out.grm)
-        .merge(GCTA_MAKE_GRM_LOCO.out.plink)
-        .merge(GCTA_MAKE_GRM_LOCO.out.pheno)
+    // GCTA_MAKE_GRM.out.combined shape (23 elements):
+    //   [0-8]   vals:  group, maf, nqtl, effect, rep, h2, mode, suffix, species
+    //   [9-11]  grm:   grm.bin, grm.N.bin, grm.id
+    //   [12-20] plink: bed, bim, fam, map, nosex, ped, log, gm, n_indep_tests
+    //   [21-22] pheno: pheno, par
+    ch_grm_inbred_out = GCTA_MAKE_GRM_INBRED.out.combined
+    ch_grm_loco_out   = GCTA_MAKE_GRM_LOCO.out.combined
 
     ch_grm_inbred_out
         .mix(ch_grm_loco_out)
@@ -893,39 +888,23 @@ workflow {
         .mix(GCTA_PERFORM_GWA_LOCO_NOPCA.out.versions)
 
     // ── RE-MIX AT THE NEXT CONSUMER ──────────────────────────────────────
-    // Per-alias merge of (params + grm + plink + pheno + gwa) preserves within-
-    // task alignment. Mix across the 4 aliases collapses the streams into a
-    // single 24-element tuple stream, then multiMap breaks out the named sub-
-    // channels (params, grm, plink, pheno, gwa) that downstream consumers
+    // Each alias emits a single combined 25-element output tuple. Mix across
+    // the 4 aliases collapses the streams, then multiMap breaks out the named
+    // sub-channels (params, grm, plink, pheno, gwa) that downstream consumers
     // expect. Because multiMap emits all sub-channels from the same source
-    // tuple in lockstep, any downstream .merge(...) across these sub-channels
-    // remains correctly aligned even after the alias split.
-    ch_inbred_pca_out   = GCTA_PERFORM_GWA_INBRED_PCA.out.params
-        .merge(GCTA_PERFORM_GWA_INBRED_PCA.out.grm)
-        .merge(GCTA_PERFORM_GWA_INBRED_PCA.out.plink)
-        .merge(GCTA_PERFORM_GWA_INBRED_PCA.out.pheno)
-        .merge(GCTA_PERFORM_GWA_INBRED_PCA.out.gwa)
-    ch_inbred_nopca_out = GCTA_PERFORM_GWA_INBRED_NOPCA.out.params
-        .merge(GCTA_PERFORM_GWA_INBRED_NOPCA.out.grm)
-        .merge(GCTA_PERFORM_GWA_INBRED_NOPCA.out.plink)
-        .merge(GCTA_PERFORM_GWA_INBRED_NOPCA.out.pheno)
-        .merge(GCTA_PERFORM_GWA_INBRED_NOPCA.out.gwa)
-    ch_loco_pca_out     = GCTA_PERFORM_GWA_LOCO_PCA.out.params
-        .merge(GCTA_PERFORM_GWA_LOCO_PCA.out.grm)
-        .merge(GCTA_PERFORM_GWA_LOCO_PCA.out.plink)
-        .merge(GCTA_PERFORM_GWA_LOCO_PCA.out.pheno)
-        .merge(GCTA_PERFORM_GWA_LOCO_PCA.out.gwa)
-    ch_loco_nopca_out   = GCTA_PERFORM_GWA_LOCO_NOPCA.out.params
-        .merge(GCTA_PERFORM_GWA_LOCO_NOPCA.out.grm)
-        .merge(GCTA_PERFORM_GWA_LOCO_NOPCA.out.plink)
-        .merge(GCTA_PERFORM_GWA_LOCO_NOPCA.out.pheno)
-        .merge(GCTA_PERFORM_GWA_LOCO_NOPCA.out.gwa)
+    // tuple in lockstep, they remain correctly aligned after the alias split.
+    //
+    // GCTA_PERFORM_GWA.out.combined shape (25 elements):
+    //   [0-9]   vals:  group, maf, nqtl, effect, rep, h2, mode, suffix, type, species
+    //   [10-12] grm:   grm.bin, grm.N.bin, grm.id
+    //   [13-21] plink: bed, bim, fam, map, nosex, ped, log, gm, n_indep_tests
+    //   [22-23] pheno: pheno, par
+    //   [24]    gwa:   mapping result file
+    ch_inbred_pca_out   = GCTA_PERFORM_GWA_INBRED_PCA.out.combined
+    ch_inbred_nopca_out = GCTA_PERFORM_GWA_INBRED_NOPCA.out.combined
+    ch_loco_pca_out     = GCTA_PERFORM_GWA_LOCO_PCA.out.combined
+    ch_loco_nopca_out   = GCTA_PERFORM_GWA_LOCO_NOPCA.out.combined
 
-    // GCTA_PERFORM_GWA.out.params now emits species at the end (10 vals);
-    // the per-alias merge then concatenates grm/plink/pheno/gwa, giving a
-    // 25-element tuple (was 24 pre-species). Species rides at position 9
-    // in the merged stream and is forwarded into the params sub-channel
-    // for every downstream consumer (DB write, DB analyze, legacy intervals).
     ch_inbred_pca_out
         .mix(ch_inbred_nopca_out)
         .mix(ch_loco_pca_out)
