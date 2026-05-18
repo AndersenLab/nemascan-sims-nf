@@ -14,7 +14,7 @@ process GCTA_SIMULATE_PHENOTYPES {
           path(gm), path(n_indep_tests)
 
     output:
-    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), emit: params
+    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(species), emit: params
     tuple val(group), val(maf), path("TO_SIMS.bed"), path("TO_SIMS.bim"), path("TO_SIMS.fam"), path("TO_SIMS.map"), path("TO_SIMS.nosex"), path("TO_SIMS.ped"), path("TO_SIMS.log"), path(gm), path(n_indep_tests), emit: plink
     tuple path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.phen"), path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par"), emit: pheno
     path "versions.yml", emit: versions
