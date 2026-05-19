@@ -141,6 +141,12 @@ def freshFiles = { paths ->
 
 workflow {
     main:
+    // Issue #175 mitigation: pre-warm the @Memoized ContainerConfig singleton on
+    // the workflow-eval thread before any actor thread can race on
+    // Session.getContainerConfig('singularity'). Closes the H8-(a) memoization
+    // race documented in issues/175-gcta-concurrent-mod-exception/2026-05-19-rockfish-cme-post-cowal-rca.qmd.
+    nextflow.Global.session.getContainerConfig('singularity')
+
     ch_versions = Channel.empty()
 
     date = new Date().format( 'yyyyMMdd' )
