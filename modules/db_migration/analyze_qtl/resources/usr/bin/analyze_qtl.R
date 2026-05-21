@@ -32,7 +32,9 @@ option_list <- list(
   make_option("--snp_grouping", type = "integer", default = 1000, help = "SNP grouping distance"),
   make_option("--alpha", type = "double", default = 0.05, help = "Significance level"),
   make_option("--cv_maf_effective", type = "double", help = "Effective CV MAF threshold"),
-  make_option("--cv_ld", type = "double", help = "CV LD pruning threshold")
+  make_option("--cv_ld", type = "double", help = "CV LD pruning threshold"),
+  make_option("--cv_region_filter", type = "character", default = "genome",
+              help = "CV region filter label (default 'genome'); re-derives the v=3 trait_id")
 )
 
 opt <- parse_args(OptionParser(option_list = option_list))
@@ -100,7 +102,8 @@ sim_params <- list(
   cv_maf_effective = as.numeric(opt$cv_maf_effective),
   cv_ld            = as.numeric(opt$cv_ld)
 )
-ids        <- build_ids_from_params(sim_params, mode = opt$mode, pca = opt$type == "pca")
+ids        <- build_ids_from_params(sim_params, mode = opt$mode, pca = opt$type == "pca",
+                                    cv_region_filter = opt$cv_region_filter)
 mapping_id <- ids$mapping_id$hash
 log_msg(paste("Analyzing mapping:", mapping_id, "with threshold:", opt$threshold))
 

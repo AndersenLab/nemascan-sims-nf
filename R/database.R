@@ -359,6 +359,8 @@ trait_metadata_schema <- function() {
     population        = arrow::utf8(),
     cv_maf_effective  = arrow::float64(),
     cv_ld             = arrow::float64(),
+    cv_region_filter  = arrow::utf8(),   # NEW — human region label; "genome" sentinel default
+    causal_set_id     = arrow::utf8(),   # NEW — key shared by traits drawing the same causal set across h2 values
     created_at        = arrow::utf8()
   )
 }
@@ -472,11 +474,17 @@ generate_marker_set_id <- function(population, maf, species, vcf_release_id, ms_
 #'   identical MS params but different CV pool configs select from different variant universes
 #'   and deserve different trait IDs.
 #' @param cv_ld LD R² pruning threshold for the CV pool (numeric).
+#' @param cv_region_filter_hash Label hash for the CV region filter from
+#'   canonical_label_hash(). Defaults to the "genome" sentinel (whole-pool, no
+#'   region restriction). Folded into the hash so region-restricted traits get
+#'   distinct IDs.
 #' @return list with $hash (20-char lowercase hex) and $hash_string (human-readable input)
 #'
-#' hash_schema_version prefix "v=2": encodes cv_maf_effective and cv_ld; v=1 hashes incompatible
+#' hash_schema_version prefix "v=3": adds cv_region_filter_hash to the v=2 input
+#' (which already encoded cv_maf_effective and cv_ld). v=2/v=1 hashes incompatible.
 generate_trait_id <- function(marker_set_hash, nqtl, effect, rep, h2,
-                               cv_maf_effective, cv_ld) {
+                               cv_maf_effective, cv_ld,
+                               cv_region_filter_hash = "genome") {
   if (!requireNamespace("digest", quietly = TRUE)) {
     stop("Package 'digest' is required for generate_trait_id()")
   }
@@ -485,13 +493,14 @@ generate_trait_id <- function(marker_set_hash, nqtl, effect, rep, h2,
   }
   effect      <- tolower(trimws(effect))
   hash_string <- paste0(
-    "v=2|parent=", marker_set_hash,
-    "|nqtl=",              as.integer(nqtl),
-    "|effect=",            effect,
-    "|rep=",               as.integer(rep),
-    "|h2=",                sprintf("%.10f", as.numeric(h2)),
-    "|cv_maf_effective=",  sprintf("%.10f", as.numeric(cv_maf_effective)),
-    "|cv_ld=",             sprintf("%.10f", as.numeric(cv_ld))
+    "v=3|parent=", marker_set_hash,
+    "|nqtl=",                  as.integer(nqtl),
+    "|effect=",                effect,
+    "|rep=",                   as.integer(rep),
+    "|h2=",                    sprintf("%.10f", as.numeric(h2)),
+    "|cv_maf_effective=",      sprintf("%.10f", as.numeric(cv_maf_effective)),
+    "|cv_ld=",                 sprintf("%.10f", as.numeric(cv_ld)),
+    "|cv_region_filter_hash=", cv_region_filter_hash
   )
   list(
     hash_string = hash_string,
@@ -536,6 +545,61 @@ generate_mapping_id <- function(trait_hash, algorithm, pca) {
 }
 
 
+#' Canonical label hash for a CV region filter
+#'
+#' The trait hash folds in the CV region filter via its *label*, not its resolved
+#' interval coordinates. Hashing the label keeps the digest independent of species:
+#' the same label resolves to different marker intervals in different species, so a
+#' coordinate-based hash would give one region a different id per species and break
+#' grouping the same region across species. The label hash is also recomputable
+#' from the label alone, so the digest never needs to be carried alongside it.
+#'
+#' @param filter_id Region label (e.g. "arm_I"). The "genome" value is a sentinel
+#'   for the whole pool; it hashes to the literal "genome" so a whole-genome run
+#'   keeps a stable, recognizable id instead of an opaque digest.
+#' @return 20-char lowercase hex string, or the literal "genome" for the sentinel.
+canonical_label_hash <- function(filter_id) {
+  if (identical(filter_id, "genome")) return("genome")        # whole-pool sentinel
+  if (!requireNamespace("digest", quietly = TRUE)) {
+    stop("Package 'digest' is required for canonical_label_hash()")
+  }
+  norm <- tolower(trimws(filter_id))                          # normalize: trim + lowercase
+  substr(digest::digest(norm, algo = "sha256", serialize = FALSE), 1, 20)
+}
+
+
+#' Generate the causal-set ID
+#'
+#' Traces the shared causal set within a (region, nqtl) cell. It excludes h2 and
+#' effect, so every h2 run of a given (region, nqtl, rep) carries the same
+#' causal_set_id — the key that joins those rows in the DB. It is computed in R
+#' rather than in the Python sampler so that all DB identifiers come from one
+#' place; the hash-string layout follows the v=...|name=val idiom of the other
+#' generate_*_id() helpers.
+#'
+#' @param pool_hash sha256 of the resolved marker pool. This is the single shared
+#'   input: the same value also seeds the per-cell causal selection in
+#'   create_causal_vars.py, so the trace key here and the selection there are
+#'   guaranteed to derive from one source and cannot drift apart.
+#' @param nqtl Number of simulated QTLs (integer).
+#' @param rep Simulation replicate number (integer).
+#' @return list with $hash (20-char lowercase hex) and $hash_string (input string).
+generate_causal_set_id <- function(pool_hash, nqtl, rep) {
+  if (!requireNamespace("digest", quietly = TRUE)) {
+    stop("Package 'digest' is required for generate_causal_set_id()")
+  }
+  hash_string <- paste0(
+    "v=1|pool_hash=", pool_hash,
+    "|nqtl=",         as.integer(nqtl),
+    "|rep=",          as.integer(rep)
+  )
+  list(
+    hash_string = hash_string,
+    hash        = substr(digest::digest(hash_string, algo = "sha256", serialize = FALSE), 1, 20)
+  )
+}
+
+
 #' Build all simulation IDs from a named parameter list
 #'
 #' Canonical entry point for ID computation in all four DB migration scripts.
@@ -550,10 +614,15 @@ generate_mapping_id <- function(trait_hash, algorithm, pca) {
 #' @param mode GWA mode string ("inbred" or "loco"). If NULL, mapping_id is omitted.
 #' @param pca Logical scalar (TRUE/FALSE). Derived from \code{opt$type == "pca"}.
 #'   If NULL (or mode is NULL), mapping_id is omitted from the result.
+#' @param cv_region_filter CV region filter *label* (default "genome"). The digest
+#'   is derived internally via \code{canonical_label_hash()} and folded into the
+#'   trait_id, so callers pass the human-readable label and never a precomputed
+#'   hash. Default-safe: callers that do not pass it get the "genome" sentinel.
 #' @return Named list with \code{ms_id}, \code{trait_id}, and (if both mode and pca
 #'   are non-NULL) \code{mapping_id}. Each element is the full ID object from the
 #'   corresponding \code{generate_*()} call (use \code{$hash} for the 20-char string).
-build_ids_from_params <- function(params, mode = NULL, pca = NULL) {
+build_ids_from_params <- function(params, mode = NULL, pca = NULL,
+                                  cv_region_filter = "genome") {
   if (is.null(params$population) || is.na(params$population))   stop("params$population is NA/NULL")
   if (is.null(params$maf)        || is.na(params$maf))          stop("params$maf is NA/NULL")
   if (is.null(params$species)    || is.na(params$species))      stop("params$species is NA/NULL — check marker set metadata read")
@@ -566,10 +635,12 @@ build_ids_from_params <- function(params, mode = NULL, pca = NULL) {
   if (is.null(params$cv_maf_effective) || is.na(params$cv_maf_effective)) stop("params$cv_maf_effective is NA/NULL")
   if (is.null(params$cv_ld)      || is.na(params$cv_ld))        stop("params$cv_ld is NA/NULL")
 
+  cv_region_filter_hash <- canonical_label_hash(cv_region_filter)
   ms_id    <- generate_marker_set_id(params$population, params$maf, params$species,
                                      params$vcf_release_id, params$ms_ld)
   trait_id <- generate_trait_id(ms_id$hash, params$nqtl, params$effect, params$rep,
-                                params$h2, params$cv_maf_effective, params$cv_ld)
+                                params$h2, params$cv_maf_effective, params$cv_ld,
+                                cv_region_filter_hash = cv_region_filter_hash)
   result   <- list(ms_id = ms_id, trait_id = trait_id)
   if (!is.null(mode) && !is.null(pca)) {
     result$mapping_id <- generate_mapping_id(trait_id$hash, mode, pca)
@@ -884,12 +955,18 @@ get_trait_metadata_path <- function(trait_id, base_dir) {
 #' @param maf MAF threshold
 #' @param effect Effect distribution
 #' @param population Strain group ID
+#' @param cv_region_filter CV region filter label (default "genome" sentinel)
+#' @param causal_set_id Shared-causal-set key from generate_causal_set_id()$hash;
+#'   NA_character_ when no pool_hash is available (default)
 #' @param base_dir Database base directory
 #' @param overwrite Overwrite existing file (default TRUE for retry safety)
 write_trait_metadata <- function(trait_id, trait_hash_string, marker_set_id,
                                  nqtl, rep, h2, maf, effect,
                                  population, cv_maf_effective, cv_ld,
-                                 base_dir, overwrite = TRUE) {
+                                 base_dir,
+                                 cv_region_filter = "genome",
+                                 causal_set_id = NA_character_,
+                                 overwrite = TRUE) {
   out_path <- get_trait_metadata_path(trait_id, base_dir)
   if (file.exists(out_path) && !overwrite) {
     return(invisible(out_path))
@@ -906,6 +983,8 @@ write_trait_metadata <- function(trait_id, trait_hash_string, marker_set_id,
     population       = as.character(population),
     cv_maf_effective = as.numeric(cv_maf_effective),
     cv_ld            = as.numeric(cv_ld),
+    cv_region_filter = as.character(cv_region_filter),
+    causal_set_id    = as.character(causal_set_id),
     created_at       = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"),
     stringsAsFactors = FALSE
   )
@@ -931,7 +1010,12 @@ read_trait_metadata <- function(trait_id, base_dir) {
   if (!file.exists(path)) {
     stop("Trait metadata not found: ", path)
   }
-  as.data.frame(arrow::read_parquet(path))
+  df <- as.data.frame(arrow::read_parquet(path))
+  # NA-safe injection for columns added after some DBs were written (mirrors the
+  # strainfile_hash precedent). Old v=2 trait rows read back as "genome" filters.
+  if (!"cv_region_filter" %in% names(df)) df$cv_region_filter <- "genome"
+  if (!"causal_set_id"    %in% names(df)) df$causal_set_id    <- NA_character_
+  df
 }
 
 
