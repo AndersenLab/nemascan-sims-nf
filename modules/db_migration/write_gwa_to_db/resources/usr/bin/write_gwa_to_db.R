@@ -24,7 +24,9 @@ option_list <- list(
   make_option("--cv_maf_effective", type = "double",  help = "Effective MAF threshold for the CV pool"),
   make_option("--cv_ld",            type = "double",  help = "CV LD pruning threshold"),
   make_option("--gwa_file",         type = "character", help = "Path to GWA output file"),
-  make_option("--base_dir",         type = "character", help = "Database output directory")
+  make_option("--base_dir",         type = "character", help = "Database output directory"),
+  make_option("--cv_region_filter", type = "character", default = "genome",
+              help = "CV region filter label (default 'genome'); re-derives the v=3 trait_id -> mapping_id")
 )
 
 opt <- parse_args(OptionParser(option_list = option_list))
@@ -91,7 +93,8 @@ sim_params <- list(
   cv_maf_effective = as.numeric(opt$cv_maf_effective),
   cv_ld            = as.numeric(opt$cv_ld)
 )
-ids     <- build_ids_from_params(sim_params, mode = opt$mode, pca = pca)
+ids     <- build_ids_from_params(sim_params, mode = opt$mode, pca = pca,
+                                 cv_region_filter = opt$cv_region_filter)
 ms_id   <- ids$ms_id
 trait   <- ids$trait_id
 mapping <- ids$mapping_id

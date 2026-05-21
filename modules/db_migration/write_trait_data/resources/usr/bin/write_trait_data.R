@@ -25,7 +25,9 @@ option_list <- list(
   make_option("--base_dir",          type = "character"),
   make_option("--causal_geno_file",  type = "character"),
   make_option("--cv_maf_effective",  type = "double"),
-  make_option("--cv_ld",             type = "double")
+  make_option("--cv_ld",             type = "double"),
+  make_option("--cv_region_filter",  type = "character", default = "genome"),
+  make_option("--pool_hash",         type = "character", default = NA_character_)
 )
 
 opt <- parse_args(OptionParser(option_list = option_list))
@@ -76,10 +78,20 @@ sim_params <- list(
   cv_maf_effective = as.numeric(opt$cv_maf_effective),
   cv_ld            = as.numeric(opt$cv_ld)
 )
-ids      <- build_ids_from_params(sim_params)
+ids      <- build_ids_from_params(sim_params, cv_region_filter = opt$cv_region_filter)
 ms_id    <- ids$ms_id
 trait    <- ids$trait_id
 trait_id <- trait$hash
+
+# Derive the shared-causal-set key from the resolved-pool hash. Computed here in
+# R so that every DB identifier is produced in one place. NA when no pool_hash is
+# supplied (e.g. a caller that does not pass the arg) — the column stays NA-safe.
+causal_set_id <- if (!is.null(opt$pool_hash) && !is.na(opt$pool_hash) &&
+                     nzchar(opt$pool_hash)) {
+  generate_causal_set_id(opt$pool_hash, opt$nqtl, opt$rep)$hash
+} else {
+  NA_character_
+}
 
 message("Writing trait data: trait_id=", trait_id,
         " group=", opt$group, " nqtl=", opt$nqtl,
@@ -98,6 +110,8 @@ write_trait_metadata(
   population       = opt$group,
   cv_maf_effective = as.numeric(opt$cv_maf_effective),
   cv_ld            = as.numeric(opt$cv_ld),
+  cv_region_filter = opt$cv_region_filter,
+  causal_set_id    = causal_set_id,
   base_dir         = opt$base_dir
 )
 
