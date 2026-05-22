@@ -48,6 +48,9 @@ time via DuckDB. The database contains five data domains:
 All Parquet files use Snappy compression. Schemas are defined as Arrow schema
 objects in `R/database.R`.
 
+The pipeline-side `db_simulation_assessment_results.tsv` is now opt-in via
+`--run_postprocess`. The DB itself is always written.
+
 ::: {.callout-warning}
 ## Replayed reps can bias the replication regime
 

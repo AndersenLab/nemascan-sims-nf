@@ -133,6 +133,11 @@
                     "type": "boolean",
                     "description": "Run the legacy R-based QTL interval and assessment chain in parallel with the DB path. Used for cross-validation.",
                     "default": false
+                },
+                "run_postprocess": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Run the in-pipeline QTL detection + simulation assessment fanout. When false (default), the pipeline writes the Parquet DB but skips the assessment TSV. Use the `nemascanSims::run_postprocess()` offline facade after the run, or pass --run_postprocess to restore the legacy behavior."
                 }
             }
         },

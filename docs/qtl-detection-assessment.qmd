@@ -13,8 +13,14 @@ The final phase of the pipeline takes GWA results from Phase 3, detects QTL
 intervals, and assesses detection performance against the simulated causal
 variants. Two parallel paths produce equivalent output:
 
-- **DB path** (default) &mdash; writes results to a Parquet database and queries
-  via DuckDB
+- **DB path** (opt-in via `--run_postprocess`) &mdash; writes results to a
+  Parquet database and queries via DuckDB. The Parquet DB itself is always
+  written; the in-pipeline QTL detection + assessment fanout
+  (`DB_MIGRATION_ANALYZE_QTL` + `DB_MIGRATION_ASSESS_SIMS` + the
+  `db_simulation_assessment_results.tsv` `collectFile`) is gated and
+  defaults to off. Run with `--run_postprocess` to produce the
+  assessment TSV in-pipeline, or query the populated DB directly for
+  offline analysis.
 - **Legacy path** (opt-in via `--legacy_assess`) &mdash; operates directly on
   intermediate files using R and GenomicRanges
 
@@ -449,6 +455,9 @@ intervals, and writes a QTL regions TSV. Runs once per upstream parameter
 combination &times; threshold (BF and EIGEN), doubling the cardinality relative
 to Phase 3.
 
+**Gated by `--run_postprocess` (default `false`).** When the flag is off, this
+process is not invoked; the populated DB can still be queried offline.
+
 **Command:**
 
 ```bash
@@ -574,6 +583,10 @@ identical results between the two paths.
 Reads the QTL regions from `DB_MIGRATION_ANALYZE_QTL`, loads causal variants
 from the `.par` file, re-queries the mapping data for peak annotations, and
 compiles the full assessment by matching simulated and detected QTLs.
+
+**Gated by `--run_postprocess` (default `false`).** When the flag is off, this
+process is not invoked and `db_simulation_assessment_results.tsv` is not
+produced.
 
 **Command:**
 
