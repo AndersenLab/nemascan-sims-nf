@@ -3,7 +3,9 @@ process DB_MIGRATION_WRITE_TRAIT_DATA {
     tag "${group}_${nqtl}_${rep}_${h2}"
 
     input:
-    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2)
+    // filter_id (CV region label) + pool_hash ride in the params tuple. write_trait_data.R
+    // derives the region-filter hash and the causal_set_id in R from these.
+    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(filter_id), val(pool_hash)
     path pheno_file
     path par_file
     val base_dir
@@ -23,7 +25,9 @@ process DB_MIGRATION_WRITE_TRAIT_DATA {
         --pheno_file ${pheno_file} --par_file ${par_file} --base_dir ${base_dir} \
         --causal_geno_file ${causal_geno_file} \
         --cv_maf_effective ${cv_maf_effective} \
-        --cv_ld ${cv_ld}
+        --cv_ld ${cv_ld} \
+        --cv_region_filter ${filter_id} \
+        --pool_hash ${pool_hash}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

@@ -56,10 +56,11 @@
                     "default": 2,
                     "minimum": 1
                 },
-                "effect": {
-                    "type": "string",
-                    "description": "CSV file with effect size ranges (e.g. '0.2-0.3'), one per line.",
-                    "format": "file-path"
+                "rep_start": {
+                    "type": "integer",
+                    "description": "First replicate index to simulate. Reps run rep_start..rep_start+reps-1, capped per (region, nqtl) by the number of available causal-variant combinations.",
+                    "default": 1,
+                    "minimum": 1
                 },
                 "qtlloc": {
                     "type": "string",
@@ -85,6 +86,17 @@
                     "default": 0.8,
                     "minimum": 0,
                     "exclusiveMaximum": 1
+                },
+                "cv_region_filterfile": {
+                    "type": "string",
+                    "description": "File listing CV region filter labels (one filter_id per line) to fan the causal-variant pool over. Null means whole-genome only (the 'genome' sentinel).",
+                    "default": null,
+                    "format": "file-path"
+                },
+                "cv_region_domainfile": {
+                    "type": "string",
+                    "description": "TSV of per-species recombination-domain regions (filter_id, chrom, start, end) used to resolve CV region filter labels to coordinates.",
+                    "format": "file-path"
                 }
             }
         },

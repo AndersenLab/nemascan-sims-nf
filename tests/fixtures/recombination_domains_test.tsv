@@ -1,0 +1,8 @@
+species	filter_id	chrom	start	end
+c_elegans	tip_I	I	1	527000
+c_elegans	arm_I	I	527001	3858000
+c_elegans	center_I	I	3858001	11040000
+c_elegans	arm_II	II	306001	4879000
+c_elegans	center_II	II	4879001	12020000
+c_elegans	arm_V	V	1	5000000
+c_elegans	center_V	V	5000001	16000000

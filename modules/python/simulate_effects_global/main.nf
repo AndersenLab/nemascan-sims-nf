@@ -4,18 +4,21 @@ process PYTHON_SIMULATE_EFFECTS_GLOBAL {
   tag "${nqtl} ${rep} ${effect}${group}_${maf}"
 
   input:
+  // CV pool is bed/bim/fam only — the upstream region-filter extraction emits just those.
+  // filter_id (CV region label) + pool_hash (sha of the resolved CV pool) ride as trailing
+  // vals so the trait write can record the region and derive the causal-set id in R.
   tuple val(species), val(group), val(maf),
         val(nqtl), val(effect), val(h2), val(rep),
         path("TO_SIMS.bed"),    path("TO_SIMS.bim"),     path("TO_SIMS.fam"),
         path("TO_SIMS.map"),    path("TO_SIMS.nosex"),   path("TO_SIMS.ped"),   path("TO_SIMS.log"),
         path(gm), path(n_indep_tests),
         path("CV_TO_SIMS.bed"), path("CV_TO_SIMS.bim"),  path("CV_TO_SIMS.fam"),
-        path("CV_TO_SIMS.map"), path("CV_TO_SIMS.nosex"), path("CV_TO_SIMS.ped"), path("CV_TO_SIMS.log")
+        val(filter_id), val(pool_hash)
   path create_causal_qtls
 
   output:
   tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2),
-        path("causal.variants.sim.${nqtl}.${rep}.txt"), val(species),
+        path("causal.variants.sim.${nqtl}.${rep}.txt"), val(species), val(filter_id), val(pool_hash),
         emit: causal
   tuple val(group), val(maf),
         path("TO_SIMS.bed"), path("TO_SIMS.bim"), path("TO_SIMS.fam"), path("TO_SIMS.map"),
@@ -23,10 +26,9 @@ process PYTHON_SIMULATE_EFFECTS_GLOBAL {
         emit: plink
   tuple val(group), val(maf),
         path("CV_TO_SIMS.bed"),  path("CV_TO_SIMS.bim"),  path("CV_TO_SIMS.fam"),
-        path("CV_TO_SIMS.map"),  path("CV_TO_SIMS.nosex"), path("CV_TO_SIMS.ped"), path("CV_TO_SIMS.log"),
         emit: cv_plink
   tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2),
-        path("causal_genotypes.sim.${nqtl}.${rep}.tsv"),
+        path("causal_genotypes.sim.${nqtl}.${rep}.tsv"), val(filter_id),
         emit: causal_genotypes
   path "versions.yml", emit: versions
 
@@ -54,10 +56,6 @@ process PYTHON_SIMULATE_EFFECTS_GLOBAL {
     touch CV_TO_SIMS.bed
     touch CV_TO_SIMS.bim
     touch CV_TO_SIMS.fam
-    touch CV_TO_SIMS.map
-    touch CV_TO_SIMS.nosex
-    touch CV_TO_SIMS.ped
-    touch CV_TO_SIMS.log
 
   cat <<-END_VERSIONS > versions.yml
       "${task.process}":

@@ -4,7 +4,10 @@ process PLINK_UPDATE_BY_H2 {
     tag "${nqtl} ${rep} ${h2} ${effect} ${group}_${maf}"
 
     input:
-    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(species)
+    // filter_id (CV region label) rides as a trailing val so it reaches the GWA DB write.
+    // pool_hash arrives from GCTA_SIMULATE_PHENOTYPES.out.params but is only needed on the
+    // trait branch, so it is accepted here and dropped from the output.
+    tuple val(group), val(maf), val(nqtl), val(effect), val(rep), val(h2), val(species), val(filter_id), val(pool_hash)
     tuple val(group1), val(maf1), path("TO_SIMS.bed"), path("TO_SIMS.bim"), path("TO_SIMS.fam"), path("TO_SIMS.map"), path("TO_SIMS.nosex"), path("TO_SIMS.ped"), path("TO_SIMS.log"), path(gm), path(n_indep_tests)
     tuple path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"), path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par")
 
@@ -20,7 +23,7 @@ process PLINK_UPDATE_BY_H2 {
           path(gm), path(n_indep_tests),
           path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.pheno"),
           path("${nqtl}_${rep}_${h2}_${maf}_${effect}_${group}_sims.par"),
-          val(species),
+          val(species), val(filter_id),
           emit: out
     path "versions.yml", emit: versions
 
