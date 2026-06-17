@@ -24,6 +24,11 @@ process GCTA_MAKE_GRM {
     script:
     def args = task.ext.args ?: ''
     """
+    export NF_TRAP_FAILURES_DIR="${workflow.outputDir}/.failures"
+    export NF_TRAP_CELL_KEY="${species}__${group}__${maf}__${nqtl}__${effect}__${rep}__${h2}__${filter_id}__${mode}__NA"
+    export NF_TRAP_PAYLOAD='{"session":"${workflow.sessionId}","task_hash":"${task.hash}","attempt":${task.attempt},"max_retries":${task.maxRetries},"species":"${species}","group":"${group}","maf":${maf},"nqtl":"${nqtl}","effect":"${effect}","h2":${h2},"rep":${rep},"filter_id":"${filter_id}","mode":"${mode}","type":"NA"}'
+    source ${projectDir}/bin/failure_trap.sh
+
     if [[ ${mode} == "inbred" ]]; then
         GRM_OPTION="--make-grm-inbred"
     else

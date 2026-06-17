@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-import pandas as pd
-import numpy as np
+import hashlib
+import json
+import math
 import sys
+
+import numpy as np
+import pandas as pd
 
 
 def load_strain_set_variants(strain_set_variant_file):
@@ -21,17 +25,69 @@ def load_strain_set_variants(strain_set_variant_file):
     return strain_set_variants
 
 
-def select_variants(markers, n_var, rng):
+def unrank_combination(pos, N, k):
     """
-    Select n_var variants from the list of markers
-    """
-    # Select n_var variants from the list of markers
-    # Ensure markers is a 1D array by extracting the "Marker" column if it's a DataFrame
-    if isinstance(markers, pd.DataFrame):
-        markers = markers["Marker"].values
+    Lexicographic combination unranking.
 
-    selected_variants = rng.choice(markers, n_var, replace=False)
-    return selected_variants
+    Return the ``pos``-th k-subset of ``range(N)`` (0-based rank), as a list of
+    k indices sorted ascending. ``pos`` must be in ``[0, C(N, k))``. O(N * k).
+    """
+    result = []
+    x = 0
+    remaining = pos
+    for i in range(k):
+        # Greedily place the i-th (0-based) chosen index. C(N-1-x, k-1-i) counts
+        # the combinations whose i-th element is exactly x; skip past blocks that
+        # rank below `remaining`.
+        while True:
+            c = math.comb(N - 1 - x, k - 1 - i)
+            if remaining < c:
+                break
+            remaining -= c
+            x += 1
+        result.append(x)
+        x += 1
+    return result
+
+
+def prp(index, C, seed):
+    """
+    Stable seeded pseudo-random permutation (bijection) on ``[0, C)``.
+
+    Cycle-walking balanced Feistel network sized to ceil(log2 C) bits (rounded
+    up to an even width). A balanced Feistel is a permutation for any round
+    function, and cycle-walking (re-encrypting until the image lands in
+    ``[0, C)``) preserves bijectivity on the restricted domain. ``O(1)`` per
+    call in expectation. The seed makes a capped subset of reps an unbiased
+    sample of the combination space rather than the lexicographically-first
+    cluster.
+    """
+    if C <= 1:
+        return index
+
+    total_bits = (C - 1).bit_length()
+    if total_bits < 2:
+        total_bits = 2
+    if total_bits % 2:
+        total_bits += 1
+    half = total_bits // 2
+    mask = (1 << half) - 1
+    rounds = 4
+
+    def feistel(x):
+        left = (x >> half) & mask
+        right = x & mask
+        for r in range(rounds):
+            h = hashlib.sha256(f"{seed}|{r}|{right}".encode()).digest()
+            f = int.from_bytes(h[:8], "big") & mask
+            left, right = right, left ^ f
+        return (left << half) | right
+
+    x = index
+    while True:
+        x = feistel(x)
+        if x < C:
+            return x
 
 
 def simulate_effect_gamma(
@@ -105,10 +161,13 @@ def read_bed_genotypes(bed_file, bim_file, fam_file, selected_variant_ids):
 
 
 if __name__ == "__main__":
-    # Get command line arguments
+    # Positional args:
+    #   bim  nqtl  effect(="gamma")  rep  filter_id  pool_hash
     strain_set_variant_file = sys.argv[1]
     n_var = int(sys.argv[2])
 
+    # Effect distribution is fixed to gamma in production; the uniform branch is
+    # retained so the script stays usable standalone / under tests.
     if sys.argv[3] == "gamma":
         effect_type = "gamma"
     elif "-" in sys.argv[3]:
@@ -122,31 +181,68 @@ if __name__ == "__main__":
         )
         sys.exit(1)
     rep = int(sys.argv[4])
-    rng = np.random.default_rng()
-    # Read in annotated strain_set variants
-    strain_var = load_strain_set_variants(strain_set_variant_file)
 
-    # Pool size guard: fail fast with an informative message rather than a cryptic
-    # numpy traceback when np.random.choice receives n_var > pool size.
-    n_pool = len(strain_var)
-    if n_var > n_pool:
-        print(
-            f"Error: requested nqtl={n_var} but CV pool contains only {n_pool} variants. "
-            f"Reduce --nqtl or relax --cv_maf / --cv_ld thresholds."
-        )
+    # filter_id (region label) and pool_hash (the deterministic-selection basis)
+    # are supplied by the module in production. Defaulted here so the script is
+    # self-contained for standalone / test invocation.
+    filter_id = sys.argv[5] if len(sys.argv) > 5 else "genome"
+    pool_hash = sys.argv[6] if len(sys.argv) > 6 else None
+
+    # Read in annotated strain_set variants (in .bim row order — the unranking
+    # is against this order, which PLINK --extract preserves).
+    strain_var = load_strain_set_variants(strain_set_variant_file)
+    markers = strain_var["Marker"].tolist()
+
+    N = len(markers)
+    k = n_var
+    C = math.comb(N, k) if N >= k else 0
+    index = rep - 1                          # 0-based position in the cell ordering
+
+    # Safety net behind the upstream fanout cap: the cap should keep impossible
+    # cells from ever being scheduled, so reaching this is a guard, not the
+    # normal path. Structured JSON to stderr feeds the failure record.
+    if C == 0 or index >= C:
+        err = {
+            "error": "pool_starvation",
+            "filter_id": filter_id,
+            "pool_size": int(N),
+            "nqtl_requested": int(k),
+            "rep": int(rep),
+        }
+        print(json.dumps(err), file=sys.stderr)
         sys.exit(1)
 
-    # Select Causal variants for orthogroups
-    causal_vars = select_variants(strain_var, n_var, rng)
+    # pool_hash is the single source for the selection seed. When not supplied,
+    # fall back to the sha of the resolved marker list — the same definition the
+    # upstream resolver uses, so the value never diverges from the
+    # channel-supplied one in production.
+    if not pool_hash:
+        pool_hash = hashlib.sha256("\n".join(markers).encode()).hexdigest()
+
+    # Cell seed EXCLUDES rep, effect, and h2: all reps of a (region, nqtl) cell
+    # share one ordering (made distinct per rep by the PRP), identical across
+    # executions (so a later --rep_start run continues the same sequence without
+    # collisions) AND across h2 values (the causal set is shared; h2 only scales
+    # the downstream simulation). causal_set_id is intentionally not computed
+    # here — it is derived in R from this same pool_hash at trait-write time.
+    cell_seed = hashlib.sha256(f"{pool_hash}|nqtl={k}".encode()).hexdigest()
+
+    pos = prp(index, C, cell_seed)           # seeded bijection on [0, C)
+    combo = unrank_combination(pos, N, k)    # k 0-based marker indices, lexicographic
+    selected = [markers[i] for i in combo]
     print("Selected Causal Variants")
+
+    # Effects: gamma-drawn, reproducible per (cell, rep) — seeded by (cell_seed,
+    # rep), NOT per h2.
+    eff_rng = np.random.default_rng(int(cell_seed[:16], 16) ^ rep)
 
     if effect_type == "gamma":
         print("Simulating effects using gamma distribution")
-        causal_vars_effects = simulate_effect_gamma(causal_vars, n_var, rng)
+        causal_vars_effects = simulate_effect_gamma(selected, k, eff_rng)
     else:
         print(f"Simulating effects using uniform distribution: {low_end}-{high_end}")
         causal_vars_effects = simulate_effect_uniform(
-            causal_vars, n_var, rng, low_end=low_end, high_end=high_end
+            selected, k, eff_rng, low_end=low_end, high_end=high_end
         )
     print("Simulated effects")
 
