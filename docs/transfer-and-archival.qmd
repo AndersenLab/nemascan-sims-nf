@@ -79,11 +79,11 @@ session).
 ### Option 1 — Submit as a batch job (recommended)
 
 The repo ships a small SLURM wrapper that allocates 8 cores / 8 GB /
-1 hour and forwards all arguments to `pretransfer_manifest.sh`:
+3 hour and forwards all arguments to `pretransfer_manifest.sh`:
 
 ```bash
 ssh <user>@<rockfish-host>
-cd /vast/eande106/<user>/nemascan-sims-nf
+cd nemascan-sims-nf
 
 sbatch scripts/stage_transfer.sbatch Sims_ce-cb-ct_nqtl1-50_h2grid_50reps
 ```
@@ -101,6 +101,8 @@ sbatch --account=myaccount --cpus-per-task=16 --time=2:00:00 \
   scripts/stage_transfer.sbatch Sims_ce-cb-ct_nqtl1-50_h2grid_50reps
 ```
 
+For a ~31 GB simulation database took about ~2:30 wall-clock minutes on a 8-core node and produced a 12.5 GB archive with additional artifacts
+
 ### Option 2 — Interactive compute node via `srun`
 
 For a one-off or when you want to watch the progress live, grab a short
@@ -109,7 +111,7 @@ interactive allocation and run the script directly:
 ```bash
 srun -A eande106 -p parallel -N1 -n1 -c 8 --mem=8G -t 0:30:00 --pty bash
 # now on a compute node
-cd /vast/eande106/<user>/nemascan-sims-nf
+cd nemascan-sims-nf
 bash pretransfer_manifest.sh Sims_ce-cb-ct_nqtl1-50_h2grid_50reps
 exit
 ```
@@ -124,8 +126,8 @@ Both the batch wrapper and the direct script accept the same arguments:
 ```bash
 # Stage into a specific directory instead of the parent of <RUN>
 sbatch scripts/stage_transfer.sbatch \
-  /vast/eande106/<user>/Sims_... \
-  /vast/eande106/<user>/transfers
+  /<sim_dir>/<user>/Sims_... \
+  /<sim_dir>/<user>/transfers
 
 # Force regeneration of staging artifacts (bypasses idempotency guard)
 sbatch scripts/stage_transfer.sbatch \
@@ -145,15 +147,14 @@ cleanly.
 
 ```bash
 rsync -avP --partial \
-  <user>@<rockfish-host>:/vast/eande106/<user>/Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.tar.zst \
-  <user>@<rockfish-host>:/vast/eande106/<user>/Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.tar.zst.sha256 \
-  <user>@<rockfish-host>:/vast/eande106/<user>/Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.sha256 \
-  <user>@<rockfish-host>:/vast/eande106/<user>/Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.manifest.txt \
+  <user>@<rockfish-host>:/<sim_dir>/<user>/Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.tar.zst \
+  <user>@<rockfish-host>:/<sim_dir>/<user>/Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.tar.zst.sha256 \
+  <user>@<rockfish-host>:/<sim_dir>/<user>/Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.sha256 \
+  <user>@<rockfish-host>:/<sim_dir>/<user>/Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.manifest.txt \
   ./
 ```
 
-A ~9 GB archive transfers in 5–20 minutes over a campus network; YMMV
-on home connections.
+A 12.5 GB archive transfers in ~2 hours over a slow (1 Mbps) connection. 
 
 ## Phase C — Verify and extract
 
