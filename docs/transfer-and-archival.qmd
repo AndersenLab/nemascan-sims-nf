@@ -10,40 +10,20 @@ format:
 ::: {.callout-tip}
 ## When to use this page
 
-After a production pipeline run completes on Rockfish and the outputs
+After a simulation pipeline run completes on Rockfish and the outputs
 are verified in place, use this workflow to move the results to another analysis or long term storage env. The procedure is safe (full SHA-256
 verification on both ends), efficient (a single `tar.zst` instead of
 thousands of small Parquet files), and auditable (reproducible archive
-hashes plus run-level provenance metadata). **Do not clean up the
-`/scratch4/` work directory until every step in Phase C reports `OK`.**
+hashes plus run-level provenance metadata).
 :::
 
 The pipeline writes a Parquet database at `{outputDir}/db/` plus one or
-two top-level assessment TSVs. A production three-species run is several GB (~11 GB based on current tests)
-and contains thousands of small Parquet files — a shape that punishes
+two top-level assessment TSVs. A production three-species run is several GB (~11-32 GB based on current tests)
+and contains thousands of small Parquet files. This is a shape that punishes
 naive `rsync` of the directory tree. This page documents the archive-first
 workflow implemented by `pretransfer_manifest.sh` at the repo root.
 
-```{mermaid}
-%%{init: {'themeVariables': {'fontSize': '16px'}}}%%
-flowchart TD
-    classDef step fill:#9b59b6,stroke:#6c3483,color:#fff
-    classDef data fill:#f5f5f5,stroke:#999,color:#333
-
-    STAGE["pretransfer_manifest.sh RUN<br/>(on Rockfish)"]:::step
-    ARCHIVE(["RUN.tar.zst + .sha256 + manifest + metadata"]):::data
-    RSYNC["rsync -avP --partial<br/>(from local)"]:::step
-    LOCAL(["Four sidecar files on local disk"]):::data
-    VERIFY1["sha256sum -c RUN.tar.zst.sha256"]:::step
-    EXTRACT["tar -I zstd -xvf RUN.tar.zst"]:::step
-    VERIFY2["sha256sum -c RUN.sha256"]:::step
-    DONE(["Browsable db/ tree<br/>(all files OK)"]):::data
-    CLEAN["rm -rf /scratch4/.../nf-work-*<br/>(on Rockfish)"]:::step
-
-    STAGE --> ARCHIVE --> RSYNC --> LOCAL --> VERIFY1 --> EXTRACT --> VERIFY2 --> DONE --> CLEAN
-```
-
-## What you get
+## What is created by the staging step
 
 For an output directory named `<RUN>/` (e.g.
 `Sims_ce-cb-ct_nqtl1-50_h2grid_50reps/`), the staging step produces four
@@ -56,11 +36,121 @@ sidecar files in the parent directory:
 | `<RUN>.sha256` | SHA-256 of every file inside `<RUN>/`, with paths relative to the parent directory. Used after extraction to verify every file byte-for-byte. |
 | `<RUN>.manifest.txt` | Human-readable `key: value` metadata: created_at, hostname, user, pipeline git commit, file count, source bytes, archive bytes, tool versions. |
 
-Two integrity layers, by design: the archive hash catches transit
-problems (truncated transfer, bit flips, wrong archive moved into place),
-and the per-file manifest catches storage problems (bit rot, partial
-extraction, accidental edits of extracted files). Both are needed — see
-`issues/pretransfer-manifest-archive/design.md` for the full rationale.
+### The archive: `<RUN>.tar.zst`
+
+The staging script compresses the output directory into a single zstd-compressed tarball. This process bundles the thousands of small Parquet files that make up the database into one downloadable and transferable payload.
+
+The tar invocation creates a fingerprint so when the same script is run against the same, unchanged source tree, before and after the transfer the resulting archive is identical. 
+
+The command used to create the archive in `pretransfer_manifest.sh` is:
+
+```bash
+tar --sort=name \
+    --owner=0 --group=0 --numeric-owner \
+    --mtime='UTC 2020-01-01' \
+    -cf - <RUN>/
+```
+
+`--sort=name` imposes lexicographic entry order regardless of filesystem
+directory-entry order. `--mtime`, `--owner`, and `--group` strip
+filesystem metadata that varies across machines (modification timestamps,
+uid/gid). Together these flags create an archive 
+hash that can be used as a fingerprint to ensure fidelity.
+
+::: {.callout-warning}
+## macOS: GNU tar required
+
+GNU tar ≥ 1.28 is required. BSD tar (the macOS default) does not support
+`--sort` and produces non-deterministic entry order, so the script
+refuses to proceed without GNU tar. Install it with:
+
+```bash
+brew install gnu-tar
+```
+
+The script will automatically find it as `gtar`.
+:::
+
+
+### Archive integrity: `<RUN>.tar.zst.sha256`
+
+Immediately after the archive is written, `sha256sum` hashes the
+`.tar.zst` file and writes the result to `.tar.zst.sha256` in the
+standard `<hash>  <filename>` format that `sha256sum -c` can verify
+directly. This file is **the first thing you check in Phase C** — before
+extracting — because:
+
+- It is fast (one sequential read of the compressed file, no decompression).
+- It catches transit corruption: a truncated transfer, a bit-flip in the
+  archive, or a mismatched file placed in the staging directory will all
+  produce a hash mismatch here.
+- If this check fails, you know the problem is in the archive itself and
+  you can re-run `rsync` without touching any extracted files.
+
+### Per-file manifest: `<RUN>.sha256`
+
+Before the archive is built, the script walks every file in the output
+directory and hashes each one individually:
+
+```bash
+find <RUN> -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum
+```
+
+The result is a line-per-file manifest in the same `<hash>  <path>` format.
+This is checked in Phase C **after** extraction, and it catches a
+different class of problem than the archive hash:
+
+- **Partial extraction** — if the decompressor was interrupted, some files
+  will be missing or truncated; their per-file hashes will fail.
+- **Bit rot after extraction** — storage problems on the local disk can
+  corrupt individual files without touching the archive.
+- **Accidental edits** — any file modified after extraction (accidentally
+  overwritten, truncated, or edited) will surface immediately.
+
+The archive hash and the per-file manifest are complementary. The archive
+hash tells you the payload arrived intact; the per-file manifest tells you
+every file inside it arrived intact after extraction. Both must pass
+before it is safe to clean up scratch.
+
+### Run metadata: `<RUN>.manifest.txt`
+
+A plain-text `key: value` record written at staging time:
+
+```
+output_dir:       /vast/eande106/<user>/Sims_ce-cb-ct_nqtl1-50_h2grid_50reps
+created_at:       2026-07-08T14:32:11Z
+hostname:         login01.rockfish.jhu.edu
+user:             mckeowr1
+pipeline_commit:  63cdacba...
+file_count:       14382
+source_bytes:     11492301824
+archive_path:     /vast/.../Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.tar.zst
+archive_bytes:    9103421440
+archive_sha256:   a3f1c7...
+manifest:         /vast/.../Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.sha256
+tar_version:      tar (GNU tar) 1.34
+zstd_version:     1.5.5
+```
+
+This file is human-readable provenance: it links the archive to the exact
+pipeline commit it came from, the machine and user that staged it, and
+the raw file and byte counts. It does not participate in verification
+(it is not itself hashed), but it is the record you keep long-term to
+answer "where did this database come from?" or "was this archive produced
+from a reproducible pipeline run?"
+
+### Two integrity layers, by design
+
+The archive hash and the per-file manifest guard against different failure
+modes at different points in the workflow:
+
+| Layer | When checked | What it catches |
+|-------|-------------|-----------------|
+| `<RUN>.tar.zst.sha256` | Before extraction (Phase C step 1) | Transit corruption, wrong archive, truncated transfer |
+| `<RUN>.sha256` | After extraction (Phase C step 3) | Partial extraction, local bit rot, accidental file edits |
+
+See `issues/pretransfer-manifest-archive/design.md` for the full
+rationale and alternatives considered.
 
 ## Phase A — Stage on Rockfish
 
@@ -162,24 +252,46 @@ Still on the local machine, in the directory where you pulled the four
 files, run three commands in order. All three must succeed before the
 transfer is considered complete.
 
+### 1. Archive integrity 
+Fast, catches transit corruption
+
 ```bash
-# 1. Archive integrity — fast, catches transit corruption
-sha256sum -c Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.tar.zst.sha256
-
-# 2. Extract (macOS: brew install zstd if not present)
-tar -I zstd -xvf Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.tar.zst
-
-# 3. Per-file audit — catches bit rot, partial extraction, accidental edits
-sha256sum -c Sims_ce-cb-ct_nqtl1-50_h2grid_50reps.sha256
+sha256sum -c ${OUTDIR}.tar.zst.sha256
 ```
 
-Step 1 finishes in seconds. Step 2 runs at roughly 200–400 MB/s on a
-modern laptop. Step 3 reads every file back off disk and hashes it, so
-it takes about as long as step 2.
+### 2. Extract 
 
-Every line from step 3 should end with `: OK`. Any `FAILED` line means
-that specific file does not match what was staged on Rockfish; re-run
-`rsync` and re-extract, or investigate local disk health.
+```bash
+tar -I zstd -xvf ${OUTDIR}.tar.zst
+```
+
+MacOS (install `GNU tar` via Homebrew with `brew install gnu-tar` if needed):
+
+```bash
+gtar -I zstd -xvf ${OUTDIR}.tar.zst
+```
+
+
+### 3. Per-file audit 
+
+Catches partial extraction, accidental edits
+
+```bash
+sha256sum -c ${OUTDIR}.sha256 > ${OUTDIR}.verify.log 2>&1
+exit_code=$?
+passed=$(grep -c ': OK$' ${OUTDIR}.verify.log)
+failed=$(grep -c 'FAILED$' ${OUTDIR}.verify.log || true)
+echo "Verified ${passed} files — ${failed} failed. Log: ${OUTDIR}.verify.log"
+[ $exit_code -eq 0 ] && echo "All files OK" || grep 'FAILED' ${OUTDIR}.verify.log
+```
+
+The full per-file results (every `: OK` and any `: FAILED` lines) are
+written to `${OUTDIR}.verify.log` as a durable audit record. The terminal
+only shows the summary line and, if any checks failed, the specific
+failing files. A clean run produces no `FAILED` output and exits 0.
+Any `FAILED` line identifies the specific file that does not match what
+was staged on Rockfish; re-run `rsync` and re-extract, or investigate
+local disk health.
 
 ## What's in the archive
 
@@ -213,15 +325,6 @@ The scratch directory default is defined in
 [`conf/rockfish.config`](https://github.com/AndersenLab/nemascan-sims-nf/blob/main/conf/rockfish.config)
 (`params.scratch_dir = /scratch4/eande106`).
 
-::: {.callout-warning}
-## Never clean scratch before Phase C is green
-
-If `sha256sum -c` on the per-file manifest reports any mismatch, **stop**
-and re-run Phase B / Phase C before deleting anything. Intermediate
-scratch files are your only path to re-running the pipeline without
-re-computing from the input VCFs.
-:::
-
 ## Troubleshooting
 
 **Staging step: "GNU tar (>= 1.28) is required"**. The script hard-depends
@@ -230,17 +333,6 @@ on GNU tar flags (`--sort=name`, `--mtime`, `--owner`, `--group`,
 already GNU tar. On macOS for local testing, run
 `brew install gnu-tar` — the script finds it as `gtar`.
 
-**Staging step: "too many open files"**. Rare, but if you see it during
-the per-file manifest step, raise the open-file limit inside the
-allocation before invoking the script:
-
-```bash
-ulimit -n 8192
-bash pretransfer_manifest.sh ...
-```
-
-If you used `sbatch scripts/stage_transfer.sbatch`, edit the wrapper to
-add `ulimit -n 8192` before the `exec` line and re-submit.
 
 **Phase B: SSH disconnects mid-transfer**. The `--partial` flag in
 `rsync` preserves the in-progress archive file. Re-run the same `rsync`
@@ -259,22 +351,12 @@ the `FAILED` lines. If only a handful fail, re-run `rsync` on the single
 archive and re-extract. If many fail, check local disk health
 (`diskutil verifyVolume` on macOS, `smartctl -a` on Linux).
 
-**"Why are two staging runs producing different archive hashes?"** The
-script bakes `--mtime='UTC 2020-01-01'` and `--owner=0 --group=0
---numeric-owner` into the tar invocation precisely so unchanged source
-produces identical archive bytes. If you see drift, check that (a)
-your `tar` is GNU tar ≥ 1.28 (`tar --version`), and (b) no background
-process is touching the source directory between runs.
 
 ## Reference
 
 - `pretransfer_manifest.sh` — the staging tool (repo root).
 - `scripts/stage_transfer.sbatch` — SLURM wrapper for running the
-  staging tool on a compute node (8 cores / 8 GB / 1 h defaults).
-- `issues/pretransfer-manifest-archive/design.md` — architecture, file
-  inventory, integrity model, alternatives considered.
-- `issues/pretransfer-manifest-archive/feature_request.md` — motivation
-  and scope.
+  staging tool on a compute node.
 - [Database Structure](database-structure.qmd) — what's inside the
   `db/` tree.
 - [QTL Detection & Assessment](qtl-detection-assessment.qmd) — schema of
