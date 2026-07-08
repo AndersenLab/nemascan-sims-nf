@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=8G
-#SBATCH --time=1:00:00
+#SBATCH --time=3:00:00
 #SBATCH --output=stage_transfer_%j.out
 #SBATCH --error=stage_transfer_%j.err
 #
@@ -40,11 +40,14 @@ if [[ $# -lt 1 ]]; then
     exit 1
 fi
 
-# Resolve script dir relative to this file so the sbatch wrapper can be
-# invoked from anywhere (sbatch sets $SLURM_SUBMIT_DIR to the caller's cwd,
-# not this script's dir).
-wrapper_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd "$wrapper_dir/.." && pwd)"
+# Under sbatch, the script runs from a node-local spool copy, so BASH_SOURCE
+# does not point at the repo. Use SLURM_SUBMIT_DIR (the submission cwd) when set.
+if [[ -n "${SLURM_SUBMIT_DIR:-}" ]]; then
+    repo_root="$SLURM_SUBMIT_DIR"
+else
+    wrapper_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    repo_root="$(cd "$wrapper_dir/.." && pwd)"
+fi
 manifest_tool="$repo_root/pretransfer_manifest.sh"
 
 if [[ ! -x "$manifest_tool" ]]; then
