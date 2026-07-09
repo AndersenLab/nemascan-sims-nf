@@ -22,7 +22,7 @@ library(tidyr)
 #'   - Detected.CV: Simulated=TRUE, Detected=TRUE, significant=TRUE or NA (true positive)
 #'   - Missed.CV: Simulated=TRUE, Detected=FALSE, significant=FALSE or NA (false negative)
 #'   - CV.Not.Significant.In.Interval: Simulated=TRUE, Detected=TRUE, significant=FALSE
-#'   - False.Discovery: Simulated=FALSE, Detected=TRUE, significant=TRUE (false positive)
+#'   - False.Discovery: Simulated=FALSE, Detected=TRUE (false positive; significant is NA for these rows and not checked)
 #'
 #' significant=NA rows arise when a causal variant is absent from GWA output entirely
 #' (e.g., when cv_maf < ms_maf produces non-marker causal variants). When Detected=TRUE,
@@ -64,7 +64,7 @@ designate_qtl <- function(df) {
         # (structurally undetectable → false negative for Power denominator)
         .sim == TRUE  & .det == FALSE & (.sig == FALSE | is.na(.sig)) ~ "Missed.CV",
         .sim == TRUE  & .det == TRUE  & .sig == FALSE ~ "CV.Not.Significant.In.Interval",
-        .sim == FALSE & .det == TRUE  & .sig == TRUE  ~ "False.Discovery"
+        .sim == FALSE & .det == TRUE                  ~ "False.Discovery"
       )
     ) %>%
     dplyr::select(-dplyr::all_of(c(".sim", ".det", ".sig")))
