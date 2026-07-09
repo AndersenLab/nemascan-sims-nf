@@ -366,8 +366,7 @@ query_for_threshold_analysis <- function(mapping_id, base_dir = "data/db", con =
 #'
 #' @param mapping_id Mapping ID (20-char hex) identifying the target partition
 #' @param population Population identifier (e.g. "ce.full")
-#' @param ms_meta Named list from read_marker_set_metadata(); must contain
-#'   maf, species, vcf_release_id, ms_ld
+#' @param ms_meta Named list from read_marker_set_metadata(); must contain maf
 #' @param base_dir Database root directory
 #' @return Dataframe with columns: marker, mapping_id, P, BETA, SE, var.exp,
 #'   CHROM, POS, AF1, population, maf (ordered by CHROM, POS, marker).
@@ -401,23 +400,13 @@ query_mapping_direct <- function(mapping_id, population, ms_meta, base_dir = "da
     ))
   }
 
-  # 3. Load marker set for CHROM/POS lookup (reuses existing reader)
-  markers <- read_marker_set(
-    population,
-    as.numeric(ms_meta$maf),
-    ms_meta$species,
-    ms_meta$vcf_release_id,
-    as.numeric(ms_meta$ms_ld),
-    base_dir
-  )
-
-  # 4. Join + reshape to match query_for_threshold_analysis() output schema exactly
+  # 3. Reshape to match query_for_threshold_analysis() output schema exactly.
+  #    CHROM and POS are split from the marker string (format: "CHROM:POS") — no
+  #    marker-set file read or join needed.
   result <- mapping_rows %>%
-    dplyr::left_join(
-      markers %>% dplyr::select(marker, CHROM, POS),
-      by = "marker"
-    ) %>%
     dplyr::mutate(
+      CHROM      = sub(":.*", "", marker),
+      POS        = as.integer(sub(".*:", "", marker)),
       mapping_id = mapping_id,
       population = population,
       maf        = as.numeric(ms_meta$maf),
@@ -428,20 +417,6 @@ query_mapping_direct <- function(mapping_id, population, ms_meta, base_dir = "da
       CHROM, POS, AF1, population, maf
     ) %>%
     dplyr::arrange(CHROM, POS, marker)
-
-  # 5. Preserve the CHROM:POS uniqueness check from query_for_threshold_analysis:343-354
-  if (nrow(result) > 0) {
-    dup_check <- result %>% dplyr::group_by(CHROM, POS) %>% dplyr::filter(dplyr::n() > 1)
-    if (nrow(dup_check) > 0) {
-      n_dups <- nrow(dup_check)
-      example <- paste0(dup_check$CHROM[1], ":", dup_check$POS[1])
-      stop(glue::glue(
-        "CHROM:POS uniqueness violation in mapping {mapping_id}: ",
-        "{n_dups} duplicate rows (e.g. {example}). ",
-        "Check for LOCO deduplication in write_gwa_to_db.R"
-      ))
-    }
-  }
 
   result
 }
