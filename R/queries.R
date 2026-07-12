@@ -680,6 +680,159 @@ query_for_analysis <- function(mapping_id, alpha = 0.05, base_dir = "data/db") {
 
 
 # ==============================================================================
+# Per-Causal-Variant Detection Query
+# ==============================================================================
+
+#' Query p-values and detection status at every causal variant for a trait
+#'
+#' Memory-safe: resolves the trait's ≤4 mapping partition files from
+#' `mappings_metadata.parquet` and reads only those files via a single DuckDB
+#' `read_parquet([...])` call with a `marker IN (...)` predicate pushdown.
+#' Never globs the full mappings tree. Non-marker causal variants (absent from
+#' the GWA output, e.g. when cv_maf < ms_maf) surface as `NA` p-value and
+#' `detected = FALSE`, matching `score_causal_markers()` semantics.
+#'
+#' Caveat: `get_threshold_params()` BF uses marker-set n_markers (from the
+#' PLINK .bim file), which may differ from the per-mapping GWA row count when
+#' GCTA internally excludes near-singular markers. See the NOTE in
+#' `get_threshold_params()` for details.
+#'
+#' @param trait_id 20-char hex trait identifier
+#' @param base_dir Database root directory
+#' @param thresholds Character vector of threshold names ("BF", "EIGEN") or
+#'   numeric values as character strings (e.g. "5.5")
+#' @param alpha Significance level for BF/EIGEN threshold computation (default 0.05)
+#' @param con Optional existing DuckDB connection; if NULL one is created per call
+#' @param meta Optional pre-loaded mapping metadata (as returned by
+#'   \code{get_metadata(base_dir)}). Supplying it avoids re-reading the full
+#'   mappings_metadata.parquet on every call — important when iterating over
+#'   thousands of traits in parallel workers. If NULL (default) it is read
+#'   from disk once per call.
+#' @return Long data frame with one row per (causal × mapping × threshold):
+#'   trait_id, population, mapping_id, algorithm, pca, threshold,
+#'   threshold_value, QTL, CHROM, POS, P, log10p, detected
+query_causal_pvalues <- function(trait_id, base_dir,
+                                 thresholds = c("BF", "EIGEN"),
+                                 alpha = 0.05, con = NULL, meta = NULL) {
+  # 1. Resolve the trait's ≤4 mappings from mappings_metadata.parquet.
+  #    `meta` may be supplied by the caller (loaded once) to avoid re-reading
+  #    the full mappings_metadata.parquet on every trait — a major memory and
+  #    CPU cost when iterating thousands of traits across parallel workers.
+  if (is.null(meta)) {
+    meta <- get_metadata(base_dir)
+  }
+  trait_meta <- meta %>%
+    dplyr::filter(trait_id == !!trait_id) %>%
+    dplyr::select(mapping_id, population, maf, algorithm, pca)
+
+  if (nrow(trait_meta) == 0) {
+    stop(glue::glue("No mappings found for trait_id: {trait_id}"))
+  }
+
+  # 2. Load causal variant list
+  causal_variants <- read_causal_variants_data(trait_id, base_dir)
+  qtl_list        <- unique(causal_variants$QTL)
+
+  if (length(qtl_list) == 0) return(data.frame())
+
+  # 3. Resolve partition paths; keep only files that exist on disk
+  partition_files <- purrr::map2_chr(
+    trait_meta$population, trait_meta$mapping_id,
+    function(pop, mid) file.path(get_partition_path(pop, mid, base_dir), "data.parquet")
+  )
+  exists_mask    <- file.exists(partition_files)
+  existing_files <- partition_files[exists_mask]
+  existing_meta  <- trait_meta[exists_mask, ]
+
+  if (length(existing_files) == 0) {
+    warning(glue::glue("No partition files found for trait_id: {trait_id}"))
+    return(data.frame())
+  }
+
+  # 4. Push-down DuckDB query — projects only the five needed columns plus
+  #    mapping_id and population extracted via Hive partitioning from the path
+  own_con <- is.null(con)
+  if (own_con) {
+    duck <- DBI::dbConnect(duckdb::duckdb(), ":memory:")
+    on.exit(DBI::dbDisconnect(duck, shutdown = TRUE), add = TRUE)
+    # Cap per-connection resources. A bare DuckDB connection defaults to
+    # memory_limit ~= 80% of physical RAM and threads = all cores. Under
+    # furrr multisession each worker is a separate process with its own
+    # DuckDB instance, so those defaults multiply across workers and can
+    # exhaust system memory. This query only ever reads <=4 small partition
+    # files, so a tight cap is safe and also avoids thread oversubscription.
+    DBI::dbExecute(duck, "PRAGMA memory_limit='1GB'")
+    DBI::dbExecute(duck, "PRAGMA threads=1")
+  } else {
+    duck <- con
+  }
+
+  file_list_sql <- paste0("'", existing_files, "'", collapse = ", ")
+  qtl_quoted    <- paste0("'", qtl_list,       "'", collapse = ", ")
+
+  hits <- DBI::dbGetQuery(duck, glue::glue("
+    SELECT marker, P, BETA, SE, AF1, mapping_id
+    FROM read_parquet([{file_list_sql}], hive_partitioning = true)
+    WHERE marker IN ({qtl_quoted})
+  "))
+
+  # 5. Cross-join causal variants × mappings; left-join hits so absent
+  #    markers (non-marker causals) surface as NA P and detected = FALSE
+  causal_df <- causal_variants %>%
+    dplyr::select(QTL, CHROM, POS) %>%
+    dplyr::distinct()
+
+  causal_x_mapping <- tidyr::crossing(
+    causal_df,
+    dplyr::select(existing_meta, mapping_id, population, maf, algorithm, pca)
+  )
+
+  joined <- causal_x_mapping %>%
+    dplyr::left_join(dplyr::rename(hits, QTL = marker), by = c("QTL", "mapping_id")) %>%
+    dplyr::mutate(log10p = safe_log10p(P)) %>%
+    dplyr::distinct(mapping_id, QTL, .keep_all = TRUE)  # LOCO duplicate guard
+
+  # 6. Compute threshold values per (population, maf), then flag detection
+  pop_maf_combos <- trait_meta %>% dplyr::distinct(population, maf)
+
+  threshold_params_df <- purrr::pmap_dfr(pop_maf_combos, function(population, maf) {
+    params <- get_threshold_params(population, maf, alpha, base_dir)
+    dplyr::tibble(
+      population = population,
+      maf        = maf,
+      BF         = params$bf_threshold,
+      EIGEN      = params$eigen_threshold
+    )
+  })
+
+  purrr::map(thresholds, function(thr_name) {
+    thr_vals <- threshold_params_df %>%
+      dplyr::mutate(
+        threshold = thr_name,
+        threshold_value = dplyr::case_when(
+          thr_name == "BF"    ~ BF,
+          thr_name == "EIGEN" ~ EIGEN,
+          TRUE                ~ as.numeric(thr_name)
+        )
+      ) %>%
+      dplyr::select(population, maf, threshold, threshold_value)
+
+    joined %>%
+      dplyr::left_join(thr_vals, by = c("population", "maf")) %>%
+      dplyr::mutate(
+        detected = dplyr::if_else(!is.na(log10p), log10p > threshold_value, FALSE),
+        trait_id = !!trait_id
+      ) %>%
+      dplyr::select(
+        trait_id, population, mapping_id, algorithm, pca,
+        threshold, threshold_value, QTL, CHROM, POS, P, log10p, detected
+      )
+  }) %>%
+    dplyr::bind_rows()
+}
+
+
+# ==============================================================================
 # Database Statistics
 # ==============================================================================
 
