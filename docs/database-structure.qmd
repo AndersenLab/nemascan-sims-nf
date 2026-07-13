@@ -382,6 +382,14 @@ The mappings metadata table provides a lightweight summary of all mappings in
 the database. It is built by `DB_MIGRATION_AGGREGATE_METADATA` after all GWA
 writes complete, enabling fast lookups without scanning the full Parquet files.
 
+If you ever need to rebuild or recompute the metadata table, run:
+```bash
+R_SOURCE_DIR="nemascan-sims-nf/R" \
+NF_TASK_CPUS=4 \
+  Rscript modules/db_migration/aggregate_metadata/resources/usr/bin/aggregate_metadata.R \
+  "path/to/db"
+```
+
 
 ### Mappings Metadata Schema
 
