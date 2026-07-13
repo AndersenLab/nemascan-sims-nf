@@ -92,7 +92,7 @@ if (length(orphan_dirs) > 0) {
 con <- duckdb::dbConnect(duckdb::duckdb(), dbdir = ":memory:")
 on.exit(duckdb::dbDisconnect(con, shutdown = TRUE), add = TRUE)
 
-stats <- duckdb::dbGetQuery(con, sprintf(
+stats <- DBI::dbGetQuery(con, sprintf(
   "SELECT COUNT(*) AS n_rows, COUNT(DISTINCT mapping_id) AS n_unique
    FROM read_parquet('%s')",
   metadata_path
