@@ -49,3 +49,8 @@ tests/.nf-work/
 docs/_site/
 .stfolder/syncthing-folder-ebca5e.txt
 *_files/
+
+# Claude Code configuration
+CLAUDE.md
+.claude/
+aggregation_summary.txt
