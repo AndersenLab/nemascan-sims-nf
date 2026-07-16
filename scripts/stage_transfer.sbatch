@@ -48,7 +48,7 @@ else
     wrapper_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     repo_root="$(cd "$wrapper_dir/.." && pwd)"
 fi
-manifest_tool="$repo_root/pretransfer_manifest.sh"
+manifest_tool="$repo_root/scripts/pretransfer_manifest.sh"
 
 if [[ ! -x "$manifest_tool" ]]; then
     echo "ERR: pretransfer_manifest.sh not found or not executable at $manifest_tool" >&2
