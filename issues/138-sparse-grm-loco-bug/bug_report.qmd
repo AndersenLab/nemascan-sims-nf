@@ -1,0 +1,98 @@
+---
+title: "Bug Report"
+date: today
+params:
+  title: "Sparse GRM Incompatible with LOCO GWA Mapping"
+  nf_version: ">=24.10.0,<25.0.0"
+  executor: "local"
+  command: "nextflow run main.nf -profile test"
+  error: |
+    #Chr 3:
+    1175 SNPs on chromosome 3 are included in the analysis.
+    Performing REML analysis ...
+    13 observations, 2 fixed effect(s), and 2 variance component(s)(including residual variance).
+    Prior values of variance components:  0.00000 16.70448
+    logL: -18.14486
+    Running AI-REML algorithm ...
+    Iter.  logL     V(G)     V(e)
+    1      -21.35   0.00000  94.15479                (1 component(s) constrained)
+    2      -26.52   0.00000  1391.99609              (1 component(s) constrained)
+    3      -41.11   0.00000  265874.10680            (1 component(s) constrained)
+    4      -69.98   0.00000  9598528154.52585        (1 component(s) constrained)
+    5      -127.70  0.00000  12509437511561904128.00 (1 component(s) constrained)
+    ...
+    8      -935.74  0.00000  5.10e+149               (1 component(s) constrained)
+    Error: the information matrix is not invertible.
+    An error occurs, please check the options or data
+  config: |
+    // modules/gcta/perform_gwa/main.nf (before fix)
+    // Both inbred and loco modes used the sparse GRM (--grm-sparse)
+    // created by --make-bK-sparse in the same process
+  context: |
+    Root cause: The sparse GRM (created by --make-bK-sparse) zeros out pairwise
+    relatedness values below a threshold. LOCO mode computes leave-one-chromosome-out
+    kinship as K_(-k) = K_total - (M_k/M) * K_k. When K_total_sparse[i,j] = 0 but
+    K_k[i,j] > 0 (computed from raw genotypes), the subtraction produces negative
+    off-diagonal kinship values. This makes the covariance matrix non-positive
+    semi-definite, causing the AI-REML optimizer to diverge.
+
+    Evidence:
+    1. Failures were chromosome-specific (chr III failed, chr II converged) — same
+       run, same sparse GRM — pointing to the per-chromosome subtraction step.
+    2. Inbred mode (--fastGWA-mlm-exact) worked on the same data — it uses the sparse
+       GRM directly without any subtraction.
+    3. Switching to the full binary GRM (.grm.bin) for LOCO mode resolved all failures
+       across all 9 populations.
+
+    Fix applied in modules/gcta/perform_gwa/main.nf:
+    - Inbred (--fastGWA-mlm-exact): continues to create and use sparse GRM via
+      --make-bK-sparse / --grm-sparse (no subtraction step involved).
+    - LOCO (--mlma-loco): now skips sparse GRM creation entirely and passes the full
+      binary GRM from GCTA_MAKE_GRM directly via --grm.
+format: gfm
+engine: knitr
+---
+
+# Bug Report: `r params$title`
+
+**Date:** `r Sys.Date()`
+**Nextflow version:** `r params$nf_version`
+**Executor:** `r params$executor`
+
+---
+
+## Description
+
+The LOCO (Leave-One-Chromosome-Out) GWA mapping mode failed with AI-REML divergence on specific chromosomes when using a sparse GRM. The sparse GRM approximation (`--make-bK-sparse`) is incompatible with the LOCO per-chromosome kinship subtraction step (`K_(-k) = K_total - (M_k/M) * K_k`), because zeroed-out entries in the sparse total GRM minus nonzero per-chromosome contributions produce negative off-diagonal kinship values, making the covariance matrix non-positive semi-definite.
+
+The symptom was V(e) diverging exponentially (doubling order of magnitude each iteration) until the information matrix became singular. Failures were isolated to individual chromosomes within otherwise successful runs.
+
+## Command Used
+
+```bash
+`r params$command`
+```
+
+## Error Output
+
+<!-- Paste from .nextflow.log or work/xx/yyyy*/.command.err -->
+
+```
+`r params$error`
+```
+
+## Config / Profile
+
+<!-- Paste only the relevant sections — process resources, executor settings, param overrides -->
+
+```groovy
+`r params$config`
+```
+
+## Additional Context
+
+`r params$context`
+
+---
+
+*Generated with the Quarto GitHub Issue Framework. Submit via `gh issue create --title "<title>" --label "bug" --body-file <this_file>.md`*

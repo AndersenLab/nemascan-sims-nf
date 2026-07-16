@@ -1,0 +1,27 @@
+*******************************************************************
+* Genome-wide Complex Trait Analysis (GCTA)
+* version v1.94.1 Linux
+* Built at Nov 15 2022 21:14:25, by GCC 8.5
+* (C) 2010-present, Yang Lab, Westlake University
+* Please report bugs to Jian Yang <jian.yang@westlake.edu.cn>
+*******************************************************************
+Analysis started at 15:37:31 EDT on Tue Apr 07 2026.
+Hostname: c616
+
+Options: 
+ 
+--grm TO_SIMS_1_25_0.2_0.05_gamma_ce.full_gcta_grm_inbred 
+--make-bK-sparse 0.05 
+--out 1_25_0.2_0.05_gamma_ce.full_sparse_grm_inbred 
+--thread-num 1 
+
+The program will be running with up to 1 threads.
+Pruning the GRM to a sparse matrix with a cutoff of 0.050000...
+Total number of parts to be processed: 1
+    Saving 550 individual IDs
+    Processing part 1
+Saving the sparse GRM (46749 pairs) to [1_25_0.2_0.05_gamma_ce.full_sparse_grm_inbred.grm.sp]
+finished generating a sparse GRM Success:
+
+Analysis finished at 15:37:31 EDT on Tue Apr 07 2026
+Overall computational time: 0.15 sec.

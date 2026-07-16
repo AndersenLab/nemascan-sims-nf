@@ -1,0 +1,73 @@
+---
+title: "Issue Update"
+date: today
+format:
+  gfm:
+    preview-mode: raw
+---
+
+## Update — `2026-03-20`
+
+**Phase:** RCA
+**Status:** Resolved
+
+---
+
+## Root Cause Analysis
+
+### Summary
+
+Both failures trace to stale test code: integration tests were not updated when two production APIs changed their signatures during the Phase 5 hash-based DB migration. No production code is incorrect.
+
+### Diagnostic Steps
+
+1. Reproduced all 5 errors by running the integration suite with `TEST_DB_DIR` set.
+2. Located `generate_mapping_id()` signature in `R/database.R:478` — confirmed it now requires 3 positional args (`trait_hash`, `algorithm`, `pca`), where `trait_hash` must be a 20-character hex scalar.
+3. Inspected `parse_inline_gwa_filename()` in `test-cross_validation.R:37–61` — confirmed it returns a 9-element params list, not a trait hash; a list cannot satisfy the `grepl("^[0-9a-f]{20}$", ...)` guard.
+4. Grepped all `generate_mapping_id` call sites across the codebase — confirmed every production caller (5 files) uses the correct 3-step chain: `generate_marker_set_id()` → `generate_trait_id()` → `generate_mapping_id(trait$hash, ...)`. The three failing test call sites were the only outliers.
+5. Located `read_marker_set()` signature in `R/database.R:630` — confirmed it requires 5 positional params before `base_dir`: `(population, maf, species, vcf_release_id, ms_ld)`. The two failing call sites pass only `(pop, maf_val, db_dir)`, silently binding `db_dir` to the `species` parameter.
+6. Confirmed `test-db_structure.R:40–45` already contains the correct metadata-first pattern in the same test file, proving the fix was applied selectively during the v=2 migration but missed line 143.
+
+### Key Evidence
+
+**Error 1–3 (`test-cross_validation.R:79, 139, 172`):**
+
+```
+Error in `if (!grepl("^[0-9a-f]{20}$", trait_hash)) { ... }`:
+  the condition has length > 1
+Backtrace:
+ 1. └─global generate_mapping_id(params) at test-cross_validation.R:79:5
+```
+
+The `params` list (length 9) is passed where a scalar hex string is required. The `if()` guard fires with `condition has length > 1` because `grepl()` returns a logical vector when its input is a list.
+
+**Error 4 (`test-cross_validation.R:260`):**
+
+```
+Error in paste0("v=2|population=", population, ...):
+  argument "vcf_release_id" is missing, with no default
+Backtrace:
+ 1. └─global read_marker_set(pop, maf_val, db_dir) at test-cross_validation.R:260:3
+ 2.   └─global get_markers_path(...)
+ 3.     └─global generate_marker_set_id(...)
+ 4.       └─base::paste0(...)
+```
+
+**Error 5 (`test-db_structure.R:143`):**
+
+```
+Error in get_markers_path(population, maf, species, vcf_release_id, ms_ld, base_dir):
+  argument "vcf_release_id" is missing, with no default
+Backtrace:
+ 1. └─global read_marker_set(expected_population, 0.05, db_dir) at test-db_structure.R:143:3
+```
+
+### Confirmed Root Cause
+
+**Issue Group 1 (errors 1–3):** `generate_mapping_id()` was refactored from a list-accepting string-concatenation function to a 3-arg MD5-hashing function. `test-cross_validation.R` was never updated; it passes the full parsed-filename params list directly to the function.
+
+**Issue Group 2 (errors 4–5):** `read_marker_set()` gained three required parameters (`species`, `vcf_release_id`, `ms_ld`) during the v=2 marker-set-ID migration. `test-write_gwa_to_db.R` was updated to the new signature; `test-cross_validation.R:260` and `test-db_structure.R:143` were not.
+
+---
+
+*Comment generated from `comment.qmd` template · nemascan-sims-nf issue workflow*

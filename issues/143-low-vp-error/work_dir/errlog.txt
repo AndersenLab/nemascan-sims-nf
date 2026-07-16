@@ -1,0 +1,94 @@
+*******************************************************************
+* Genome-wide Complex Trait Analysis (GCTA)
+* version v1.94.1 Linux
+* Built at Nov 15 2022 21:14:25, by GCC 8.5
+* (C) 2010-present, Yang Lab, Westlake University
+* Please report bugs to Jian Yang <jian.yang@westlake.edu.cn>
+*******************************************************************
+Analysis started at 15:26:07 EDT on Mon Apr 06 2026.
+Hostname: c612
+
+Options: 
+ 
+--grm TO_SIMS_1_43_0.4_0.05_gamma_ct.full_gcta_grm_inbred 
+--make-bK-sparse 0.05 
+--out 1_43_0.4_0.05_gamma_ct.full_sparse_grm_inbred 
+--thread-num 1 
+
+The program will be running with up to 1 threads.
+Pruning the GRM to a sparse matrix with a cutoff of 0.050000...
+Total number of parts to be processed: 1
+    Saving 509 individual IDs
+    Processing part 1
+Saving the sparse GRM (53240 pairs) to [1_43_0.4_0.05_gamma_ct.full_sparse_grm_inbred.grm.sp]
+finished generating a sparse GRM Success:
+
+Analysis finished at 15:26:07 EDT on Mon Apr 06 2026
+Overall computational time: 0.21 sec.
+*******************************************************************
+* Genome-wide Complex Trait Analysis (GCTA)
+* version v1.94.1 Linux
+* Built at Nov 15 2022 21:14:25, by GCC 8.5
+* (C) 2010-present, Yang Lab, Westlake University
+* Please report bugs to Jian Yang <jian.yang@westlake.edu.cn>
+*******************************************************************
+Analysis started at 15:26:07 EDT on Mon Apr 06 2026.
+Hostname: c612
+
+Accepted options:
+--grm TO_SIMS_1_43_0.4_0.05_gamma_ct.full_gcta_grm_inbred
+--pca 1
+--out 1_43_0.4_0.05_gamma_ct.full_pca
+--thread-num 1
+
+Note: This is a multi-thread program. You could specify the number of threads by the --thread-num option to speed up the computation if there are multiple processors in your machine.
+
+Reading IDs of the GRM from [TO_SIMS_1_43_0.4_0.05_gamma_ct.full_gcta_grm_inbred.grm.id].
+509 IDs are read from [TO_SIMS_1_43_0.4_0.05_gamma_ct.full_gcta_grm_inbred.grm.id].
+Reading the GRM from [TO_SIMS_1_43_0.4_0.05_gamma_ct.full_gcta_grm_inbred.grm.bin].
+GRM for 509 individuals are included from [TO_SIMS_1_43_0.4_0.05_gamma_ct.full_gcta_grm_inbred.grm.bin].
+
+Performing principal component analysis ...
+Eigenvalues of 509 individuals have been saved in [1_43_0.4_0.05_gamma_ct.full_pca.eigenval].
+The first 1 eigenvectors of 509 individuals have been saved in [1_43_0.4_0.05_gamma_ct.full_pca.eigenvec].
+
+Analysis finished at 15:26:08 EDT on Mon Apr 06 2026
+Overall computational time: 0.74 sec.
+*******************************************************************
+* Genome-wide Complex Trait Analysis (GCTA)
+* version v1.94.1 Linux
+* Built at Nov 15 2022 21:14:25, by GCC 8.5
+* (C) 2010-present, Yang Lab, Westlake University
+* Please report bugs to Jian Yang <jian.yang@westlake.edu.cn>
+*******************************************************************
+Analysis started at 15:26:08 EDT on Mon Apr 06 2026.
+Hostname: c612
+
+Options: 
+ 
+--fastGWA-mlm-exact 
+--bfile TO_SIMS_1_43_0.4_0.05_gamma_ct.full 
+--grm-sparse 1_43_0.4_0.05_gamma_ct.full_sparse_grm_inbred 
+--qcovar 1_43_0.4_0.05_gamma_ct.full_pca.eigenvec 
+--out 1_43_0.4_0.05_gamma_ct.full_lmm-exact_inbred_pca 
+--pheno 1_43_0.4_0.05_gamma_ct.full_sims.pheno 
+--extract plink_snplist.txt 
+--thread-num 1 
+
+The program will be running with up to 1 threads.
+Reading PLINK FAM file from [TO_SIMS_1_43_0.4_0.05_gamma_ct.full.fam]...
+509 individuals to be included from FAM file.
+Reading phenotype data from [1_43_0.4_0.05_gamma_ct.full_sims.pheno]...
+509 overlapping individuals with non-missing data to be included from the phenotype file.
+509 individuals to be included. 0 males, 0 females, 509 unknown.
+Reading PLINK BIM file from [TO_SIMS_1_43_0.4_0.05_gamma_ct.full.bim]...
+12478 SNPs to be included from BIM file(s).
+Get 12478 SNPs from list [plink_snplist.txt].
+After extracting SNP, 12478 SNPs remain.
+Reading quantitative covariates from [1_43_0.4_0.05_gamma_ct.full_pca.eigenvec].
+1 covariates of 509 samples to be included.
+509 overlapping individuals with non-missing data to be included from the covariate file(s).
+Reading the sparse GRM file from [1_43_0.4_0.05_gamma_ct.full_sparse_grm_inbred]...
+After matching all the files, 509 individuals to be included in the analysis.
+Error: the Vp is below 1e-5. Please check: 1. Is there a scaling issue with the phenotype? 2. Can the covariates explain all the Vp (e.g., phenotype is included as a covariate by accident)? 3. If it is a binary trait, is the prevalence very low?
+An error occurs, please check the options or data

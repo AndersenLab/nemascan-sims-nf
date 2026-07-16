@@ -1,0 +1,21 @@
+
+[1m[38;5;232m[48;5;43m N E X T F L O W [0;2m  ~  [mversion 25.10.4[m
+[K
+Launching[35m `main.nf` [0;2m[[0;1;36mtiny_montalcini[0;2m] DSL2 - [36mrevision: [0;36mc36c6c0fdf[m
+[K
+ERROR ~ Script compilation error
+- file : /Users/ryanmckeown/Desktop/nemascan-sims-nf/main.nf
+- cause: Invalid workflow publish statement @ line 718, column 9.
+           ch_mapping_pub >> "."
+           ^
+
+Script compilation error
+- file : /Users/ryanmckeown/Desktop/nemascan-sims-nf/main.nf
+- cause: Invalid workflow publish statement @ line 719, column 9.
+           ch_db_assessment_pub >> "."
+           ^
+
+2 errors
+
+
+ -- Check '.nextflow.log' file for details

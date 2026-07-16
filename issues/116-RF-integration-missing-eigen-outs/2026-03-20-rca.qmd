@@ -1,0 +1,61 @@
+---
+title: "Issue Update"
+date: today
+format:
+  gfm:
+    preview-mode: raw
+---
+
+## Update — 2026-03-20
+
+**Phase:** RCA
+**Status:** Resolved
+
+---
+
+## Root Cause Analysis
+
+### Summary
+
+All `*_total_independent_tests.txt` (EIGEN) files in downstream Nextflow work directories are absolute symlinks to the `LOCAL_COMPILE_EIGENS` canonical work directory on `/scratch4/`. When `rsync -av` copies the `.nf-work` tree to a local Mac, the symlinks are preserved verbatim, leaving them broken because the HPC path does not exist locally. R's `file.exists()` returns `FALSE` for broken symlinks, so `read_eigen_file()` errors before the iteration reaches the one real copy of the file.
+
+### Diagnostic Steps
+
+1. Confirmed the pipeline completed successfully on Rockfish — all SLURM jobs exited 0 and `marker_set_metadata.parquet` contains the correct `n_independent_tests` value.
+2. Identified the failing test: `test-cross_validation.R:229` — `EIGEN threshold from DB matches pipeline EIGEN value`.
+3. Verified the error path exists locally using `ls -la`: confirmed it is a symlink, not a real file.
+4. Audited all EIGEN file appearances in `tests/.nf-work` with `find` + `readlink`:
+   - **27 broken symlinks** — all point to `/scratch4/eande106/Ryan/nf-work-test/d4/3d34704b.../ce.test.200strains_0.05_total_independent_tests.txt`
+   - **1 real file** — at `tests/.nf-work/d4/3d34704b.../ce.test.200strains_0.05_total_independent_tests.txt`
+5. Traced the pipeline flow: `LOCAL_COMPILE_EIGENS` writes the real file once; Nextflow stages it into every downstream process work directory (e.g., `DB_MIGRATION_WRITE_MARKER_SET`, `GCTA_PERFORM_GWA`, `R_FIND_GENOTYPE_MATRIX_EIGEN`) as an absolute symlink via its default `stageInMode = 'symlink'`.
+6. Confirmed `list.files(recursive = TRUE)` returns broken symlink paths — `list.files` does not check reachability, only path existence in the directory tree.
+
+### Key Evidence
+
+**Broken symlink (representative):**
+
+```
+lrwxrwxrwx tests/.nf-work/0c/e3dc0c8a.../ce.test.200strains_0.05_total_independent_tests.txt
+  -> /scratch4/eande106/Ryan/nf-work-test/d4/3d34704b.../ce.test.200strains_0.05_total_independent_tests.txt
+```
+
+**Real file (the one copy rsync transferred correctly):**
+
+```
+-rw-r--r-- tests/.nf-work/d4/3d34704b.../ce.test.200strains_0.05_total_independent_tests.txt
+```
+
+**Test error:**
+
+```
+Error in `read_eigen_file(eigen_file)`:
+  EIGEN file not found: .../tests/.nf-work/0c/e3dc0c8a.../ce.test.200strains_0.05_total_independent_tests.txt
+```
+
+### Confirmed Root Cause
+
+`rsync -av` preserves symlinks as-is. Nextflow's `stageInMode = 'symlink'` creates absolute symlinks to the HPC scratch path, which become broken when the work tree is relocated to a different host. The cross-validation test's iteration hits a broken symlink first and errors rather than skipping to the real file.
+
+---
+
+*Comment generated from `comment.qmd` template · nemascan-sims-nf issue workflow*

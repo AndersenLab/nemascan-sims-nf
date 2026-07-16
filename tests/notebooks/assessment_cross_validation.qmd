@@ -1,0 +1,588 @@
+---
+title: "Cross-Validation: DB-Path vs Legacy-Path Assessment"
+author: "nemascan-sims-nf"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    embed-resources: true
+    fig-width: 9
+    fig-height: 6
+params:
+  legacy_assessment: ""
+  db_assessment: ""
+  db_dir: ""
+execute:
+  eval: true
+  warning: true
+  message: true
+---
+
+## Summary
+
+This report compares the **DB-path** QTL assessment against the **legacy R file-based** assessment
+to verify that both pipelines produce identical analytical results. The DB-path queries a
+Parquet/DuckDB database populated during the pipeline run, while the legacy path uses R scripts
+operating on intermediate files. Both paths analyze the same GWA output and should produce
+matching QTL detection, interval boundaries, and significance calls.
+
+The report runs 5 validation checks, then compares results at the **per-replicate** level —
+each unique `(nQTL, simREP, h2, maf, strain_set_id)` combination — across all mapping methods
+and thresholds, using the `designate_qtl()` / `count_outcomes()` / `calculate_simrep_performance()`
+pipeline to compute Power and FDR.
+
+:::{.callout-note}
+## Known Design Differences
+
+| Aspect | Legacy path | DB path |
+|--------|-------------|---------|
+| `var.exp` / `Simulated.QTL.VarExp` | Computed from genotype matrix | `NA` (no genotype matrix in DB) |
+| `algorithm_id` format | `inbred_nopca_EIGEN` | `LMM-EXACT-INBRED_noPCA_EIGEN` |
+
+Both encode the same information; the `normalize_algorithm_id()` helper strips the prefix and
+uppercases for joining.
+:::
+
+## Setup
+
+```{r}
+#| label: setup
+#| warning: false
+#| message: false
+
+library(dplyr)
+library(tidyr)
+library(data.table)
+library(ggplot2)
+library(scales)
+
+# Source the shared R library (includes sim_performance.R)
+Sys.setenv(NEMASCAN_R_LIB = here::here("R"))
+source(here::here("R", "setup.R"))
+```
+
+```{r}
+#| label: paths
+# For interactive use, set full paths here:
+# legacy_assessment_path <- "/full/path/to/simulation_assessment_results.tsv"
+# db_assessment_path       <- "/full/path/to/db_simulation_assessment_results.tsv"
+# db_dir                   <- "/full/path/to/db"
+
+# Read from Quarto params, fall back to env vars, then interactive vars above
+if (!exists("legacy_assessment_path") || legacy_assessment_path == "") {
+  legacy_assessment_path <- if (params$legacy_assessment != "") {
+    params$legacy_assessment
+  } else {
+    Sys.getenv("TEST_LEGACY_ASSESSMENT", unset = "")
+  }
+}
+
+if (!exists("db_assessment_path") || db_assessment_path == "") {
+  db_assessment_path <- if (params$db_assessment != "") {
+    params$db_assessment
+  } else {
+    Sys.getenv("TEST_DB_ASSESSMENT", unset = "")
+  }
+}
+
+if (!exists("db_dir") || db_dir == "") {
+  db_dir <- if (params$db_dir != "") {
+    params$db_dir
+  } else {
+    Sys.getenv("TEST_DB_DIR", unset = "")
+  }
+}
+
+# Validate
+stopifnot(
+  "legacy_assessment path not set or file missing" =
+    legacy_assessment_path != "" && file.exists(legacy_assessment_path),
+  "db_assessment path not set or file missing" =
+    db_assessment_path != "" && file.exists(db_assessment_path),
+  "db_dir not set or directory missing" =
+    db_dir != "" && dir.exists(db_dir)
+)
+message("legacy assessment: ", legacy_assessment_path)
+message("DB assessment:       ", db_assessment_path)
+message("DB directory:        ", db_dir)
+```
+
+```{r}
+#| label: theme-and-helpers
+
+# ggplot2 theme for cross-validation plots
+theme_xval <- ggplot2::theme_bw(base_size = 12) +
+  ggplot2::theme(
+    panel.grid.minor = ggplot2::element_blank(),
+    strip.background = ggplot2::element_rect(fill = "grey95"),
+    legend.position = "bottom"
+  )
+ggplot2::theme_set(theme_xval)
+
+path_colors <- c("Legacy" = "#E69F00", "DB" = "#56B4E9")
+designation_colors <- c(
+  "Detected.CV" = "#2ca02c",
+  "Missed.CV" = "#d62728",
+  "CV.Not.Significant.In.Interval" = "#ff7f0e",
+  "False.Discovery" = "#9467bd"
+)
+
+# Parse legacy assessment TSV (no header, 35-column schema from Assess_Sims.R)
+read_legacy_assessment <- function(path) {
+  col_names <- c("QTL", "Simulated", "Detected", "CHROM", "POS", "RefAllele",
+                  "Frequency", "Effect", "Simulated.QTL.VarExp", "log10p", "significant",
+                  "startPOS", "peakPOS", "endPOS",
+                  "detected.peak", "BETA", "interval.log10p",
+                  "peak_id", "interval_size",
+                  "interval.var.exp", "interval.Frequency",
+                  "top.hit", "nQTL", "simREP", "h2", "maf",
+                  "effect_distribution", "strain_set_id",
+                  "mode", "type", "threshold", "algorithm_id",
+                  "alpha", "ci_size", "snp_grouping")
+
+  df <- tryCatch(
+    data.table::fread(path, header = FALSE, col.names = col_names,
+                      sep = "\t", na.strings = c("NA", "")) %>% as.data.frame(),
+    error = function(e) {
+      data.table::fread(path, header = TRUE, sep = "\t",
+                        na.strings = c("NA", "")) %>% as.data.frame()
+    }
+  )
+
+  df$QTL <- as.character(df$QTL)
+  df$Simulated <- as.character(df$Simulated)
+  df$Detected <- as.character(df$Detected)
+  df$startPOS <- as.integer(df$startPOS)
+  df$peakPOS <- as.integer(df$peakPOS)
+  df$endPOS <- as.integer(df$endPOS)
+  df$nQTL <- as.character(df$nQTL)
+  df$simREP <- as.character(df$simREP)
+  df$h2 <- as.character(df$h2)
+  df$maf <- as.character(df$maf)
+  df$strain_set_id <- as.character(df$strain_set_id)
+  df
+}
+
+# Parse DB assessment TSV (no header, 35-column standardized schema)
+read_db_assessment <- function(path) {
+  col_names <- c("QTL", "Simulated", "Detected", "CHROM", "POS", "RefAllele",
+                  "Frequency", "Effect", "Simulated.QTL.VarExp", "log10p", "significant",
+                  "BETA", "startPOS", "peakPOS", "endPOS", "detected.peak",
+                  "interval.log10p", "interval.var.exp", "interval.Frequency",
+                  "peak_id", "interval_size", "top.hit",
+                  "nQTL", "simREP", "h2", "maf", "effect_distribution",
+                  "strain_set_id", "mode", "type", "threshold", "algorithm_id",
+                  "alpha", "ci_size", "snp_grouping")
+
+  df <- tryCatch(
+    data.table::fread(path, header = FALSE, col.names = col_names,
+                      sep = "\t", na.strings = c("NA", "")) %>% as.data.frame(),
+    error = function(e) {
+      data.table::fread(path, header = TRUE, sep = "\t",
+                        na.strings = c("NA", "")) %>% as.data.frame()
+    }
+  )
+
+  df$QTL <- as.character(df$QTL)
+  df$Simulated <- as.character(df$Simulated)
+  df$Detected <- as.character(df$Detected)
+  df$startPOS <- as.integer(df$startPOS)
+  df$peakPOS <- as.integer(df$peakPOS)
+  df$endPOS <- as.integer(df$endPOS)
+  df$nQTL <- as.character(df$nQTL)
+  df$simREP <- as.character(df$simREP)
+  df$h2 <- as.character(df$h2)
+  df$maf <- as.character(df$maf)
+  df$strain_set_id <- as.character(df$strain_set_id)
+  df
+}
+
+# Normalize algorithm_id across both paths for joining
+normalize_algorithm_id <- function(alg_id) {
+  toupper(sub("^LMM-EXACT-", "", toupper(alg_id)))
+}
+
+# Create a composite key for joining rows across both assessments
+make_join_key <- function(df) {
+  df %>%
+    dplyr::mutate(
+      norm_alg = normalize_algorithm_id(algorithm_id),
+      join_key = paste(nQTL, simREP, h2, maf, effect_distribution,
+                       strain_set_id, norm_alg, QTL, sep = "|")
+    )
+}
+
+# Create method label from mode/type/threshold for stratified analysis
+parse_method_label <- function(df) {
+  df %>%
+    dplyr::mutate(
+      norm_alg = normalize_algorithm_id(algorithm_id),
+      method_label = paste(
+        gsub("_", "/", sub("_[A-Z]+$", "", norm_alg)),  # mode/pca
+        sub(".*_", "", norm_alg),                         # threshold
+        sep = " "
+      )
+    )
+}
+
+```
+
+## Data Loading & Overview
+
+```{r}
+#| label: load-data
+legacy <- read_legacy_assessment(legacy_assessment_path)
+db_assess <- read_db_assessment(db_assessment_path)
+
+message("legacy assessment: ", nrow(legacy), " rows x ", ncol(legacy), " cols")
+message("DB assessment:       ", nrow(db_assess), " rows x ", ncol(db_assess), " cols")
+```
+
+```{r}
+#| label: designate-and-label
+# Apply designate_qtl() from sim_performance.R to classify outcomes
+legacy_d <- legacy %>%
+  designate_qtl() %>%
+  parse_method_label() %>%
+  dplyr::mutate(path = "Legacy")
+db_d <- db_assess %>%
+  designate_qtl() %>%
+  parse_method_label() %>%
+  dplyr::mutate(path = "DB")
+```
+
+## Assessment overview: dimensions, unique methods, thresholds, and designation counts for each path.
+
+```{r}
+#| label: data-dimensions
+#| results: asis
+dim_table <- data.frame(
+  Metric = c("Rows", "Unique methods", "Threshold types",
+             "Detected.CV", "Missed.CV", "CV.Not.Significant.In.Interval", "False.Discovery"),
+  Legacy = c(
+    nrow(legacy_d),
+    length(unique(legacy_d$method_label)),
+    paste(sort(unique(legacy_d$threshold)), collapse = ", "),
+    sum(legacy_d$designation == "Detected.CV", na.rm = TRUE),
+    sum(legacy_d$designation == "Missed.CV", na.rm = TRUE),
+    sum(legacy_d$designation == "CV.Not.Significant.In.Interval", na.rm = TRUE),
+    sum(legacy_d$designation == "False.Discovery", na.rm = TRUE)
+  ),
+  DB = c(
+    nrow(db_d),
+    length(unique(db_d$method_label)),
+    paste(sort(unique(db_d$threshold)), collapse = ", "),
+    sum(db_d$designation == "Detected.CV", na.rm = TRUE),
+    sum(db_d$designation == "Missed.CV", na.rm = TRUE),
+    sum(db_d$designation == "CV.Not.Significant.In.Interval", na.rm = TRUE),
+    sum(db_d$designation == "False.Discovery", na.rm = TRUE)
+  )
+)
+knitr::kable(dim_table, caption = "Data Dimensions & Designation Counts")
+```
+
+::: {.panel-tabset}
+
+### Legacy Data
+
+```{r}
+#| label: preview-legacy
+knitr::kable(head(legacy, 5))
+```
+
+### DB Data
+
+```{r}
+#| label: preview-db
+knitr::kable(head(db_assess, 5))
+```
+
+:::
+
+## Per-Replicate Concordance
+
+This section computes three concordance scores for each **mapping entry** — a unique combination
+of simulation replicate `(nQTL, simREP, h2, maf, strain_set_id)`, mapping method, and
+significance threshold. Each score ranges from 0 (no concordance) to 1 (perfect concordance)
+between the DB and legacy assessment paths.
+
+| Score | What it measures | 1 means | 0 means |
+|-------|-----------------|---------|---------|
+| Detection | Detected/Simulated status agreement per QTL | All QTL rows agree on Detected flag | No QTL rows agree |
+| Designation | `designate_qtl()` category agreement per QTL | All designations match | No designations match |
+| Interval Overlap | Geometric overlap of QTL intervals (Jaccard) | Start and end positions match perfectly | No overlap between intervals |
+
+```{r}
+#| label: replicate-join
+# Join the two paths on the full composite key (includes QTL identity)
+legacy_keyed <- legacy_d %>% make_join_key()
+db_keyed <- db_d %>% make_join_key()
+
+joined <- dplyr::inner_join(
+  legacy_keyed %>%
+    dplyr::select(join_key, method_label, norm_alg, threshold,
+                  nQTL, simREP, h2, maf, strain_set_id,
+                  designation_legacy = designation,
+                  Detected_legacy = Detected, Simulated_legacy = Simulated,
+                  log10p_legacy = log10p,
+                  startPOS_legacy = startPOS, peakPOS_legacy = peakPOS,
+                  endPOS_legacy = endPOS),
+  db_keyed %>%
+    dplyr::select(join_key,
+                  designation_db = designation,
+                  Detected_db = Detected, Simulated_db = Simulated,
+                  log10p_db = log10p,
+                  startPOS_db = startPOS, peakPOS_db = peakPOS,
+                  endPOS_db = endPOS),
+  by = "join_key"
+)
+
+message("Joined rows: ", nrow(joined))
+```
+
+```{r}
+#| label: concordance-helpers
+
+# Replicate grouping: replicate identity + method + threshold
+rep_group <- c("nQTL", "simREP", "h2", "maf", "strain_set_id")
+mapping_group <- c(rep_group, "method_label", "threshold")
+
+# Interval overlap (Jaccard): intersection / union of [start, end] ranges.
+# Returns 1 when start and end match perfectly, 0 when no overlap.
+interval_jaccard <- function(start_a, end_a, start_b, end_b) {
+  intersection <- pmax(0, pmin(end_a, end_b) - pmax(start_a, start_b))
+  union <- pmax(end_a, end_b) - pmin(start_a, start_b)
+  ifelse(union == 0, 1, intersection / union)
+}
+```
+
+```{r}
+#| label: compute-concordance-scores
+
+# --- Score 1: Detection Concordance ---
+# Fraction of QTL rows where Detected flag agrees
+detection_conc <- joined %>%
+  dplyr::group_by(dplyr::across(dplyr::all_of(mapping_group))) %>%
+  dplyr::summarise(
+    n_qtl = dplyr::n(),
+    n_detect_agree = sum(Detected_legacy == Detected_db),
+    detection_concordance = n_detect_agree / n_qtl,
+    .groups = "drop"
+  )
+
+# --- Score 2: Designation Concordance ---
+# Fraction of QTL rows where designation category agrees
+designation_conc <- joined %>%
+  dplyr::filter(!is.na(designation_legacy), !is.na(designation_db)) %>%
+  dplyr::group_by(dplyr::across(dplyr::all_of(mapping_group))) %>%
+  dplyr::summarise(
+    n_designated = dplyr::n(),
+    n_desig_agree = sum(designation_legacy == designation_db),
+    designation_concordance = n_desig_agree / n_designated,
+    .groups = "drop"
+  )
+
+# --- Score 3: Interval Overlap Concordance ---
+# For QTLs detected by both paths, Jaccard overlap of [startPOS, endPOS].
+# Per-QTL scores are averaged to a per-mapping score.
+interval_conc_per_qtl <- joined %>%
+  dplyr::filter(
+    Detected_legacy == "TRUE", Detected_db == "TRUE",
+    !is.na(startPOS_legacy), !is.na(startPOS_db),
+    !is.na(endPOS_legacy), !is.na(endPOS_db)
+  ) %>%
+  dplyr::mutate(
+    qtl_interval_jaccard = interval_jaccard(
+      startPOS_legacy, endPOS_legacy, startPOS_db, endPOS_db
+    )
+  )
+
+interval_conc <- interval_conc_per_qtl %>%
+  dplyr::group_by(dplyr::across(dplyr::all_of(mapping_group))) %>%
+  dplyr::summarise(
+    n_intervals = dplyr::n(),
+    n_perfect = sum(qtl_interval_jaccard == 1),
+    interval_concordance = mean(qtl_interval_jaccard),
+    .groups = "drop"
+  )
+
+# --- Combine all three scores into one table ---
+concordance <- detection_conc %>%
+  dplyr::select(dplyr::all_of(mapping_group), n_qtl, detection_concordance) %>%
+  dplyr::left_join(
+    designation_conc %>%
+      dplyr::select(dplyr::all_of(mapping_group), designation_concordance),
+    by = mapping_group
+  ) %>%
+  dplyr::left_join(
+    interval_conc %>%
+      dplyr::select(dplyr::all_of(mapping_group), n_intervals, n_perfect,
+                    interval_concordance),
+    by = mapping_group
+  )
+
+message("Mapping entries scored: ", nrow(concordance))
+```
+
+### Per-Mapping Concordance Scores
+
+Each row is one mapping entry (replicate + method + threshold). The three scores quantify how
+well the DB path reproduces the legacy path for that specific mapping.
+
+```{r}
+#| label: concordance-table
+#| results: asis
+display_cols <- c(mapping_group, "n_qtl",
+                  "detection_concordance", "designation_concordance",
+                  "n_intervals", "interval_concordance")
+concordance_display <- concordance %>%
+  dplyr::select(dplyr::any_of(display_cols)) %>%
+  dplyr::mutate(
+    detection_concordance = sprintf("%.3f", detection_concordance),
+    designation_concordance = ifelse(is.na(designation_concordance), "-",
+                                     sprintf("%.3f", designation_concordance)),
+    interval_concordance = ifelse(is.na(interval_concordance), "-",
+                                   sprintf("%.3f", interval_concordance)),
+    n_intervals = ifelse(is.na(n_intervals), 0, n_intervals)
+  )
+
+knitr::kable(concordance_display, caption = "Per-Mapping Concordance Scores")
+```
+
+### Score Distributions
+
+```{r}
+#| label: viz-concordance-distributions
+#| fig-cap: "Distribution of concordance scores across all mapping entries"
+#| fig-height: 4
+
+score_long <- concordance %>%
+  tidyr::pivot_longer(
+    cols = c(detection_concordance, designation_concordance, interval_concordance),
+    names_to = "score_type",
+    values_to = "score"
+  ) %>%
+  dplyr::filter(!is.na(score)) %>%
+  dplyr::mutate(score_type = gsub("_concordance", "", score_type) %>%
+                  gsub("^(.)", "\\U\\1", ., perl = TRUE))
+
+ggplot2::ggplot(score_long, ggplot2::aes(x = score, fill = score_type)) +
+  ggplot2::geom_histogram(binwidth = 0.05, boundary = 0, color = "white") +
+  ggplot2::facet_wrap(~ score_type, scales = "free_y") +
+  ggplot2::scale_x_continuous(limits = c(-0.05, 1.05), breaks = seq(0, 1, 0.25)) +
+  ggplot2::labs(x = "Concordance Score", y = "Count", fill = "Score") +
+  ggplot2::guides(fill = "none")
+```
+
+### Average Concordance by Method and Threshold
+
+Concordance scores averaged across all replicates within each method and threshold combination.
+
+```{r}
+#| label: avg-concordance-by-method
+#| results: asis
+avg_concordance <- concordance %>%
+  dplyr::group_by(method_label, threshold) %>%
+  dplyr::summarise(
+    n_replicates = dplyr::n(),
+    mean_detection = mean(detection_concordance, na.rm = TRUE),
+    mean_designation = mean(designation_concordance, na.rm = TRUE),
+    mean_interval = mean(interval_concordance, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(
+    mean_detection = sprintf("%.4f", mean_detection),
+    mean_designation = ifelse(is.nan(as.numeric(mean_designation)), "-",
+                               sprintf("%.4f", as.numeric(mean_designation))),
+    mean_interval = ifelse(is.nan(as.numeric(mean_interval)), "-",
+                            sprintf("%.4f", as.numeric(mean_interval)))
+  )
+
+knitr::kable(avg_concordance,
+             col.names = c("Method", "Threshold", "N Replicates",
+                           "Detection", "Designation", "Interval"),
+             caption = "Mean Concordance by Method and Threshold")
+```
+
+```{r}
+#| label: viz-avg-concordance-heatmap
+#| fig-cap: "Mean concordance scores by method and threshold"
+#| fig-height: 5
+
+avg_long <- concordance %>%
+  dplyr::group_by(method_label, threshold) %>%
+  dplyr::summarise(
+    Detection = mean(detection_concordance, na.rm = TRUE),
+    Designation = mean(designation_concordance, na.rm = TRUE),
+    Interval = mean(interval_concordance, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  tidyr::pivot_longer(
+    cols = c(Detection, Designation, Interval),
+    names_to = "score_type",
+    values_to = "mean_score"
+  ) %>%
+  dplyr::filter(!is.nan(mean_score))
+
+ggplot2::ggplot(avg_long,
+                ggplot2::aes(x = score_type,
+                             y = paste(method_label, threshold, sep = " / "),
+                             fill = mean_score)) +
+  ggplot2::geom_tile(color = "white", linewidth = 0.5) +
+  ggplot2::geom_text(ggplot2::aes(label = sprintf("%.3f", mean_score)), size = 4) +
+  ggplot2::scale_fill_gradient(low = "#fee0d2", high = "#2ca02c", limits = c(0, 1)) +
+  ggplot2::labs(x = "Concordance Score", y = "Method / Threshold", fill = "Mean Score")
+```
+
+### Per-QTL Interval Concordance Detail
+
+For each QTL interval detected by both paths, this shows the individual Jaccard overlap score.
+A score of 1.0 means start and end positions match perfectly; lower values indicate partial
+overlap.
+
+```{r}
+#| label: viz-interval-jaccard-scatter
+#| fig-cap: "Per-QTL interval Jaccard scores, faceted by method"
+#| eval: !expr nrow(interval_conc_per_qtl) > 0
+
+ggplot2::ggplot(interval_conc_per_qtl,
+                ggplot2::aes(x = reorder(join_key, qtl_interval_jaccard),
+                             y = qtl_interval_jaccard,
+                             color = threshold)) +
+  ggplot2::geom_point(size = 3, alpha = 0.7) +
+  ggplot2::geom_hline(yintercept = 1, linetype = "dashed", color = "grey50") +
+  ggplot2::facet_wrap(~ method_label, scales = "free_x") +
+  ggplot2::scale_y_continuous(limits = c(0, 1.05)) +
+  ggplot2::labs(x = NULL, y = "Interval Jaccard Score", color = "Threshold") +
+  ggplot2::theme(axis.text.x = ggplot2::element_blank(),
+                 axis.ticks.x = ggplot2::element_blank())
+```
+
+```{r}
+#| label: interval-concordance-summary
+#| results: asis
+
+if (nrow(interval_conc_per_qtl) > 0) {
+  n_perfect <- sum(interval_conc_per_qtl$qtl_interval_jaccard == 1)
+  n_total <- nrow(interval_conc_per_qtl)
+  n_partial <- n_total - n_perfect
+
+  if (n_partial == 0) {
+    cat(
+        sprintf(" All %d detected QTL intervals match perfectly (Jaccard = 1.0).\n",
+                n_total))
+  } else {
+      cat(
+        sprintf(" %d of %d intervals have imperfect overlap.\n\n",
+                n_partial, n_total))
+    imperfect <- interval_conc_per_qtl %>%
+      dplyr::filter(qtl_interval_jaccard < 1) %>%
+      dplyr::select(dplyr::all_of(mapping_group), join_key, qtl_interval_jaccard,
+                    startPOS_legacy, endPOS_legacy, startPOS_db, endPOS_db) %>%
+      dplyr::mutate(qtl_interval_jaccard = sprintf("%.4f", qtl_interval_jaccard))
+    print(knitr::kable(imperfect, caption = "QTL Intervals with Imperfect Overlap"))
+  }
+} else {
+  cat("No QTL intervals detected by both paths to compare.\n")
+}
+```

@@ -1,0 +1,91 @@
+---
+title: "Issue Update"
+date: 2026-03-23
+format:
+  gfm:
+    preview-mode: raw
+engine: knitr
+---
+
+## Update — `2026-03-23`
+
+**Phase:** Fix
+**Status:** Resolved
+
+---
+
+## Solution
+
+### Approach
+
+Update the two failing assertions to reflect the corrected LOCO marker count behavior. A prior fix made LOCO `n_markers` in mappings metadata equal to the full LD-pruned marker set size (same as INBRED), so both `expect_lt` assertions are now incorrect. Replace with `expect_equal` and revise test names and comments accordingly.
+
+The BF threshold fix in `analyze_qtl.R` — which uses `nrow(mapping_data)` rather than the stored `n_markers` — is unrelated and unchanged.
+
+### Changes Made
+
+**`tests/testthat/test-cross_validation.R` — lines 321–360:**
+
+```r
+# before
+test_that("loco GWA has fewer markers than inbred for same marker set (issue111 regression guard)", {
+  # ...
+  expect_lt(loco_row$n_markers, inbred_row$n_markers, ...)
+})
+
+# after
+test_that("loco and inbred GWA have equal marker counts for same marker set", {
+  # ...
+  expect_equal(loco_row$n_markers, inbred_row$n_markers, ...)
+})
+```
+
+**`tests/testthat/test-db_structure.R` — lines 550–576:**
+
+```r
+# before
+test_that("loco GWA marker count is less than marker set size (GCTA exclusion invariant)", {
+  # ...
+  expect_lt(row$n_markers, ms_row$n_markers[1], ...)
+})
+
+# after
+test_that("loco GWA marker count equals marker set size", {
+  # ...
+  expect_equal(row$n_markers, ms_row$n_markers[1], ...)
+})
+```
+
+### Rationale
+
+The tests encoded old behavior (GCTA silently excludes near-singular markers from LOCO output → LOCO count < marker set count). The upstream fix corrected the stored LOCO `n_markers` to match the marker set size. After the fix, both modes store equal marker counts and the strict-inequality assertions are always false.
+
+---
+
+## Validation
+
+### Test Run
+
+**Command:**
+
+```bash
+TEST_DB_DIR=tests/integration_data/test/db \
+  TEST_WORK_DIR=tests/.nf-work \
+  TEST_LEGACY_ASSESSMENT=tests/integration_data/test/simulation_assessment_results.tsv \
+  TEST_DB_ASSESSMENT=tests/integration_data/test/db_simulation_assessment_results.tsv \
+  Rscript tests/run_tests.R
+```
+
+**Executor:** local
+**Resume from cache:** N/A (test suite only)
+
+### Pass / Fail
+
+- [ ] Pipeline completed without error
+- [ ] Output files present and non-empty
+- [x] Results consistent with expected behaviour
+- [ ] No regression in previously passing tests
+
+---
+
+*Comment generated from `comment.qmd` template · nemascan-sims-nf issue workflow*

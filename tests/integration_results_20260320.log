@@ -1,0 +1,63 @@
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+Some features are not enabled in this build of Arrow. Run `arrow_info()` for more information.
+The repository you retrieved Arrow from did not include all of Arrow's features.
+You can install a fully-featured version by running:
+`install.packages('arrow', repos = 'https://apache.r-universe.dev')`.
+
+Attaching package: ‘arrow’
+
+The following object is masked from ‘package:utils’:
+
+    timestamp
+
+Loading required package: DBI
+
+Attaching package: ‘readr’
+
+The following objects are masked from ‘package:testthat’:
+
+    edition_get, local_edition
+
+
+Attaching package: ‘data.table’
+
+The following object is masked from ‘package:purrr’:
+
+    transpose
+
+The following objects are masked from ‘package:dplyr’:
+
+    between, first, last
+
+assessment_cross_validation: ................
+assessment_var_exp: .................
+assessment: .....................................................................
+cross_validation: ........................
+db_structure: ......................................................................
+genotype_storage: ...................
+hash_generation: ...........................................................................
+library_check: .................
+lockfile: ...S
+module_sourcing: ...............
+read_bim: ...
+read_raw_gwa: ..........
+safe_log10p: .........
+schema_changes: ......................................
+significance: ...
+trait_storage: ............................................
+write_gwa_to_db: ........................................
+
+══ Skipped ═════════════════════════════════════════════════════════════════════
+1. renv.lock contains all packages used in the r_packages container scope ('test-lockfile.R:30:3') - Reason: renv.lock is a placeholder stub — run scripts/generate_renv_lock.sh to populate it
+
+══ DONE ════════════════════════════════════════════════════════════════════════
