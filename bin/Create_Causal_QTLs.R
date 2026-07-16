@@ -18,8 +18,6 @@ library(purrr)
 # args <- c("TO_SIMS.bim", 100, "gamma", "test.bed")
 # args <- c("TO_SIMS.bim", 5, "0.2-0.3", "chr125.bed")
 args = commandArgs(trailingOnly=TRUE)
-seed <- as.integer(args[length(args)])
-set.seed(seed)
 
 variants <- read.table(args[1]) %>%
   dplyr::filter(V1 != "MtDNA") %>%
