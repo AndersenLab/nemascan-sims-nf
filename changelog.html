@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-03-23">
+<meta name="dcterms.date" content="2026-07-16">
 
 <title>Changelog – nemascan-sims-nf</title>
 <style>
@@ -3891,6 +3891,10 @@ margin: 2rem 0;
     <a class="nav-link" href="./cross-validation.html"> 
 <span class="menu-text">Cross-Validation</span></a>
   </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="./error-handling-replay.html"> 
+<span class="menu-text">Replay &amp; Error Handling</span></a>
+  </li>  
   <li class="nav-item dropdown ">
     <a class="nav-link dropdown-toggle" href="#" id="nav-menu-development" role="link" data-bs-toggle="dropdown" aria-expanded="false">
  <span class="menu-text">Development</span>
@@ -3921,6 +3925,16 @@ margin: 2rem 0;
     <a class="dropdown-item" href="./testing-output-validation.html">
  <span class="dropdown-text">Output Validation</span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="./verifying-outputs.html">
+ <span class="dropdown-text">Verifying Simulation Outputs</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="./transfer-and-archival.html">
+ <span class="dropdown-text">Transfer &amp; Archival</span></a>
+  </li>  
         <li><hr class="dropdown-divider"></li>
         <li>
     <a class="dropdown-item" href="./changelog.html">
@@ -3944,18 +3958,30 @@ margin: 2rem 0;
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#unreleased-march-2026" id="toc-unreleased-march-2026" class="nav-link active" data-scroll-target="#unreleased-march-2026">[Unreleased] — March 2026</a>
+  <li><a href="#unreleased-may-2026" id="toc-unreleased-may-2026" class="nav-link active" data-scroll-target="#unreleased-may-2026">[Unreleased] — May 2026</a>
+  <ul class="collapse">
+  <li><a href="#changed" id="toc-changed" class="nav-link" data-scroll-target="#changed">Changed</a></li>
+  </ul></li>
+  <li><a href="#unreleased-april-2026" id="toc-unreleased-april-2026" class="nav-link" data-scroll-target="#unreleased-april-2026">[Unreleased] — April 2026</a>
+  <ul class="collapse">
+  <li><a href="#removed" id="toc-removed" class="nav-link" data-scroll-target="#removed">Removed</a></li>
+  </ul></li>
+  <li><a href="#unreleased-march-2026" id="toc-unreleased-march-2026" class="nav-link" data-scroll-target="#unreleased-march-2026">[Unreleased] — March 2026</a>
   <ul class="collapse">
   <li><a href="#fixed" id="toc-fixed" class="nav-link" data-scroll-target="#fixed">Fixed</a></li>
+  <li><a href="#added" id="toc-added" class="nav-link" data-scroll-target="#added">Added</a></li>
   <li><a href="#fixed-1" id="toc-fixed-1" class="nav-link" data-scroll-target="#fixed-1">Fixed</a></li>
+  <li><a href="#changed-1" id="toc-changed-1" class="nav-link" data-scroll-target="#changed-1">Changed</a></li>
   <li><a href="#fixed-2" id="toc-fixed-2" class="nav-link" data-scroll-target="#fixed-2">Fixed</a></li>
   <li><a href="#fixed-3" id="toc-fixed-3" class="nav-link" data-scroll-target="#fixed-3">Fixed</a></li>
-  <li><a href="#added" id="toc-added" class="nav-link" data-scroll-target="#added">Added</a></li>
   <li><a href="#fixed-4" id="toc-fixed-4" class="nav-link" data-scroll-target="#fixed-4">Fixed</a></li>
+  <li><a href="#fixed-5" id="toc-fixed-5" class="nav-link" data-scroll-target="#fixed-5">Fixed</a></li>
   <li><a href="#added-1" id="toc-added-1" class="nav-link" data-scroll-target="#added-1">Added</a></li>
+  <li><a href="#fixed-6" id="toc-fixed-6" class="nav-link" data-scroll-target="#fixed-6">Fixed</a></li>
   <li><a href="#added-2" id="toc-added-2" class="nav-link" data-scroll-target="#added-2">Added</a></li>
-  <li><a href="#changed" id="toc-changed" class="nav-link" data-scroll-target="#changed">Changed</a></li>
   <li><a href="#added-3" id="toc-added-3" class="nav-link" data-scroll-target="#added-3">Added</a></li>
+  <li><a href="#changed-2" id="toc-changed-2" class="nav-link" data-scroll-target="#changed-2">Changed</a></li>
+  <li><a href="#added-4" id="toc-added-4" class="nav-link" data-scroll-target="#added-4">Added</a></li>
   </ul></li>
   <li><a href="#phase-5-database-integration" id="toc-phase-5-database-integration" class="nav-link" data-scroll-target="#phase-5-database-integration">Phase 5 — Database Integration</a>
   <ul class="collapse">
@@ -4004,7 +4030,7 @@ margin: 2rem 0;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">March 23, 2026</p>
+      <p class="date">July 16, 2026</p>
     </div>
   </div>
   
@@ -4017,10 +4043,80 @@ margin: 2rem 0;
 
 
 <p>All notable changes to <code>nemascan-sims-nf</code> are recorded here. The project does not use version tags; entries are organized by development phase and date.</p>
+<section id="unreleased-may-2026" class="level2">
+<h2 class="anchored" data-anchor-id="unreleased-may-2026">[Unreleased] — May 2026</h2>
+<section id="changed" class="level3">
+<h3 class="anchored" data-anchor-id="changed">Changed</h3>
+<ul>
+<li><p><strong>In-pipeline QTL detection + assessment fanout is now opt-in via <code>--run_postprocess</code></strong> (<code>fix/perform-gwa-concurrent-mod-exception</code>, 2026-05-18): The <code>DB_MIGRATION_ANALYZE_QTL</code> + <code>DB_MIGRATION_ASSESS_SIMS</code> fanout and the <code>db_simulation_assessment_results.tsv</code> <code>collectFile</code> are now wrapped in <code>if (params.run_postprocess) { … }</code>. The default is <code>false</code>, which is a <strong>behavior change</strong>: out-of-repo callers (CaeNDR production, user scripts) that do not pass the flag will no longer see the assessment TSV at the end of a run. The Parquet DB itself is unchanged — it is always written, regardless of the flag — so offline analysis against the populated DB remains possible. A <code>log.info</code> reminder is emitted at pipeline start whenever <code>run_postprocess = false</code> to mitigate silent surprise. <code>DB_MIGRATION_AGGREGATE_METADATA</code> is intentionally <strong>not</strong> gated: it feeds <code>ch_db_analysis_barrier</code> and the <code>VALIDATE_REPLICATION_COMPLETE</code> trigger, both of which must remain unconditional. <code>ch_db_assessment_pub</code> is initialized to <code>Channel.empty()</code> outside the gate so the <code>publish</code> stanza at the bottom of <code>main.nf</code> continues to compile when the gate is closed — publishing an empty channel is a no-op. The flag was introduced alongside the ConcurrentModificationException fix in <code>GCTA_PERFORM_GWA</code> so that the downstream analyze/assess processes (susceptible to similar channel-recombination races) can be held offline until they receive an equivalent fix.</p></li>
+<li><p><strong>Halt-with-replay-manifest error handling</strong> (<code>fix/error-handling</code>, 2026-05-12): Post-fanout processes now drop on retry exhaustion via <code>errorStrategy = &#39;ignore&#39;</code> instead of terminating the pipeline. Failed slots are recorded to <code>${output_dir}/.failures/&lt;key&gt;.json</code> by a bash EXIT trap (<code>bin/failure_trap.sh</code>), aggregated to <code>${output_dir}/replay.tsv</code> in <code>workflow.onComplete</code>, and recovered by a second invocation: <code>-profile replay --replay &lt;tsv&gt; -resume</code>. <code>DB_CLEAN_REPLAY_SLOTS</code> removes the 12 partial-write files per replayed slot (4 trait + 8 mapping) before the replay rewrites them. <code>VALIDATE_REPLICATION_COMPLETE</code> warns on short replication but does not fail the run — the pipeline exits 0 even when reps were dropped. Prep-phase processes (<code>bcftools_*</code>, <code>plink_recode_*</code>, <code>r_find_genotype_matrix_eigen</code>) stay on <code>terminate</code> (a prep-phase failure is cone-level, not rep-level). See <a href="./error-handling-replay.html">Replay &amp; Error Handling</a> for the operator runbook, operational constraints (output_dir bind-mount, manual <code>replay.tsv</code> rotation, scratch retention window), the statistical caveat for replayed reps, and known limitations (<code>replay.tsv</code> archival, SIGKILL safety net, and <code>REPLAY_REQUIRED</code> flag file are not yet implemented).</p></li>
+</ul>
+</section>
+</section>
+<section id="unreleased-april-2026" class="level2">
+<h2 class="anchored" data-anchor-id="unreleased-april-2026">[Unreleased] — April 2026</h2>
+<section id="removed" class="level3">
+<h3 class="anchored" data-anchor-id="removed">Removed</h3>
+<ul>
+<li><strong>Replicate-based RNG seeding removed from causal variant scripts</strong> (<code>refactor/rep-seed-strat</code>, 2026-04-23): The <code>fix/rand-seed-stochastic-scripts</code> fix used <code>rep</code> directly as the RNG seed, which prevented scaling up simulations (adding replicates reused existing seeds) and created seed collisions when failed replicates were re-run with a new ID. Because GCTA phenotype simulation is itself non-deterministic (no <code>--seed</code> flag), there is no pipeline-wide reproducibility to preserve.
+<ul>
+<li><code>bin/create_causal_vars.py</code>: <code>np.random.default_rng(rep)</code> → <code>np.random.default_rng()</code> (OS-entropy seed)</li>
+<li><code>bin/Create_Causal_QTLs.R</code>: <code>set.seed(as.integer(rep))</code> call removed</li>
+<li><code>trait_metadata_schema()</code> <code>sim_seed int32</code> field removed; <code>write_trait_metadata()</code> signature updated</li>
+<li><code>write_trait_data.R</code> no longer passes <code>sim_seed</code></li>
+<li><code>test-db_structure.R</code> updated to expect 12-column trait metadata schema (no <code>sim_seed</code>)</li>
+</ul></li>
+</ul>
+</section>
+</section>
 <section id="unreleased-march-2026" class="level2">
 <h2 class="anchored" data-anchor-id="unreleased-march-2026">[Unreleased] — March 2026</h2>
 <section id="fixed" class="level3">
 <h3 class="anchored" data-anchor-id="fixed">Fixed</h3>
+<ul>
+<li><strong><code>DB_MIGRATION_ANALYZE_QTL</code> / <code>DB_MIGRATION_ASSESS_SIMS</code> “Too many open files”</strong> (<code>fix/db-qtl-io-error</code>, 2026-04-09): A production Rockfish run (<code>Sims_ce-cb-ct_nqtl1-50_h2grid_50reps</code>) hit 2,024 task failures with <code>IO Error: Cannot open file ... Too many open files in system</code>. Root cause: every <code>analyze_qtl</code> / <code>assess_sims</code> task called <code>query_for_threshold_analysis()</code> which routes through <code>open_mapping_db()</code> in <code>R/queries.R</code>. That function executes <code>CREATE VIEW mappings AS SELECT * FROM read_parquet(&#39;.../db/mappings/**/data.parquet&#39;, union_by_name = true)</code>, and DuckDB must open <strong>every</strong> parquet file at query-prepare time to compute the unified schema — 16,608 files on the failing run, replicated across ~100 concurrent tasks (cross-contamination was the smoking gun: tasks crashed trying to open unrelated partitions). Each task already knows its own <code>population</code> and <code>mapping_id</code> at launch time, so the global view is unnecessary. The fix adds <code>query_mapping_direct(mapping_id,   population, ms_meta, base_dir)</code> in <code>R/queries.R</code> that reads <code>db/mappings/population={pop}/mapping_id={id}/data.parquet</code> directly via <code>arrow::read_parquet()</code>, reuses <code>read_marker_set()</code> for the CHROM/POS lookup, and preserves the LOCO CHROM:POS uniqueness check verbatim. The two hot-path call sites (<code>analyze_qtl.R:108</code>, <code>assess_sims.R:203</code>) now use the direct helper; per-task file opens drop from ≈16,608 to ≤3. <code>open_mapping_db()</code> and <code>query_for_threshold_analysis()</code> stay intact for bulk/aggregate queries. No DB regeneration, no schema change, no Nextflow changes. A new schema-parity test in <code>test-cross_validation.R</code> asserts the direct and legacy paths return equivalent dataframes. Full RCA: <code>issues/new-db-qtl-analysis-too-many-files/rca.md</code>.</li>
+</ul>
+</section>
+<section id="added" class="level3">
+<h3 class="anchored" data-anchor-id="added">Added</h3>
+<ul>
+<li><strong>Multi-profile integration testing support</strong> (<code>fix/merge-unit-with-integration</code>, 2026-03-23): Extended the integration test framework to cover four testing profiles beyond the default <code>test</code> baseline.
+<ul>
+<li><code>tests/collect_test_data.sh</code> now accepts <code>--profile &lt;name&gt;</code>, <code>--no-legacy</code>, and <code>--clean</code> flags; artifacts are stored in <code>tests/integration_data/&lt;profile&gt;/</code> subdirectories so each profile’s outputs can be tested independently</li>
+<li><code>test-db_structure.R</code> gains <code>TEST_EXPECTED_MARKER_SETS</code> and <code>TEST_EXPECTED_POPULATIONS</code> env var guards; the inbred/loco marker count invariants now loop over all populations (not just <code>[1,]</code>) to cover multi-population and multi-species runs</li>
+<li><code>test-cross_validation.R</code>: per-population LOCO &lt; INBRED marker count loop</li>
+<li><code>test-assessment_cross_validation.R</code> gains per-population concordance breakdown and chromosome-naming consistency check (multi-species guard)</li>
+<li><code>test-cv_pool.R</code> (new, 7 tests): cv_pool-specific assertions — causal genotypes directory and schema, non-marker FN row presence and <code>significant=NA</code> pattern, <code>Simulated.QTL.VarExp</code> for non-marker positions via per-trait causal genotypes, non-marker causal QTLs absent from markers DB view, standalone Power/FDR check</li>
+</ul></li>
+<li><strong>HPC integration testing documentation</strong> (<code>fix/merge-unit-with-integration</code>, 2026-03-27): <code>docs/testing-hpc.qmd</code> now provides exact per-profile test invocation commands for all 8 profiles (4 local + 4 HPC) with the correct environment variables (<code>TEST_POPULATION</code>, <code>TEST_EXPECTED_MAPPINGS</code>, <code>TEST_EXPECTED_MARKER_SETS</code>, <code>TEST_EXPECTED_POPULATIONS</code>). All pipeline run commands use <code>--output_dir   Analysis_Results-&lt;profile&gt;</code> to prevent same-day output collisions. Per-profile work directory rsync commands added for cross-validation testing.</li>
+</ul>
+</section>
+<section id="fixed-1" class="level3">
+<h3 class="anchored" data-anchor-id="fixed-1">Fixed</h3>
+<ul>
+<li><p><strong>Concurrent write race in marker set metadata on HPC</strong> (<code>fix/merge-unit-with-integration</code>, 2026-03-26): <code>write_marker_set_metadata()</code> previously appended to a single shared <code>marker_set_metadata.parquet</code> file using a read-modify-write pattern. When multiple <code>DB_MIGRATION_WRITE_MARKER_SET</code> SLURM jobs ran in parallel (e.g., 9 jobs for the three-species HPC test profile), concurrent writes caused lost updates — population records were silently overwritten. Downstream processes (<code>WRITE_GWA_TO_DB</code>, <code>WRITE_TRAIT_DATA</code>) then failed with “Marker set metadata not found”. The fix replaces the single shared file with per-population metadata files (<code>marker_set_metadata/{population}_{maf}_metadata.parquet</code>), eliminating the shared mutable resource entirely.</p></li>
+<li><p><strong><code>designate_qtl()</code> correctly classifies all non-marker causal variants</strong> (<code>fix/merge-unit-with-integration</code>, 2026-03-27): when <code>cv_maf &lt; ms_maf</code>, causal variants absent from GWA output receive <code>significant=NA</code>. Previously <code>case_when</code> produced <code>designation=NA</code> for these rows. The fix handles both cases:</p>
+<ul>
+<li><code>Detected=TRUE, significant=NA</code> (non-marker variant inside a detected QTL interval) → <code>Detected.CV</code> — correctly localized despite no direct GWA test</li>
+<li><code>Detected=FALSE, significant=NA</code> (non-marker variant not in any interval) → <code>Missed.CV</code> — contributes to the Power denominator as a false negative</li>
+</ul></li>
+<li><p><strong><code>collect_test_data.sh</code> prevents nested <code>db/db/</code> on re-collection</strong> (<code>fix/merge-unit-with-integration</code>, 2026-03-27): <code>cp -R</code> into an existing destination created a nested copy. The script now removes the stale <code>db/</code> directory before copying. Additionally, the script now uses <code>--output_dir   Analysis_Results-&lt;profile&gt;</code> when running the pipeline and looks for the profile-named output directory first when collecting, preventing cross-profile contamination when multiple profiles are run on the same day.</p></li>
+<li><p><strong>Selective cross-validation file collection from work directory</strong> (<code>fix/merge-unit-with-integration</code>, 2026-03-27): <code>collect_test_data.sh</code> gains <code>--work-dir &lt;path&gt;</code> flag that extracts only the files needed by <code>test-cross_validation.R</code> (<code>.fastGWA</code>, <code>.mlma</code>, <code>*_total_independent_tests.txt</code>) into a per-profile <code>work/</code> subdirectory. This replaces syncing the full Nextflow work directory (100+ GB on HPC) — the collected cross-validation files are typically &lt; 5% of that. Each profile now has its own <code>work/</code> directory alongside <code>db/</code> and assessment TSVs, eliminating the shared <code>tests/.nf-work/</code> bottleneck.</p></li>
+</ul>
+</section>
+<section id="changed-1" class="level3">
+<h3 class="anchored" data-anchor-id="changed-1">Changed</h3>
+<ul>
+<li><strong>Integration tests are now the sole evaluation framework</strong> (<code>fix/merge-unit-with-integration</code>, 2026-03-23): Static-fixture unit tests (<code>test-*.R</code> in <code>tests/testthat/</code> except the three integration files) removed. The integration framework was extended to cover the behaviors they tested — now evaluated against real pipeline output rather than synthetic fixtures.
+<ul>
+<li><code>test-db_structure.R</code> gains 7 new tests: <code>traits/</code> subdirectory existence, genotype matrix Arrow schema, trait metadata schema (<code>sim_seed int32</code>), phenotype schema (no-NA check), causal variants schema (<code>QTL</code> in <code>CHROM:POS</code> format), inbred <code>n_markers == marker_set_metadata$n_markers</code>, and loco <code>n_markers &lt; marker_set_metadata$n_markers</code> (issue111 regression guard; 27 tests total)</li>
+<li><code>test-assessment_cross_validation.R</code> gains 3 new tests: DB assessment column completeness (35 columns from <code>format_assessment_tsv()</code>), <code>calculate_simrep_performance()</code> on real data, <code>designate_qtl()</code> valid-category assertion (10 tests total)</li>
+<li><code>test-cross_validation.R</code> gains 3 new tests: <code>read_raw_gwa_file()</code> normalized column schema for both <code>.fastGWA</code> and <code>.mlma</code>, <code>query_by_mapping_id()</code> full coverage, loco &lt; inbred marker count invariant (8 tests total)</li>
+</ul></li>
+</ul>
+</section>
+<section id="fixed-2" class="level3">
+<h3 class="anchored" data-anchor-id="fixed-2">Fixed</h3>
 <ul>
 <li><strong>Eigen calculation uses full decomposition (Li &amp; Ji 2005)</strong> (<code>fix-eigen-calculation</code>, 2026-03-20): Replaced the <code>RSpectra::eigs_sym()</code> partial-decomposition while-loop in <code>bin/Get_GenoMatrix_Eigen.R</code> with a full <code>eigen()</code> decomposition implementing the Li &amp; Ji
 <ol start="2005" type="1">
@@ -4028,14 +4124,14 @@ margin: 2rem 0;
 </ol></li>
 </ul>
 </section>
-<section id="fixed-1" class="level3">
-<h3 class="anchored" data-anchor-id="fixed-1">Fixed</h3>
+<section id="fixed-3" class="level3">
+<h3 class="anchored" data-anchor-id="fixed-3">Fixed</h3>
 <ul>
 <li><strong>Missing <code>versions.yml</code> in DB migration modules</strong> (<code>fix/versions_yml_db_migration</code>, 2026-03-05): Added <code>versions.yml</code> output to all 7 <code>modules/db_migration/*/main.nf</code> processes (<code>write_marker_set</code>, <code>write_genotype_matrix</code>, <code>write_gwa_to_db</code>, <code>write_trait_data</code>, <code>aggregate_metadata</code>, <code>analyze_qtl</code>, <code>assess_sims</code>). The pattern was established across all other module families (bcftools, GCTA, PLINK, R, Python) but had not been carried forward when the DB migration layer was added. All 7 processes now capture the R version and wire their <code>versions</code> output channel into <code>ch_versions</code> in <code>main.nf</code>.</li>
 </ul>
 </section>
-<section id="fixed-2" class="level3">
-<h3 class="anchored" data-anchor-id="fixed-2">Fixed</h3>
+<section id="fixed-4" class="level3">
+<h3 class="anchored" data-anchor-id="fixed-4">Fixed</h3>
 <ul>
 <li><strong>Pipeline configuration gaps</strong> (<code>fix/pipeline_configuration_gaps</code>, 2026-03-05):
 <ul>
@@ -4046,20 +4142,14 @@ margin: 2rem 0;
 </ul></li>
 </ul>
 </section>
-<section id="fixed-3" class="level3">
-<h3 class="anchored" data-anchor-id="fixed-3">Fixed</h3>
+<section id="fixed-5" class="level3">
+<h3 class="anchored" data-anchor-id="fixed-5">Fixed</h3>
 <ul>
-<li><strong>Stochastic script reproducibility</strong> (<code>fix/rand-seed-stochastic-scripts</code>, 2026-03-05): causal variant selection and effect size simulation are now fully reproducible across pipeline runs:
-<ul>
-<li><code>bin/create_causal_vars.py</code> seeds <code>np.random.default_rng(rep)</code> at startup; all stochastic calls (<code>rng.choice</code>, <code>rng.gamma</code>, <code>rng.uniform</code>) use the seeded Generator. Previously, <code>np.random.default_rng()</code> was called without a seed, making results non-deterministic.</li>
-<li><code>bin/Create_Causal_QTLs.R</code> calls <code>set.seed(as.integer(rep))</code> before any stochastic draws (<code>rgamma</code>, <code>sample</code>, <code>runif</code>).</li>
-<li>Both Nextflow modules (<code>PYTHON_SIMULATE_EFFECTS_GLOBAL</code>, <code>R_SIMULATE_EFFECTS_GLOBAL</code>, <code>R_SIMULATE_EFFECTS_LOCAL</code>) now pass <code>${rep}</code> as the seed argument to the scripts.</li>
-<li><code>trait_metadata_schema()</code> gains a new <code>sim_seed</code> (int32) field; <code>write_trait_metadata()</code> stores the seed used for each simulated trait, enabling exact post-hoc reproduction without the Nextflow cache.</li>
-</ul></li>
+<li><strong>Stochastic script RNG wired through single Generator</strong> (<code>fix/rand-seed-stochastic-scripts</code>, 2026-03-05): causal variant selection and effect size simulation calls (<code>rng.choice</code>, <code>rng.gamma</code>, <code>rng.uniform</code>) were unified under a single NumPy <code>Generator</code> instance in <code>create_causal_vars.py</code>. Previously, <code>simulate_effect_gamma()</code> called <code>np.random.default_rng()</code> internally, creating an independent unseeded Generator. The rep-based seeding added in this fix was subsequently removed — see <code>refactor/rep-seed-strat</code> above.</li>
 </ul>
 </section>
-<section id="added" class="level3">
-<h3 class="anchored" data-anchor-id="added">Added</h3>
+<section id="added-1" class="level3">
+<h3 class="anchored" data-anchor-id="added-1">Added</h3>
 <ul>
 <li><strong>Non-marker causal variants</strong> (<code>feature/add-nonmarker-cvs</code>, 2026-03-03): causal variants can now be drawn from a separately-configured variant pool rather than the marker SNP set. Key changes:
 <ul>
@@ -4068,28 +4158,28 @@ margin: 2rem 0;
 <li>Two parallel PLINK runs per group: <code>PLINK_RECODE_MS_VCF</code> (marker SNP set, drives GWA) and <code>PLINK_RECODE_CV_VCF</code> (CV pool, drives causal variant selection). Mixed-species runs supported in a single pipeline invocation.</li>
 <li><code>PYTHON_SIMULATE_EFFECTS_GLOBAL</code> now selects causal variants from <code>CV_TO_SIMS.bim</code> (CV pool BIM); <code>GCTA_SIMULATE_PHENOTYPES</code> now uses <code>--bfile CV_TO_SIMS</code>.</li>
 <li>Marker set ID upgraded to v=2: SHA-256 now encodes <code>population</code>, <code>maf</code>, <code>species</code>, <code>vcf_release_id</code>, and <code>ms_ld</code>. CV parameters (<code>cv_maf</code>, <code>cv_ld</code>) are intentionally excluded from the hash.</li>
-<li><code>marker_set_metadata.parquet</code> gains three new columns: <code>species</code> (utf8), <code>vcf_release_id</code> (utf8), <code>ms_ld</code> (float64).</li>
+<li>Marker set metadata gains three new columns: <code>species</code> (utf8), <code>vcf_release_id</code> (utf8), <code>ms_ld</code> (float64).</li>
 <li>DB write scripts (<code>write_marker_set.R</code>, <code>write_genotype_matrix.R</code>, <code>write_gwa_to_db.R</code>) and their Nextflow modules updated to accept and pass <code>--species</code>, <code>--vcf_release_id</code>, <code>--ms_ld</code>.</li>
 <li><code>aggregate_metadata.R</code> fallback path updated to emit <code>NA</code> for the three new columns when no metadata sidecars exist.</li>
 </ul></li>
 </ul>
 </section>
-<section id="fixed-4" class="level3">
-<h3 class="anchored" data-anchor-id="fixed-4">Fixed</h3>
+<section id="fixed-6" class="level3">
+<h3 class="anchored" data-anchor-id="fixed-6">Fixed</h3>
 <ul>
 <li><strong>Python dependency pinning</strong> (<code>fix/python-requirements</code>, 2026-03-05): added <code>requirements.txt</code> at the repository root pinning <code>numpy==2.2.3</code> and <code>pandas==2.2.3</code> to the versions present in the <code>andersenlab/numpy:20250506</code> container. The <code>PYTHON_SIMULATE_EFFECTS_GLOBAL</code> <code>versions.yml</code> emission now also records <code>numpy</code> and <code>pandas</code> library versions alongside the Python interpreter version, providing runtime provenance in pipeline output logs.</li>
-</ul>
-</section>
-<section id="added-1" class="level3">
-<h3 class="anchored" data-anchor-id="added-1">Added</h3>
-<ul>
-<li><strong>R package lockfile</strong> (<code>fix/r_package_lockfile</code>, 2026-03-05): <code>renv.lock</code> committed at the project root records the exact versions of all R packages installed in the <code>andersenlab/r_packages:20250519</code> container. Provides a verifiable record of the software environment that produced simulation results and enables local environment reproduction via <code>renv::restore()</code>. <code>scripts/generate_renv_lock.sh</code> documents how to regenerate the lockfile when the container changes.</li>
 </ul>
 </section>
 <section id="added-2" class="level3">
 <h3 class="anchored" data-anchor-id="added-2">Added</h3>
 <ul>
-<li><strong>Strainfile provenance in marker set metadata</strong> (<code>fix/strain-file-not-hashed</code>, 2026-03-05): <code>marker_set_metadata.parquet</code> now records two new columns for reproducibility auditing:
+<li><strong>R package lockfile</strong> (<code>fix/r_package_lockfile</code>, 2026-03-05): <code>renv.lock</code> committed at the project root records the exact versions of all R packages installed in the <code>andersenlab/r_packages:20250519</code> container. Provides a verifiable record of the software environment that produced simulation results and enables local environment reproduction via <code>renv::restore()</code>. <code>scripts/generate_renv_lock.sh</code> documents how to regenerate the lockfile when the container changes.</li>
+</ul>
+</section>
+<section id="added-3" class="level3">
+<h3 class="anchored" data-anchor-id="added-3">Added</h3>
+<ul>
+<li><strong>Strainfile provenance in marker set metadata</strong> (<code>fix/strain-file-not-hashed</code>, 2026-03-05): Marker set metadata now records two new columns for reproducibility auditing:
 <ul>
 <li><code>strainfile_hash</code> (<code>utf8</code>) — SHA-256 hex digest of the complete strainfile, computed once at pipeline submission time (same value for all population groups in a run).</li>
 <li><code>strain_list</code> (<code>utf8</code>) — Comma-separated list of strain names used for the specific population group, derived from the strainfile at submission time.</li>
@@ -4098,8 +4188,8 @@ margin: 2rem 0;
 </ul></li>
 </ul>
 </section>
-<section id="changed" class="level3">
-<h3 class="anchored" data-anchor-id="changed">Changed</h3>
+<section id="changed-2" class="level3">
+<h3 class="anchored" data-anchor-id="changed-2">Changed</h3>
 <ul>
 <li><strong>Mapping data Parquet schema: FK columns removed</strong> (<code>reproducibility-updates</code>, 2026-03-10): <code>mappings/population={pop}/mapping_id={id}/data.parquet</code> now contains only the five measurement columns (<code>marker</code>, <code>AF1</code>, <code>BETA</code>, <code>SE</code>, <code>P</code>). The three foreign-key columns previously stored in every data file have been relocated:
 <ul>
@@ -4108,8 +4198,8 @@ margin: 2rem 0;
 </ul></li>
 </ul>
 </section>
-<section id="added-3" class="level3">
-<h3 class="anchored" data-anchor-id="added-3">Added</h3>
+<section id="added-4" class="level3">
+<h3 class="anchored" data-anchor-id="added-4">Added</h3>
 <ul>
 <li><code>mappings_metadata.parquet</code> sidecar file written to the database root by <code>DB_MIGRATION_AGGREGATE_METADATA</code> — provides a single queryable index of all mapping runs without scanning every Hive partition. (2026-03-02)</li>
 </ul>
@@ -4120,17 +4210,17 @@ margin: 2rem 0;
 <section id="pr-98-hash-based-ids-2026-03-01" class="level3">
 <h3 class="anchored" data-anchor-id="pr-98-hash-based-ids-2026-03-01">PR #98 — Hash-based IDs (2026-03-01)</h3>
 <p>Replaced sequential or filename-derived identifiers with deterministic 12-character MD5 hex IDs, making all IDs stable across <code>-resume</code> runs.</p>
-<section id="added-4" class="level4">
-<h4 class="anchored" data-anchor-id="added-4">Added</h4>
+<section id="added-5" class="level4">
+<h4 class="anchored" data-anchor-id="added-5">Added</h4>
 <ul>
 <li><code>generate_trait_id(group, maf, nqtl, effect, rep, h2)</code> — MD5 hash of concatenated parameters; used as the primary key for all per-trait Parquet files (<code>traits/</code>, <code>causal_variants/</code>, <code>phenotypes/</code>).</li>
 <li><code>generate_mapping_id(trait_id, mode, type)</code> — MD5 hash used as the Hive partition key under <code>mappings/population={pop}/mapping_id={id}/</code>.</li>
-<li><code>generate_marker_set_id(population, maf, species, vcf_release_id, ms_ld)</code> — SHA-256 hash (v=2) written to <code>marker_set_metadata.parquet</code> and used in the marker-set file names.</li>
+<li><code>generate_marker_set_id(population, maf, species, vcf_release_id, ms_ld)</code> — SHA-256 hash (v=2) written to per-population marker set metadata and used in the marker-set file names.</li>
 <li>Unit tests for all three hash functions in <code>test-hash_generation.R</code>, with golden-value assertions to catch silent hash drift.</li>
 </ul>
 </section>
-<section id="changed-1" class="level4">
-<h4 class="anchored" data-anchor-id="changed-1">Changed</h4>
+<section id="changed-3" class="level4">
+<h4 class="anchored" data-anchor-id="changed-3">Changed</h4>
 <ul>
 <li>Mappings Parquet schema reduced to core columns; accessible metadata (population, MAF, effect, nQTL, h2, replicate) is no longer duplicated in the mappings table — it is retrievable via the trait ID foreign key.</li>
 <li>Allele frequency (<code>AF</code>) column removed from the marker-set schema.</li>
@@ -4138,8 +4228,8 @@ margin: 2rem 0;
 <li>Trait storage tests updated to cover hash-based ID determinism and round-trip write/read.</li>
 </ul>
 </section>
-<section id="fixed-5" class="level4">
-<h4 class="anchored" data-anchor-id="fixed-5">Fixed</h4>
+<section id="fixed-7" class="level4">
+<h4 class="anchored" data-anchor-id="fixed-7">Fixed</h4>
 <ul>
 <li>Query functions updated to remove the defunct <code>AF</code> join that referenced a column no longer in the schema.</li>
 <li>Trait <code>id</code> generation corrected to use the hash framework (previously still used a non-hash method after the schema change).</li>
@@ -4148,8 +4238,8 @@ margin: 2rem 0;
 </section>
 <section id="pr-97-automated-cross-validation-tests-2026-02-27" class="level3">
 <h3 class="anchored" data-anchor-id="pr-97-automated-cross-validation-tests-2026-02-27">PR #97 — Automated Cross-Validation Tests (2026-02-27)</h3>
-<section id="added-5" class="level4">
-<h4 class="anchored" data-anchor-id="added-5">Added</h4>
+<section id="added-6" class="level4">
+<h4 class="anchored" data-anchor-id="added-6">Added</h4>
 <ul>
 <li><code>test-assessment_cross_validation.R</code> — compares <code>db_simulation_assessment_results.tsv</code> (DB path) against <code>simulation_assessment_results.tsv</code> (legacy path), computing per-replicate detection concordance, designation concordance, and interval overlap (Jaccard score).</li>
 <li><code>test-cross_validation.R</code> — round-trip check comparing Parquet DB contents against raw <code>.fastGWA</code>/<code>.mlma</code> files in the Nextflow work directory.</li>
@@ -4159,20 +4249,20 @@ margin: 2rem 0;
 <section id="pr-96-phase-5-genotype-trait-storage-2026-02-21" class="level3">
 <h3 class="anchored" data-anchor-id="pr-96-phase-5-genotype-trait-storage-2026-02-21">PR #96 — Phase 5: Genotype &amp; Trait Storage (2026-02-21)</h3>
 <p>Extended the Parquet database to capture the full data needed for offline variance-explained estimation and richer downstream queries.</p>
-<section id="added-6" class="level4">
-<h4 class="anchored" data-anchor-id="added-6">Added</h4>
+<section id="added-7" class="level4">
+<h4 class="anchored" data-anchor-id="added-7">Added</h4>
 <ul>
 <li><strong>Genotype matrix storage</strong> — <code>write_genotype_matrix()</code> / <code>read_genotype_matrix()</code> in <code>R/database.R</code>; long-format Parquet files (<code>{pop}_{maf}_genotypes.parquet</code>) written to <code>marker_sets/</code>.</li>
 <li><strong><code>DB_MIGRATION_WRITE_GENOTYPE_MATRIX</code></strong> Nextflow module (<code>modules/db_migration/write_genotype_matrix/</code>).</li>
 <li><strong>Trait data storage</strong> — three write functions (<code>write_trait_metadata()</code>, <code>write_causal_variants()</code>, <code>write_phenotype_data()</code>) and corresponding Parquet schemas in <code>R/database.R</code>.</li>
 <li><strong><code>DB_MIGRATION_WRITE_TRAIT_DATA</code></strong> Nextflow module (<code>modules/db_migration/write_trait_data/</code>); uses <code>.merge()</code> to align <code>GCTA_SIMULATE_PHENOTYPES</code> output channels by emission order.</li>
-<li>Phenotype stored in <code>phenotypes/</code> is the pre-upscaling GCTA <code>.phen</code> output (before <code>check_vp.py</code>), making the ANOVA SS ratio for offline variance-explained scale-invariant.</li>
+<li>Phenotype stored in <code>phenotypes/</code> is the pre-upscaling GCTA <code>.phen</code> output (before <code>GCTA_MAKE_GRM</code> iterative REML scaling), making the ANOVA SS ratio for offline variance-explained scale-invariant.</li>
 <li>Unit tests in <code>test-genotype_storage.R</code> and <code>test-trait_storage.R</code>.</li>
 <li>Test fixture: <code>tests/fixtures/test_genotype_matrix.tsv</code> (5 markers × 3 strains) and <code>tests/fixtures/test_sims.phen</code> (3-strain GCTA <code>.phen</code> file).</li>
 </ul>
 </section>
-<section id="changed-2" class="level4">
-<h4 class="anchored" data-anchor-id="changed-2">Changed</h4>
+<section id="changed-4" class="level4">
+<h4 class="anchored" data-anchor-id="changed-4">Changed</h4>
 <ul>
 <li><code>var.exp</code> column removed from <code>mappings_schema()</code> and <code>prepare_mapping_data()</code>; it was always <code>NA</code> in the DB path. Raw data for offline estimation is now available in <code>traits/</code>, <code>causal_variants/</code>, and <code>phenotypes/</code>.</li>
 <li>All DB write functions default to <code>overwrite = TRUE</code> to handle non-atomic <code>arrow::write_parquet()</code> writes — a crashed task leaves a partial file; retry with <code>overwrite = TRUE</code> replaces it cleanly.</li>
@@ -4183,8 +4273,8 @@ margin: 2rem 0;
 </section>
 <section id="pr-95-documentation-site-2026-02-18" class="level3">
 <h3 class="anchored" data-anchor-id="pr-95-documentation-site-2026-02-18">PR #95 — Documentation Site (2026-02-18)</h3>
-<section id="added-7" class="level4">
-<h4 class="anchored" data-anchor-id="added-7">Added</h4>
+<section id="added-8" class="level4">
+<h4 class="anchored" data-anchor-id="added-8">Added</h4>
 <ul>
 <li>Quarto website in <code>docs/</code> published to GitHub Pages at <code>https://andersenlab.github.io/nemascan-sims-nf/</code>.</li>
 <li>One page per pipeline phase: Marker Set Generation, Trait Simulation, GWAS Mapping, QTL Detection &amp; Assessment, Database Structure.</li>
@@ -4194,8 +4284,8 @@ margin: 2rem 0;
 </section>
 <section id="pr-93-cross-validation-framework-2026-02-17" class="level3">
 <h3 class="anchored" data-anchor-id="pr-93-cross-validation-framework-2026-02-17">PR #93 — Cross-Validation Framework (2026-02-17)</h3>
-<section id="added-8" class="level4">
-<h4 class="anchored" data-anchor-id="added-8">Added</h4>
+<section id="added-9" class="level4">
+<h4 class="anchored" data-anchor-id="added-9">Added</h4>
 <ul>
 <li><code>cross-validation.qmd</code> documentation page explaining concordance methodology.</li>
 <li>Cross-validation assessment script computing concordance scores (detection, designation, interval overlap) between the DB path and legacy R path.</li>
@@ -4208,8 +4298,8 @@ margin: 2rem 0;
 <section id="section" class="level3">
 <h3 class="anchored" data-anchor-id="section">2026-02-13</h3>
 <p>The database-integrated QTL detection and simulation assessment path was introduced, enabling end-to-end analysis without exporting intermediate TSV files.</p>
-<section id="added-9" class="level4">
-<h4 class="anchored" data-anchor-id="added-9">Added</h4>
+<section id="added-10" class="level4">
+<h4 class="anchored" data-anchor-id="added-10">Added</h4>
 <ul>
 <li><code>DB_MIGRATION_ANALYZE_QTL</code> and <code>DB_MIGRATION_ASSESS_SIMS</code> Nextflow modules.</li>
 <li><code>R/qtl_database.R</code> and <code>R/sim_performance.R</code> — database-native QTL grouping and simulation performance scoring.</li>
@@ -4225,10 +4315,10 @@ margin: 2rem 0;
 <section id="phases-13-prior-to-2026-02-13" class="level3">
 <h3 class="anchored" data-anchor-id="phases-13-prior-to-2026-02-13">Phases 1–3 (prior to 2026-02-13)</h3>
 <p>Core Parquet database infrastructure: marker-set ingestion, GWA statistics storage, and DuckDB query layer.</p>
-<section id="added-10" class="level4">
-<h4 class="anchored" data-anchor-id="added-10">Added</h4>
+<section id="added-11" class="level4">
+<h4 class="anchored" data-anchor-id="added-11">Added</h4>
 <ul>
-<li><code>DB_MIGRATION_WRITE_MARKER_SET</code> module — writes <code>{pop}_{maf}_markers.parquet</code> and <code>marker_set_metadata.parquet</code>; emits <code>val true</code> on <code>done</code> to gate downstream GWA writes.</li>
+<li><code>DB_MIGRATION_WRITE_MARKER_SET</code> module — writes <code>{pop}_{maf}_markers.parquet</code> and per-population metadata under <code>marker_set_metadata/</code>; emits <code>val true</code> on <code>done</code> to gate downstream GWA writes.</li>
 <li><code>DB_MIGRATION_WRITE_GWA_TO_DB</code> module — Hive-partitioned GWA Parquet files under <code>mappings/population={pop}/mapping_id={id}/</code>; gated behind a <code>.collect()</code> barrier ensuring marker schemas exist first.</li>
 <li><code>R/database.R</code>, <code>R/queries.R</code>, <code>R/analysis.R</code> — shared R library for Parquet I/O, DuckDB views, and log₁₀P computation.</li>
 <li><code>safe_log10p()</code> in <code>R/analysis.R</code> — log₁₀P computed at query time, never stored; clamped at <code>LOG10P_MAX</code>.</li>

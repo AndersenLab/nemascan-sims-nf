@@ -1,63 +1,71 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
+    <loc>https://AndersenLab.github.io/nemascan-sims-nf/transfer-and-archival.html</loc>
+    <lastmod>2026-07-16T16:17:44.670Z</lastmod>
+  </url>
+  <url>
     <loc>https://AndersenLab.github.io/nemascan-sims-nf/setup.html</loc>
     <lastmod>2026-03-23T15:47:01.168Z</lastmod>
   </url>
   <url>
-    <loc>https://AndersenLab.github.io/nemascan-sims-nf/marker-set-generation.html</loc>
-    <lastmod>2026-03-23T15:47:01.168Z</lastmod>
-  </url>
-  <url>
-    <loc>https://AndersenLab.github.io/nemascan-sims-nf/changelog.html</loc>
-    <lastmod>2026-03-23T15:47:01.167Z</lastmod>
-  </url>
-  <url>
-    <loc>https://AndersenLab.github.io/nemascan-sims-nf/testing-integration.html</loc>
-    <lastmod>2026-03-23T15:47:01.169Z</lastmod>
-  </url>
-  <url>
-    <loc>https://AndersenLab.github.io/nemascan-sims-nf/index.html</loc>
-    <lastmod>2026-03-23T15:47:01.168Z</lastmod>
-  </url>
-  <url>
-    <loc>https://AndersenLab.github.io/nemascan-sims-nf/trait-simulation.html</loc>
-    <lastmod>2026-03-23T15:47:01.170Z</lastmod>
-  </url>
-  <url>
-    <loc>https://AndersenLab.github.io/nemascan-sims-nf/qtl-detection-assessment.html</loc>
-    <lastmod>2026-03-23T15:47:01.168Z</lastmod>
-  </url>
-  <url>
-    <loc>https://AndersenLab.github.io/nemascan-sims-nf/gwas-mapping.html</loc>
-    <lastmod>2026-03-23T15:47:01.168Z</lastmod>
-  </url>
-  <url>
-    <loc>https://AndersenLab.github.io/nemascan-sims-nf/testing-local-e2e.html</loc>
-    <lastmod>2026-03-23T15:47:01.169Z</lastmod>
-  </url>
-  <url>
-    <loc>https://AndersenLab.github.io/nemascan-sims-nf/testing-output-validation.html</loc>
-    <lastmod>2026-03-23T15:47:01.170Z</lastmod>
-  </url>
-  <url>
-    <loc>https://AndersenLab.github.io/nemascan-sims-nf/testing-hpc.html</loc>
-    <lastmod>2026-03-23T15:47:01.169Z</lastmod>
-  </url>
-  <url>
-    <loc>https://AndersenLab.github.io/nemascan-sims-nf/test-add-nonmarker-cvs.html</loc>
-    <lastmod>2026-03-23T15:47:01.169Z</lastmod>
-  </url>
-  <url>
-    <loc>https://AndersenLab.github.io/nemascan-sims-nf/database-structure.html</loc>
-    <lastmod>2026-03-23T15:47:01.168Z</lastmod>
+    <loc>https://AndersenLab.github.io/nemascan-sims-nf/verifying-outputs.html</loc>
+    <lastmod>2026-07-16T16:17:44.671Z</lastmod>
   </url>
   <url>
     <loc>https://AndersenLab.github.io/nemascan-sims-nf/cross-validation.html</loc>
     <lastmod>2026-03-23T15:47:01.167Z</lastmod>
   </url>
   <url>
+    <loc>https://AndersenLab.github.io/nemascan-sims-nf/database-structure.html</loc>
+    <lastmod>2026-07-16T16:17:44.668Z</lastmod>
+  </url>
+  <url>
+    <loc>https://AndersenLab.github.io/nemascan-sims-nf/index.html</loc>
+    <lastmod>2026-07-16T16:17:44.669Z</lastmod>
+  </url>
+  <url>
+    <loc>https://AndersenLab.github.io/nemascan-sims-nf/trait-simulation.html</loc>
+    <lastmod>2026-07-16T16:17:44.670Z</lastmod>
+  </url>
+  <url>
+    <loc>https://AndersenLab.github.io/nemascan-sims-nf/qtl-detection-assessment.html</loc>
+    <lastmod>2026-07-16T16:17:44.669Z</lastmod>
+  </url>
+  <url>
+    <loc>https://AndersenLab.github.io/nemascan-sims-nf/gwas-mapping.html</loc>
+    <lastmod>2026-04-09T19:29:37.173Z</lastmod>
+  </url>
+  <url>
+    <loc>https://AndersenLab.github.io/nemascan-sims-nf/testing-local-e2e.html</loc>
+    <lastmod>2026-07-16T16:17:44.670Z</lastmod>
+  </url>
+  <url>
+    <loc>https://AndersenLab.github.io/nemascan-sims-nf/testing-output-validation.html</loc>
+    <lastmod>2026-04-09T19:29:37.173Z</lastmod>
+  </url>
+  <url>
+    <loc>https://AndersenLab.github.io/nemascan-sims-nf/testing-hpc.html</loc>
+    <lastmod>2026-03-27T18:46:53.485Z</lastmod>
+  </url>
+  <url>
+    <loc>https://AndersenLab.github.io/nemascan-sims-nf/testing-integration.html</loc>
+    <lastmod>2026-07-16T16:17:44.669Z</lastmod>
+  </url>
+  <url>
+    <loc>https://AndersenLab.github.io/nemascan-sims-nf/changelog.html</loc>
+    <lastmod>2026-07-16T16:17:44.668Z</lastmod>
+  </url>
+  <url>
+    <loc>https://AndersenLab.github.io/nemascan-sims-nf/marker-set-generation.html</loc>
+    <lastmod>2026-03-27T18:38:32.299Z</lastmod>
+  </url>
+  <url>
     <loc>https://AndersenLab.github.io/nemascan-sims-nf/development.html</loc>
-    <lastmod>2026-03-23T15:47:01.168Z</lastmod>
+    <lastmod>2026-07-16T16:17:44.669Z</lastmod>
+  </url>
+  <url>
+    <loc>https://AndersenLab.github.io/nemascan-sims-nf/error-handling-replay.html</loc>
+    <lastmod>2026-07-16T16:17:44.669Z</lastmod>
   </url>
 </urlset>

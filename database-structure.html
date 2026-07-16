@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-03-23">
+<meta name="dcterms.date" content="2026-07-16">
 
 <title>Database Structure – nemascan-sims-nf</title>
 <style>
@@ -3926,6 +3926,10 @@ margin: 2rem 0;
     <a class="nav-link" href="./cross-validation.html"> 
 <span class="menu-text">Cross-Validation</span></a>
   </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="./error-handling-replay.html"> 
+<span class="menu-text">Replay &amp; Error Handling</span></a>
+  </li>  
   <li class="nav-item dropdown ">
     <a class="nav-link dropdown-toggle" href="#" id="nav-menu-development" role="link" data-bs-toggle="dropdown" aria-expanded="false">
  <span class="menu-text">Development</span>
@@ -3955,6 +3959,16 @@ margin: 2rem 0;
         <li>
     <a class="dropdown-item" href="./testing-output-validation.html">
  <span class="dropdown-text">Output Validation</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./verifying-outputs.html">
+ <span class="dropdown-text">Verifying Simulation Outputs</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="./transfer-and-archival.html">
+ <span class="dropdown-text">Transfer &amp; Archival</span></a>
   </li>  
         <li><hr class="dropdown-divider"></li>
         <li>
@@ -4038,7 +4052,7 @@ margin: 2rem 0;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">March 23, 2026</p>
+      <p class="date">July 16, 2026</p>
     </div>
   </div>
   
@@ -4077,8 +4091,26 @@ margin: 2rem 0;
  │   └── phenotypes/
  │       └── {trait_id}_phenotype.parquet        ◄── pre-upscaled phenotype values
  ├── mappings_metadata.parquet                   ◄── mapping summary table
- └── marker_set_metadata.parquet                 ◄── EIGEN + marker counts + strainfile provenance</code></pre>
+ └── marker_set_metadata/                        ◄── per-population metadata directory
+     └── {population}_{maf}_metadata.parquet     ◄── EIGEN + marker counts + strainfile provenance</code></pre>
 <p>All Parquet files use Snappy compression. Schemas are defined as Arrow schema objects in <code>R/database.R</code>.</p>
+<p>The pipeline-side <code>db_simulation_assessment_results.tsv</code> is now opt-in via <code>--run_postprocess</code>. The DB itself is always written.</p>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Warning</span>Replayed reps can bias the replication regime
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Reps recovered by <code>--replay</code> are not a random sample of the replication regime; they are the ones that hit a transient failure on the first run. When the failure mode correlates with the biology of a particular parameter combination, replaying produces replicates that are not exchangeable with the first-run replicates for that combination.</p>
+<p><strong>Example.</strong> Some causal variants are more likely to produce a low phenotypic variance, which can trip the GCTA Vp-too-small error and drop the rep. If those reps are then replayed, the surviving first-run reps over-represent higher-MAF draws and the replayed reps over-represent lower-MAF draws for the same parameter combination.</p>
+<p><strong>How to avoid it.</strong> Before running <code>--replay</code>, inspect <code>replay.tsv</code> and confirm the failures are not concentrated within a specific parameter combination of the replication regime. If they are, the failure mode is correlated with that combination’s biology and replaying will bias its per-rep statistics.</p>
+<p>See <a href="./error-handling-replay.html">Replay &amp; Error Handling</a> for the full operator workflow.</p>
+</div>
+</div>
 </section>
 <section id="marker-sets" class="level2">
 <h2 class="anchored" data-anchor-id="marker-sets">Marker Sets</h2>
@@ -4164,7 +4196,8 @@ margin: 2rem 0;
 </section>
 <section id="marker-set-metadata-schema" class="level3">
 <h3 class="anchored" data-anchor-id="marker-set-metadata-schema">Marker Set Metadata Schema</h3>
-<p><strong>File:</strong> <code>{base_dir}/marker_set_metadata.parquet</code></p>
+<p><strong>Directory:</strong> <code>{base_dir}/marker_set_metadata/</code> <strong>File pattern:</strong> <code>{population}_{maf}_metadata.parquet</code> (one file per population/MAF pair)</p>
+<p>Each <code>DB_MIGRATION_WRITE_MARKER_SET</code> task writes its own isolated file, eliminating the concurrent write race condition that occurred when multiple tasks appended to a single shared Parquet file on HPC (SLURM).</p>
 <table class="caption-top table">
 <colgroup>
 <col style="width: 25%">
@@ -4528,6 +4561,11 @@ Note
 <section id="mappings-metadata" class="level2">
 <h2 class="anchored" data-anchor-id="mappings-metadata">Mappings Metadata</h2>
 <p>The mappings metadata table provides a lightweight summary of all mappings in the database. It is built by <code>DB_MIGRATION_AGGREGATE_METADATA</code> after all GWA writes complete, enabling fast lookups without scanning the full Parquet files.</p>
+<p>If you ever need to rebuild or recompute the metadata table, run:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="va">R_SOURCE_DIR</span><span class="op">=</span><span class="st">&quot;nemascan-sims-nf/R&quot;</span> <span class="dt">\</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="va">NF_TASK_CPUS</span><span class="op">=</span>4 <span class="dt">\</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Rscript</span> modules/db_migration/aggregate_metadata/resources/usr/bin/aggregate_metadata.R <span class="dt">\</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;path/to/db&quot;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <section id="mappings-metadata-schema" class="level3">
 <h3 class="anchored" data-anchor-id="mappings-metadata-schema">Mappings Metadata Schema</h3>
 <p><strong>File:</strong> <code>{base_dir}/mappings_metadata.parquet</code></p>
@@ -4652,9 +4690,9 @@ Note
 <li><strong>Unique:</strong> any script can call <code>generate_trait_id(ms_hash, ...)</code> to locate stored data without a directory scan</li>
 </ul>
 <p><strong>Source:</strong> <code>R/database.R::generate_trait_id()</code></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>ms_id    <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(<span class="st">&quot;complete&quot;</span>, <span class="fl">0.05</span>, <span class="st">&quot;c_elegans&quot;</span>, <span class="st">&quot;20220216&quot;</span>, <span class="fl">0.8</span>)</span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>trait    <span class="ot">&lt;-</span> <span class="fu">generate_trait_id</span>(ms_id<span class="sc">$</span>hash, <span class="at">nqtl =</span> <span class="dv">5</span>, <span class="at">effect =</span> <span class="st">&quot;gamma&quot;</span>, <span class="at">rep =</span> <span class="dv">1</span>, <span class="at">h2 =</span> <span class="fl">0.8</span>)</span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>trait_id <span class="ot">&lt;-</span> trait<span class="sc">$</span>hash   <span class="co"># 20-char hex string</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>ms_id    <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(<span class="st">&quot;complete&quot;</span>, <span class="fl">0.05</span>, <span class="st">&quot;c_elegans&quot;</span>, <span class="st">&quot;20220216&quot;</span>, <span class="fl">0.8</span>)</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>trait    <span class="ot">&lt;-</span> <span class="fu">generate_trait_id</span>(ms_id<span class="sc">$</span>hash, <span class="at">nqtl =</span> <span class="dv">5</span>, <span class="at">effect =</span> <span class="st">&quot;gamma&quot;</span>, <span class="at">rep =</span> <span class="dv">1</span>, <span class="at">h2 =</span> <span class="fl">0.8</span>)</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>trait_id <span class="ot">&lt;-</span> trait<span class="sc">$</span>hash   <span class="co"># 20-char hex string</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="trait-metadata-schema" class="level3">
 <h3 class="anchored" data-anchor-id="trait-metadata-schema">Trait Metadata Schema</h3>
@@ -4699,31 +4737,26 @@ Note
 <td>Simulation replicate number</td>
 </tr>
 <tr class="even">
-<td><code>sim_seed</code></td>
-<td><code>int32</code></td>
-<td>Integer seed used for RNG initialization in causal variant and effect size simulation; equals <code>rep</code> for runs using the default seed strategy</td>
-</tr>
-<tr class="odd">
 <td><code>h2</code></td>
 <td><code>float64</code></td>
 <td>Simulated heritability</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>maf</code></td>
 <td><code>float64</code></td>
 <td>MAF threshold</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>effect</code></td>
 <td><code>utf8</code></td>
 <td>Effect size distribution (e.g. <code>&quot;gamma&quot;</code>)</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>population</code></td>
 <td><code>utf8</code></td>
 <td>Population/strain group identifier</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>created_at</code></td>
 <td><code>utf8</code></td>
 <td>ISO 8601 write timestamp</td>
@@ -4814,7 +4847,7 @@ Important
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p><strong>Pre-upscaled values.</strong> The stored phenotype is the direct output of <code>GCTA_SIMULATE_PHENOTYPES</code>, captured <em>before</em> <code>PLINK_UPDATE_BY_H2</code> → <code>PYTHON_CHECK_VP</code>. The <code>check_vp.py</code> script may multiply values by 1000× when Vp &lt; 1e-6, so phenotype values stored here <em>may differ</em> from the values used in the actual GWAS mapping. For future variance-explained estimation this is immaterial: the ANOVA SS ratio (SS<sub>between</sub> / SS<sub>total</sub>) is scale-invariant.</p>
+<p><strong>Pre-upscaled values.</strong> The stored phenotype is the direct output of <code>GCTA_SIMULATE_PHENOTYPES</code>, captured <em>before</em> <code>PLINK_UPDATE_BY_H2</code> → <code>GCTA_MAKE_GRM</code>. The iterative REML loop in <code>GCTA_MAKE_GRM</code> may multiply values by 1000^N× when Vp &lt; 1e-4, so phenotype values stored here <em>may differ</em> from the values used in the actual GWAS mapping. For future variance-explained estimation this is immaterial: the ANOVA SS ratio (SS<sub>between</sub> / SS<sub>total</sub>) is scale-invariant.</p>
 </div>
 </div>
 <p><strong>Source:</strong> <code>R/database.R::phenotype_schema()</code>, <code>R/database.R::write_phenotype_data()</code>, <code>R/database.R::read_phenotype_data()</code></p>
@@ -4822,16 +4855,16 @@ Important
 <section id="offline-variance-explained-estimation" class="level3">
 <h3 class="anchored" data-anchor-id="offline-variance-explained-estimation">Offline Variance-Explained Estimation</h3>
 <p>With all four data stores populated, variance explained can be estimated for any trait without re-running the pipeline:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>ms_id    <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(group, maf, species, vcf_release_id, ms_ld)</span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>trait_id <span class="ot">&lt;-</span> <span class="fu">generate_trait_id</span>(ms_id<span class="sc">$</span>hash, nqtl, effect, rep, h2)<span class="sc">$</span>hash</span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>geno   <span class="ot">&lt;-</span> <span class="fu">read_genotype_matrix</span>(group, maf, species, vcf_release_id, ms_ld, base_dir)  <span class="co"># CHROM, POS, strain, allele</span></span>
-<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>pheno  <span class="ot">&lt;-</span> <span class="fu">read_phenotype_data</span>(trait_id, base_dir)            <span class="co"># strain, phenotype</span></span>
-<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>causal <span class="ot">&lt;-</span> <span class="fu">read_causal_variants_data</span>(trait_id, base_dir)      <span class="co"># QTL, CHROM, POS, Effect, ...</span></span>
-<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="co"># ANOVA SS method (matching legacy Assess_Sims.R):</span></span>
-<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="co">#   var_exp = SS_between / SS_total per marker</span></span>
-<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Join geno + pheno on strain, filter to causal positions, compute SS ratio.</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>ms_id    <span class="ot">&lt;-</span> <span class="fu">generate_marker_set_id</span>(group, maf, species, vcf_release_id, ms_ld)</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>trait_id <span class="ot">&lt;-</span> <span class="fu">generate_trait_id</span>(ms_id<span class="sc">$</span>hash, nqtl, effect, rep, h2)<span class="sc">$</span>hash</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>geno   <span class="ot">&lt;-</span> <span class="fu">read_genotype_matrix</span>(group, maf, species, vcf_release_id, ms_ld, base_dir)  <span class="co"># CHROM, POS, strain, allele</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>pheno  <span class="ot">&lt;-</span> <span class="fu">read_phenotype_data</span>(trait_id, base_dir)            <span class="co"># strain, phenotype</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>causal <span class="ot">&lt;-</span> <span class="fu">read_causal_variants_data</span>(trait_id, base_dir)      <span class="co"># QTL, CHROM, POS, Effect, ...</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="co"># ANOVA SS method (matching legacy Assess_Sims.R):</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a><span class="co">#   var_exp = SS_between / SS_total per marker</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Join geno + pheno on strain, filter to causal positions, compute SS ratio.</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 </section>
 <section id="query-patterns" class="level2">
@@ -4871,7 +4904,7 @@ Important
 </tr>
 <tr class="even">
 <td><code>marker_set_metadata</code></td>
-<td><code>marker_set_metadata.parquet</code></td>
+<td><code>marker_set_metadata/*_metadata.parquet</code> (glob)</td>
 <td>EIGEN values and marker counts</td>
 </tr>
 </tbody>
@@ -4965,16 +4998,16 @@ Important
 <section id="connection-caching" class="level3">
 <h3 class="anchored" data-anchor-id="connection-caching">Connection Caching</h3>
 <p>For batch operations, <code>get_db_connection()</code> provides a cached DuckDB connection that persists across multiple queries. The cache is keyed by <code>base_dir</code> and automatically reconnects if the connection becomes stale.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Single query (creates and closes connection)</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>data <span class="ot">&lt;-</span> <span class="fu">query_for_threshold_analysis</span>(mapping_id, base_dir)</span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Batch operation (reuses cached connection)</span></span>
-<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>con <span class="ot">&lt;-</span> <span class="fu">get_db_connection</span>(base_dir, <span class="at">use_cache =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (id <span class="cf">in</span> mapping_ids) {</span>
-<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>  data <span class="ot">&lt;-</span> <span class="fu">query_for_threshold_analysis</span>(id, base_dir, <span class="at">con =</span> con)</span>
-<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>  <span class="co"># ... process data</span></span>
-<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a><span class="fu">close_cached_connection</span>(base_dir)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Single query (creates and closes connection)</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>data <span class="ot">&lt;-</span> <span class="fu">query_for_threshold_analysis</span>(mapping_id, base_dir)</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Batch operation (reuses cached connection)</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>con <span class="ot">&lt;-</span> <span class="fu">get_db_connection</span>(base_dir, <span class="at">use_cache =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (id <span class="cf">in</span> mapping_ids) {</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>  data <span class="ot">&lt;-</span> <span class="fu">query_for_threshold_analysis</span>(id, base_dir, <span class="at">con =</span> con)</span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>  <span class="co"># ... process data</span></span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a><span class="fu">close_cached_connection</span>(base_dir)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 
 
 </section>

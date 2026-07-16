@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-03-23">
+<meta name="dcterms.date" content="2026-07-16">
 
 <title>Development – nemascan-sims-nf</title>
 <style>
@@ -3926,6 +3926,10 @@ margin: 2rem 0;
     <a class="nav-link" href="./cross-validation.html"> 
 <span class="menu-text">Cross-Validation</span></a>
   </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="./error-handling-replay.html"> 
+<span class="menu-text">Replay &amp; Error Handling</span></a>
+  </li>  
   <li class="nav-item dropdown ">
     <a class="nav-link dropdown-toggle" href="#" id="nav-menu-development" role="link" data-bs-toggle="dropdown" aria-expanded="false">
  <span class="menu-text">Development</span>
@@ -3955,6 +3959,16 @@ margin: 2rem 0;
         <li>
     <a class="dropdown-item" href="./testing-output-validation.html">
  <span class="dropdown-text">Output Validation</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./verifying-outputs.html">
+ <span class="dropdown-text">Verifying Simulation Outputs</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="./transfer-and-archival.html">
+ <span class="dropdown-text">Transfer &amp; Archival</span></a>
   </li>  
         <li><hr class="dropdown-divider"></li>
         <li>
@@ -3992,6 +4006,9 @@ margin: 2rem 0;
   </ul></li>
   <li><a href="#setup" id="toc-setup" class="nav-link" data-scroll-target="#setup">Setup</a></li>
   <li><a href="#testing" id="toc-testing" class="nav-link" data-scroll-target="#testing">Testing</a></li>
+  <li><a href="#testing-failure-handling-locally" id="toc-testing-failure-handling-locally" class="nav-link" data-scroll-target="#testing-failure-handling-locally">Testing Failure Handling Locally</a></li>
+  <li><a href="#cleaning-up-nextflow-run-artifacts" id="toc-cleaning-up-nextflow-run-artifacts" class="nav-link" data-scroll-target="#cleaning-up-nextflow-run-artifacts">Cleaning Up Nextflow Run Artifacts</a></li>
+  <li><a href="#work-directory-size-audit" id="toc-work-directory-size-audit" class="nav-link" data-scroll-target="#work-directory-size-audit">Work Directory Size Audit</a></li>
   <li><a href="#project-structure" id="toc-project-structure" class="nav-link" data-scroll-target="#project-structure">Project Structure</a></li>
   </ul>
 </nav>
@@ -4013,7 +4030,7 @@ margin: 2rem 0;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">March 23, 2026</p>
+      <p class="date">July 16, 2026</p>
     </div>
   </div>
   
@@ -4138,7 +4155,7 @@ margin: 2rem 0;
 </section>
 <section id="testing" class="level2">
 <h2 class="anchored" data-anchor-id="testing">Testing</h2>
-<p>The test and validation workflow is documented across four dedicated pages:</p>
+<p>Integration tests are the primary evaluation metric. All three test files in <code>tests/testthat/</code> require real pipeline output and skip automatically when the required environment variables are not set.</p>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -4153,7 +4170,7 @@ margin: 2rem 0;
 </tr>
 <tr class="even">
 <td><a href="./testing-integration.html">Local Integration Testing</a></td>
-<td>Unit tests (R + pytest), test fixtures, integration test collection</td>
+<td>Integration test inventory, test collection, environment variables</td>
 </tr>
 <tr class="odd">
 <td><a href="./testing-hpc.html">HPC End-to-End Testing</a></td>
@@ -4163,11 +4180,149 @@ margin: 2rem 0;
 <td><a href="./testing-output-validation.html">Output Validation</a></td>
 <td>Cross-validation tests, R package lockfile, thread-count determinism</td>
 </tr>
+<tr class="odd">
+<td><a href="./verifying-outputs.html">Verifying Simulation Outputs</a></td>
+<td><code>bin/verify_db.R</code> — post-run completeness check of the Parquet DB, expectation vs discovery mode, plot helpers</td>
+</tr>
 </tbody>
 </table>
-<p>Run all test tiers with:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Integration and cross-validation tests skip automatically when their required environment variables are not set. See <a href="./testing-integration.html">Local Integration Testing</a> for the full environment variable reference.</p>
+<p>Run all tests with:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Without env vars — all tests skip (no pipeline output available)</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="co"># With integration data</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_DB_DIR</span><span class="op">=</span>tests/integration_data/db <span class="dt">\</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_WORK_DIR</span><span class="op">=</span>tests/.nf-work <span class="dt">\</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_LEGACY_ASSESSMENT</span><span class="op">=</span>tests/integration_data/simulation_assessment_results.tsv <span class="dt">\</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="va">TEST_DB_ASSESSMENT</span><span class="op">=</span>tests/integration_data/db_simulation_assessment_results.tsv <span class="dt">\</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="ex">Rscript</span> tests/run_tests.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>See <a href="./testing-integration.html">Local Integration Testing</a> for the full environment variable reference and test inventory.</p>
+</section>
+<section id="testing-failure-handling-locally" class="level2">
+<h2 class="anchored" data-anchor-id="testing-failure-handling-locally">Testing Failure Handling Locally</h2>
+<p>To exercise the failure → manifest → replay loop on <code>-profile test,docker</code> without an HPC allocation, follow the recipe below. This was the protocol used to validate Step 15 V1/V2 on <code>fix/error-handling-pr3</code> (2026-05-05). For the full operator-facing description of the model see <a href="./error-handling-replay.html">Replay &amp; Error Handling</a>.</p>
+<p><strong>1. Inject a deterministic failure.</strong> Open <code>modules/gcta/simulate_phenotypes/main.nf</code> and add a conditional <code>exit 1</code> <strong>after</strong> the <code>source ${projectDir}/bin/failure_trap.sh</code> line so the EXIT trap is registered before the failure fires:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># In modules/gcta/simulate_phenotypes/main.nf, just after the</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="co"># `source ${projectDir}/bin/failure_trap.sh` line:</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">[</span> <span class="st">&quot;</span><span class="va">${rep}</span><span class="st">&quot;</span> <span class="ot">=</span> <span class="st">&quot;2&quot;</span> <span class="bu">]</span> <span class="kw">&amp;&amp;</span> <span class="bu">[</span> <span class="st">&quot;</span><span class="va">${nqtl}</span><span class="st">&quot;</span> <span class="ot">=</span> <span class="st">&quot;5&quot;</span> <span class="bu">]</span><span class="kw">;</span> <span class="cf">then</span> <span class="bu">exit</span> 1<span class="kw">;</span> <span class="cf">fi</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><strong>2. Run the first invocation with <code>--reps 4</code></strong> so the cell survives a single dropped rep:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> run main.nf <span class="at">-profile</span> test,docker <span class="dt">\</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--reps</span> 4 <span class="dt">\</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--output_dir</span> ./results/step15-e2e/run</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="callout callout-style-default callout-important callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Important
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><code>--output_dir</code> must live inside the project tree under Docker — Nextflow does not auto-bind arbitrary paths like <code>/tmp/...</code>, and DB writes will be silently lost on container exit.</p>
+</div>
+</div>
+<p><strong>3. Inspect the artifacts:</strong></p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Per-failure JSON record</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ls</span> ./results/replay-test/run/.failures/</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Manifest — one row for the failed (rep=2, nqtl=5) slot</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> ./results/replay-test/run/replay.tsv</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="co"># DB has 3 of 4 reps for the failed cell</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="fu">ls</span> ./results/replay-test/run/db/traits/<span class="pp">*</span>.parquet <span class="kw">|</span> <span class="fu">wc</span> <span class="at">-l</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The pipeline exits 0 even though a rep failed.</p>
+<p><strong>4. Revert the injection</strong> before replaying:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> checkout <span class="at">--</span> modules/gcta/simulate_phenotypes/main.nf</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><strong>5. Run the replay invocation:</strong></p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> run main.nf <span class="at">-profile</span> test,docker,replay <span class="dt">\</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">-resume</span> <span class="dt">\</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--reps</span> 4 <span class="dt">\</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--output_dir</span> ./results/replay-test/run <span class="dt">\</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--replay</span> ./results/replay-test/run/replay.tsv</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><strong>6. Verify the cache pattern with <code>nextflow log</code>:</strong></p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="ex">nextflow</span> log <span class="at">-f</span> name,status,hash <span class="va">$(</span><span class="ex">nextflow</span> log <span class="at">-q</span> <span class="kw">|</span> <span class="fu">tail</span> <span class="at">-1</span><span class="va">)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The replayed slot’s <code>GCTA_SIMULATE_PHENOTYPES</code> and downstream tasks should report <code>COMPLETED</code>; prep-phase tasks should report <code>CACHED</code>. Sibling reps in the same cell are filtered out before fanout and will <strong>not</strong> appear in the log at all. <code>VALIDATE_REPLICATION_COMPLETE</code> exits 0 and the DB contains the full 4 reps.</p>
+</section>
+<section id="cleaning-up-nextflow-run-artifacts" class="level2">
+<h2 class="anchored" data-anchor-id="cleaning-up-nextflow-run-artifacts">Cleaning Up Nextflow Run Artifacts</h2>
+<p>After running the pipeline locally, Nextflow leaves behind several directories and log files that are git-ignored but consume disk space:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 37%">
+<col style="width: 62%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Path</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>.nextflow/</code></td>
+<td>Nextflow cache (task hashes, metadata)</td>
+</tr>
+<tr class="even">
+<td><code>.nextflow.log*</code></td>
+<td>Run logs (<code>.nextflow.log</code>, <code>.nextflow.log.1</code>, …)</td>
+</tr>
+<tr class="odd">
+<td><code>work/</code></td>
+<td>Task working directories (can be very large)</td>
+</tr>
+<tr class="even">
+<td><code>Analysis_Results-*</code></td>
+<td>Date-stamped output directories (includes <code>pipeline-info/</code> with execution reports and timelines)</td>
+</tr>
+</tbody>
+</table>
+<p>To remove them:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span> <span class="at">-rf</span> .nextflow .nextflow.log<span class="pp">*</span> work Analysis_Results-<span class="pp">*</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Tip
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>If you plan to resume a run with <code>nextflow run … -resume</code>, keep <code>work/</code> and <code>.nextflow/</code> intact — Nextflow uses them to skip completed tasks.</p>
+</div>
+</div>
+</section>
+<section id="work-directory-size-audit" class="level2">
+<h2 class="anchored" data-anchor-id="work-directory-size-audit">Work Directory Size Audit</h2>
+<p>After a pipeline run on Rockfish, collect per-task disk metrics with <code>scripts/scan_workdir.sh</code>, then render <code>notebooks/summarize_workdir.qmd</code> to visualize results.</p>
+<p><strong>Step 1 — collect:</strong></p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> scripts/scan_workdir.sh <span class="op">&lt;</span>work_dir<span class="op">&gt;</span> <span class="op">&lt;</span>output_tsv<span class="op">&gt;</span> <span class="op">&lt;</span>run_name<span class="op">&gt;</span> [--nf_dir PATH] [--processes LIST] [--parallel N]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Run <code>nextflow log</code> from your pipeline directory to get the run name. The script prints progress every 30 s and writes a TSV with one row per task.</p>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Warning
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><code>du</code> on large work directories can take 30+ minutes and consume significant CPU. <strong>Do not run on a login node.</strong> Either start an interactive job first or submit as a batch script:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Interactive job (Rockfish)</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="ex">interact</span> <span class="at">-a</span> eande106 <span class="at">-c</span> 4 <span class="at">-t</span> 2:00:00</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Or submit as a batch job</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="ex">sbatch</span> <span class="at">--account</span><span class="op">=</span>eande106 <span class="at">--time</span><span class="op">=</span>2:00:00 <span class="at">--cpus-per-task</span><span class="op">=</span>8 <span class="dt">\</span></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">--wrap</span><span class="op">=</span><span class="st">&quot;bash scripts/scan_workdir.sh &lt;work_dir&gt; &lt;output_tsv&gt; &lt;run_name&gt; --parallel 8&quot;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+<p><strong>Step 2 — visualize:</strong></p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> render notebooks/summarize_workdir.qmd <span class="dt">\</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">-P</span> tsv_in:<span class="op">&lt;</span>output_tsv<span class="op">&gt;</span> <span class="dt">\</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">-P</span> out_dir:<span class="op">&lt;</span>results_dir<span class="op">&gt;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Produces a self-contained HTML report and saves plots/summary TSVs to <code>out_dir</code>.</p>
 </section>
 <section id="project-structure" class="level2">
 <h2 class="anchored" data-anchor-id="project-structure">Project Structure</h2>
